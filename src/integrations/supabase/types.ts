@@ -14,16 +14,116 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      leads: {
+        Row: {
+          ddd: string | null
+          id: string
+          phone: string | null
+          raw_line: string
+          uploaded_at: string
+          uploaded_by: string | null
+          used_at: string | null
+          used_by: string | null
+        }
+        Insert: {
+          ddd?: string | null
+          id?: string
+          phone?: string | null
+          raw_line: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Update: {
+          ddd?: string | null
+          id?: string
+          phone?: string | null
+          raw_line?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      available_by_ddd: {
+        Args: never
+        Returns: {
+          available: number
+          ddd: string
+        }[]
+      }
+      claim_leads: {
+        Args: { _ddd: string; _qty: number }
+        Returns: {
+          phone: string
+          raw_line: string
+        }[]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      lead_stats_by_ddd: {
+        Args: never
+        Returns: {
+          available: number
+          ddd: string
+          total: number
+          used: number
+        }[]
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "seller"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +250,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "seller"],
+    },
   },
 } as const
