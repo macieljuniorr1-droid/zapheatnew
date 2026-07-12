@@ -11,10 +11,10 @@ export const Route = createFileRoute("/")({
         content:
           "Suba uma lista de leads em TXT e deixe seus vendedores baixarem contatos por DDD, sem duplicação.",
       },
-      { property: "og:title", content: "LeadsPro — Distribuição de leads por DDD" },
+      { property: "og:title", content: "LeadsPro — Distribua leads por DDD para sua equipe" },
       {
         property: "og:description",
-        content: "Upload de leads pelo admin, download por DDD pelos vendedores.",
+        content: "Suba uma lista de leads em TXT e deixe seus vendedores baixarem contatos por DDD, sem duplicação.",
       },
       { property: "og:type", content: "website" },
     ],
