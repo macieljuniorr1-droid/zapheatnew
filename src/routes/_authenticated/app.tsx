@@ -121,6 +121,7 @@ function AppPage() {
           <TabsContent value="instances"><InstancesTab /></TabsContent>
           <TabsContent value="groups"><GroupsTab /></TabsContent>
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
+          <TabsContent value="live"><LiveChatTab /></TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
           <TabsContent value="plan"><PlanTab /></TabsContent>
           {isAdmin && <TabsContent value="admin"><AdminTab /></TabsContent>}
