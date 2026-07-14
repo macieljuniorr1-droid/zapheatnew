@@ -18,9 +18,9 @@ import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "WarmUp Pro — Aquecimento inteligente de WhatsApp com IA" },
+      { title: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
       { name: "description", content: "Aqueça seus chips de WhatsApp com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
-      { property: "og:title", content: "WarmUp Pro — Aquecimento inteligente de WhatsApp com IA" },
+      { property: "og:title", content: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
       { property: "og:description", content: "Conversas orgânicas geradas por IA entre seus chips, 24 horas por dia." },
       { property: "og:type", content: "website" },
     ],
