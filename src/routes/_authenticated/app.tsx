@@ -27,6 +27,15 @@ import {
   adminUpdateEvolutionConfig,
   adminGetStats,
 } from "@/lib/warmup.functions";
+import {
+  listContactLists,
+  createContactList,
+  deleteContactList,
+  listCampaigns,
+  createCampaign,
+  setCampaignStatus,
+  deleteCampaign,
+} from "@/lib/dispatch.functions";
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -58,6 +67,10 @@ import {
   Sparkles,
   Radio,
   TrendingUp,
+  Send,
+  Upload,
+  Play,
+  Pause,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app")({
