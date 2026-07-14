@@ -986,7 +986,7 @@ function ContactListsSection() {
         if (digits.length < 8) return null;
         return { phone: digits, name: rest.join(" ") || undefined };
       })
-      .filter((v): v is { phone: string; name?: string } => !!v);
+      .filter((v): v is { phone: string; name?: string } => v !== null);
   }
 
   const handleFile = async (f: File) => {
