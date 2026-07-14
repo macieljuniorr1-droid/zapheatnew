@@ -49,6 +49,11 @@ import {
   Trash2,
   Loader2,
   MessageSquare,
+  BookOpen,
+  CheckCircle2,
+  Server,
+  QrCode,
+  Sparkles,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app")({
