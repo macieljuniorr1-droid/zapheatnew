@@ -1,0 +1,1 @@
+UPDATE public.plans SET max_instances = 2, max_messages_per_day = 30 WHERE name = 'Free';
