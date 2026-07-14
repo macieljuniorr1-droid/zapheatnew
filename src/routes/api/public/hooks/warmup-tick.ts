@@ -59,23 +59,46 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             const from = shuffled[0];
             const to = shuffled[1];
 
-            // pick a template (user + globals)
-            const { data: templates } = await supabaseAdmin
-              .from("message_templates")
-              .select("id, content")
-              .or(`is_global.eq.true,user_id.eq.${(g as any).user_id}`)
-              .limit(200);
-            if (!templates?.length) {
-              await scheduleNext(supabaseAdmin, g);
-              continue;
+            // Fetch recent conversation history between this pair (both directions)
+            const { data: recent } = await supabaseAdmin
+              .from("warmup_logs")
+              .select("from_instance_id, to_instance_id, content, created_at")
+              .eq("group_id", (g as any).id)
+              .or(
+                `and(from_instance_id.eq.${from.id},to_instance_id.eq.${to.id}),and(from_instance_id.eq.${to.id},to_instance_id.eq.${from.id})`,
+              )
+              .eq("status", "sent")
+              .order("created_at", { ascending: true })
+              .limit(10);
+
+            const history = (recent ?? []).map((r: any) => ({
+              from: r.from_instance_id === from.id ? "__me__" : "__other__",
+              content: r.content as string,
+            }));
+
+            // Generate reply via AI, fallback to template pool if AI fails
+            let messageContent = "";
+            try {
+              const { generateReply } = await import("@/lib/ai.server");
+              messageContent = await generateReply(history);
+            } catch (aiErr: any) {
+              const { data: templates } = await supabaseAdmin
+                .from("message_templates")
+                .select("content")
+                .or(`is_global.eq.true,user_id.eq.${(g as any).user_id}`)
+                .limit(200);
+              if (templates?.length) {
+                messageContent = templates[Math.floor(Math.random() * templates.length)].content;
+              } else {
+                messageContent = "oi";
+              }
             }
-            const tpl = templates[Math.floor(Math.random() * templates.length)];
 
             const toNumber = String(to.phone).replace(/\D/g, "");
             let status = "sent";
             let errMsg: string | null = null;
             try {
-              await evolution.sendText(from.evolution_instance, toNumber, tpl.content);
+              await evolution.sendText(from.evolution_instance, toNumber, messageContent);
             } catch (e: any) {
               status = "failed";
               errMsg = e?.message ?? "erro";
@@ -86,7 +109,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               group_id: (g as any).id,
               from_instance_id: from.id,
               to_instance_id: to.id,
-              content: tpl.content,
+              content: messageContent,
               status,
               error: errMsg,
             });
