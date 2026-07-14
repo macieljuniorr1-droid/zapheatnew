@@ -142,7 +142,7 @@ function Dashboard() {
     </div>
   );
 }
-function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+function StatCard({ label, value, icon }: { label: string; value: number | string; icon: React.ReactNode }) {
   return (
     <Card>
       <CardContent className="p-6 flex items-center justify-between">
