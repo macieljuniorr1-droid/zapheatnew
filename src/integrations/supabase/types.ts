@@ -14,36 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
-      leads: {
+      evolution_config: {
         Row: {
-          ddd: string | null
-          id: string
-          phone: string | null
-          raw_line: string
-          uploaded_at: string
-          uploaded_by: string | null
-          used_at: string | null
-          used_by: string | null
+          api_key: string | null
+          api_url: string | null
+          id: number
+          updated_at: string
         }
         Insert: {
-          ddd?: string | null
-          id?: string
-          phone?: string | null
-          raw_line: string
-          uploaded_at?: string
-          uploaded_by?: string | null
-          used_at?: string | null
-          used_by?: string | null
+          api_key?: string | null
+          api_url?: string | null
+          id?: number
+          updated_at?: string
         }
         Update: {
-          ddd?: string | null
+          api_key?: string | null
+          api_url?: string | null
+          id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      message_templates: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_global: boolean
+          user_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
           id?: string
-          phone?: string | null
-          raw_line?: string
-          uploaded_at?: string
-          uploaded_by?: string | null
-          used_at?: string | null
-          used_by?: string | null
+          is_global?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_global?: boolean
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      plans: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          max_instances: number
+          max_messages_per_day: number
+          name: string
+          price_cents: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_instances?: number
+          max_messages_per_day?: number
+          name: string
+          price_cents?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_instances?: number
+          max_messages_per_day?: number
+          name?: string
+          price_cents?: number
         }
         Relationships: []
       }
@@ -64,6 +106,41 @@ export type Database = {
           id?: string
         }
         Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          id: string
+          plan_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          plan_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          plan_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -86,25 +163,174 @@ export type Database = {
         }
         Relationships: []
       }
+      warmup_group_members: {
+        Row: {
+          group_id: string
+          id: string
+          instance_id: string
+        }
+        Insert: {
+          group_id: string
+          id?: string
+          instance_id: string
+        }
+        Update: {
+          group_id?: string
+          id?: string
+          instance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warmup_group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "warmup_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warmup_group_members_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      warmup_groups: {
+        Row: {
+          active: boolean
+          created_at: string
+          daily_limit: number
+          id: string
+          max_delay_seconds: number
+          min_delay_seconds: number
+          name: string
+          next_run_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          daily_limit?: number
+          id?: string
+          max_delay_seconds?: number
+          min_delay_seconds?: number
+          name: string
+          next_run_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          daily_limit?: number
+          id?: string
+          max_delay_seconds?: number
+          min_delay_seconds?: number
+          name?: string
+          next_run_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      warmup_logs: {
+        Row: {
+          content: string | null
+          created_at: string
+          error: string | null
+          from_instance_id: string | null
+          group_id: string | null
+          id: string
+          status: string
+          to_instance_id: string | null
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          error?: string | null
+          from_instance_id?: string | null
+          group_id?: string | null
+          id?: string
+          status?: string
+          to_instance_id?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          error?: string | null
+          from_instance_id?: string | null
+          group_id?: string | null
+          id?: string
+          status?: string
+          to_instance_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warmup_logs_from_instance_id_fkey"
+            columns: ["from_instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warmup_logs_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "warmup_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warmup_logs_to_instance_id_fkey"
+            columns: ["to_instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_instances: {
+        Row: {
+          created_at: string
+          evolution_instance: string
+          id: string
+          last_qr: string | null
+          name: string
+          phone: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          evolution_instance: string
+          id?: string
+          last_qr?: string | null
+          name: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          evolution_instance?: string
+          id?: string
+          last_qr?: string | null
+          name?: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      available_by_ddd: {
-        Args: never
-        Returns: {
-          available: number
-          ddd: string
-        }[]
-      }
-      claim_leads: {
-        Args: { _ddd: string; _qty: number }
-        Returns: {
-          phone: string
-          raw_line: string
-        }[]
-      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -112,15 +338,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      lead_stats_by_ddd: {
-        Args: never
-        Returns: {
-          available: number
-          ddd: string
-          total: number
-          used: number
-        }[]
-      }
+      messages_sent_today: { Args: { _user_id: string }; Returns: number }
     }
     Enums: {
       app_role: "admin" | "seller"
