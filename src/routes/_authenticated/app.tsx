@@ -106,6 +106,7 @@ function AppPage() {
         <Tabs defaultValue="dashboard">
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="dashboard"><Flame className="h-4 w-4 mr-1" />Dashboard</TabsTrigger>
+            <TabsTrigger value="tutorial"><BookOpen className="h-4 w-4 mr-1" />Tutorial</TabsTrigger>
             <TabsTrigger value="instances"><Smartphone className="h-4 w-4 mr-1" />Números</TabsTrigger>
             <TabsTrigger value="groups"><Users2 className="h-4 w-4 mr-1" />Grupos</TabsTrigger>
             <TabsTrigger value="templates"><MessageSquare className="h-4 w-4 mr-1" />Mensagens</TabsTrigger>
@@ -114,6 +115,7 @@ function AppPage() {
             {isAdmin && <TabsTrigger value="admin"><Settings className="h-4 w-4 mr-1" />Admin</TabsTrigger>}
           </TabsList>
           <TabsContent value="dashboard"><Dashboard /></TabsContent>
+          <TabsContent value="tutorial"><TutorialTab /></TabsContent>
           <TabsContent value="instances"><InstancesTab /></TabsContent>
           <TabsContent value="groups"><GroupsTab /></TabsContent>
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
