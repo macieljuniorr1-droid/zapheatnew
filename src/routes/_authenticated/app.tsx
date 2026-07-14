@@ -665,3 +665,188 @@ function TutorialTab() {
     </div>
   );
 }
+
+// ---------------- Live Chat ----------------
+type LiveLog = {
+  id: string;
+  group_id: string;
+  from_instance_id: string;
+  to_instance_id: string;
+  content: string;
+  status: string;
+  created_at: string;
+  from_instance?: { name: string } | null;
+  to_instance?: { name: string } | null;
+};
+
+function pairKey(a: string, b: string) {
+  return [a, b].sort().join("::");
+}
+
+function LiveChatTab() {
+  const fn = useServerFn(listLogs);
+  const initial = useQuery({ queryKey: ["live-logs"], queryFn: () => fn() });
+  const [logs, setLogs] = useState<LiveLog[]>([]);
+  const [selectedPair, setSelectedPair] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // seed with initial data
+  useEffect(() => {
+    if (initial.data) setLogs(initial.data as LiveLog[]);
+  }, [initial.data]);
+
+  // realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel("warmup-live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "warmup_logs" },
+        async (payload) => {
+          const row = payload.new as any;
+          // fetch instance names for this new row
+          const { data: names } = await supabase
+            .from("whatsapp_instances")
+            .select("id, name")
+            .in("id", [row.from_instance_id, row.to_instance_id]);
+          const map = new Map((names ?? []).map((n: any) => [n.id, n.name]));
+          const enriched: LiveLog = {
+            ...row,
+            from_instance: { name: map.get(row.from_instance_id) ?? "?" },
+            to_instance: { name: map.get(row.to_instance_id) ?? "?" },
+          };
+          setLogs((prev) => [enriched, ...prev].slice(0, 500));
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // group by conversation pair
+  const pairs = new Map<string, { key: string; a: string; b: string; nameA: string; nameB: string; last: LiveLog; count: number }>();
+  for (const l of logs) {
+    const k = pairKey(l.from_instance_id, l.to_instance_id);
+    const existing = pairs.get(k);
+    if (!existing) {
+      pairs.set(k, {
+        key: k,
+        a: l.from_instance_id,
+        b: l.to_instance_id,
+        nameA: l.from_instance?.name ?? "?",
+        nameB: l.to_instance?.name ?? "?",
+        last: l,
+        count: 1,
+      });
+    } else {
+      existing.count++;
+    }
+  }
+  const pairList = Array.from(pairs.values()).sort(
+    (a, b) => new Date(b.last.created_at).getTime() - new Date(a.last.created_at).getTime(),
+  );
+
+  const activeKey = selectedPair ?? pairList[0]?.key ?? null;
+  const conversation = activeKey
+    ? logs
+        .filter((l) => pairKey(l.from_instance_id, l.to_instance_id) === activeKey)
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    : [];
+
+  // auto-scroll to bottom on new message
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [conversation.length, activeKey]);
+
+  const activePair = pairList.find((p) => p.key === activeKey);
+
+  return (
+    <div className="mt-4 grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 h-[70vh]">
+      {/* Sidebar with conversations */}
+      <Card className="overflow-hidden flex flex-col">
+        <CardHeader className="p-3 border-b">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+            </span>
+            Conversas ao vivo
+          </CardTitle>
+        </CardHeader>
+        <div className="flex-1 overflow-y-auto">
+          {pairList.length === 0 && (
+            <div className="p-6 text-xs text-muted-foreground text-center">
+              Nenhuma conversa ainda. Ative um grupo e aguarde…
+            </div>
+          )}
+          {pairList.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setSelectedPair(p.key)}
+              className={`w-full text-left px-3 py-2.5 border-b hover:bg-accent/40 transition-colors ${
+                activeKey === p.key ? "bg-accent/60" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium truncate">
+                  {p.nameA} ↔ {p.nameB}
+                </div>
+                <Badge variant="secondary" className="text-[10px] shrink-0">{p.count}</Badge>
+              </div>
+              <div className="text-xs text-muted-foreground truncate mt-0.5">{p.last.content}</div>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      {/* Conversation panel */}
+      <Card className="overflow-hidden flex flex-col">
+        <CardHeader className="p-3 border-b">
+          <CardTitle className="text-sm">
+            {activePair ? `${activePair.nameA} ↔ ${activePair.nameB}` : "Selecione uma conversa"}
+          </CardTitle>
+        </CardHeader>
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/20"
+        >
+          {conversation.length === 0 && (
+            <div className="text-center text-sm text-muted-foreground py-12">
+              Aguardando mensagens…
+            </div>
+          )}
+          {conversation.map((m) => {
+            const isA = activePair && m.from_instance_id === activePair.a;
+            const senderName = m.from_instance?.name ?? "?";
+            return (
+              <div
+                key={m.id}
+                className={`flex ${isA ? "justify-start" : "justify-end"}`}
+              >
+                <div
+                  className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+                    isA
+                      ? "bg-card border rounded-bl-sm"
+                      : "gradient-ember-bg text-primary-foreground rounded-br-sm"
+                  }`}
+                >
+                  <div className={`text-[10px] font-mono uppercase tracking-wider mb-0.5 ${isA ? "text-muted-foreground" : "text-primary-foreground/70"}`}>
+                    {senderName}
+                  </div>
+                  <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                  <div className={`text-[10px] mt-1 ${isA ? "text-muted-foreground" : "text-primary-foreground/70"}`}>
+                    {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    {m.status === "failed" && " · falhou"}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
