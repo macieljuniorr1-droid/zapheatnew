@@ -80,21 +80,24 @@ function AppPage() {
   const planName = (me.data?.subscription as any)?.plan?.name ?? "Free";
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Flame className="h-5 w-5 text-primary" />
-            <span className="font-semibold">WarmUp Pro</span>
-            <Badge variant="secondary" className="ml-2">{planName}</Badge>
-            {isAdmin && <Badge className="ml-1">ADMIN</Badge>}
+    <div className="relative min-h-screen">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[400px] forge-halo" aria-hidden />
+      <header className="relative z-10 border-b border-border/40 backdrop-blur-md bg-background/60">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="relative h-8 w-8 rounded-lg gradient-ember-bg grid place-items-center glow-ember">
+              <Flame className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
+            </div>
+            <span className="font-display font-semibold tracking-tight">WarmUp Pro</span>
+            <Badge variant="secondary" className="ml-2 font-mono text-[10px] uppercase tracking-wider">{planName}</Badge>
+            {isAdmin && <Badge className="ml-1 gradient-ember-bg text-primary-foreground border-0 font-mono text-[10px] uppercase tracking-wider">Admin</Badge>}
           </div>
           <Button variant="ghost" size="sm" onClick={signOut}>
             <LogOut className="h-4 w-4 mr-2" /> Sair
           </Button>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 py-6">
         <Tabs defaultValue="dashboard">
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="dashboard"><Flame className="h-4 w-4 mr-1" />Dashboard</TabsTrigger>
