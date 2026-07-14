@@ -777,9 +777,23 @@ function LiveChatTab() {
           </CardTitle>
         </CardHeader>
         <div className="flex-1 overflow-y-auto">
-          {pairList.length === 0 && (
-            <div className="p-6 text-xs text-muted-foreground text-center">
-              Nenhuma conversa ainda. Ative um grupo e aguarde…
+          {initial.isLoading && (
+            <div className="p-6 text-xs text-muted-foreground text-center">Carregando…</div>
+          )}
+          {initial.error && (
+            <div className="p-6 text-xs text-destructive text-center">
+              Erro ao carregar: {(initial.error as Error).message}
+            </div>
+          )}
+          {!initial.isLoading && !initial.error && pairList.length === 0 && (
+            <div className="p-6 text-xs text-muted-foreground text-center space-y-2">
+              <p className="font-medium text-foreground">Nenhuma conversa ainda</p>
+              <p>Para começar a ver mensagens aqui:</p>
+              <ol className="text-left list-decimal pl-4 space-y-1">
+                <li>Conecte pelo menos 2 chips na aba <b>Chips</b> (escaneie o QR)</li>
+                <li>Crie um grupo na aba <b>Grupos</b> e adicione os chips</li>
+                <li>Deixe o grupo ativo — as mensagens aparecem aqui em tempo real</li>
+              </ol>
             </div>
           )}
           {pairList.map((p) => (
@@ -800,6 +814,7 @@ function LiveChatTab() {
             </button>
           ))}
         </div>
+
       </Card>
 
       {/* Conversation panel */}
