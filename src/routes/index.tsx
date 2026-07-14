@@ -139,53 +139,35 @@ function Landing() {
           <div className="text-center max-w-2xl mx-auto mb-14">
             <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">planos</div>
             <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
-              Comece grátis, escale quando precisar
+              Preço simples: pague por número
             </h2>
             <p className="mt-3 text-muted-foreground">
-              Todos os planos incluem IA generativa, chat ao vivo, e delays humanos configuráveis.
+              Teste grátis com 2 números. Quando escalar, é só <b className="text-foreground">R$ 25 por número/mês</b> — sem limite de quantos chips você conecta. Inclui IA generativa, chat ao vivo e delays humanos configuráveis (do segundo ao dia inteiro).
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
             <PlanCard
               name="Free"
               price="R$ 0"
               period="para sempre"
               instances="2 números"
               messages="30 msgs/dia"
-              features={["IA generativa", "Chat ao vivo", "Suporte comunidade"]}
+              features={["IA generativa", "Chat ao vivo", "Delays configuráveis", "Suporte comunidade"]}
               cta="Começar grátis"
             />
             <PlanCard
-              name="Starter"
-              price="R$ 49"
-              period="/mês"
-              instances="3 números"
-              messages="40 msgs/dia"
-              features={["IA generativa", "Chat ao vivo", "Delay personalizado", "Suporte por email"]}
-              cta="Assinar Starter"
-            />
-            <PlanCard
               name="Pro"
-              price="R$ 149"
-              period="/mês"
-              instances="10 números"
-              messages="150 msgs/dia"
-              features={["Tudo do Starter", "Múltiplos grupos", "Templates próprios", "Suporte prioritário"]}
+              price="R$ 25"
+              period="/número/mês"
+              instances="Números ilimitados"
+              messages="Msgs/dia por número"
+              features={["Ativação única R$ 197", "IA generativa", "Chat ao vivo", "Delays personalizados 24/7", "Múltiplos grupos", "Suporte prioritário"]}
               cta="Assinar Pro"
               highlight
             />
-            <PlanCard
-              name="Business"
-              price="R$ 399"
-              period="/mês"
-              instances="30 números"
-              messages="400 msgs/dia"
-              features={["Tudo do Pro", "White-label", "API de logs", "Suporte dedicado"]}
-              cta="Assinar Business"
-            />
           </div>
           <p className="text-center text-xs text-muted-foreground font-mono mt-8">
-            precisa de mais? · <a className="text-ember underline decoration-dotted" href="mailto:contato@warmuppro.app">fale com a gente</a>
+            exemplo: 10 chips = R$ 250/mês · 30 chips = R$ 750/mês · <a className="text-ember underline decoration-dotted" href="mailto:contato@warmuppro.app">fale com a gente</a>
           </p>
         </section>
 
