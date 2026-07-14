@@ -49,6 +49,11 @@ import {
   Trash2,
   Loader2,
   MessageSquare,
+  BookOpen,
+  CheckCircle2,
+  Server,
+  QrCode,
+  Sparkles,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app")({
@@ -101,6 +106,7 @@ function AppPage() {
         <Tabs defaultValue="dashboard">
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="dashboard"><Flame className="h-4 w-4 mr-1" />Dashboard</TabsTrigger>
+            <TabsTrigger value="tutorial"><BookOpen className="h-4 w-4 mr-1" />Tutorial</TabsTrigger>
             <TabsTrigger value="instances"><Smartphone className="h-4 w-4 mr-1" />Números</TabsTrigger>
             <TabsTrigger value="groups"><Users2 className="h-4 w-4 mr-1" />Grupos</TabsTrigger>
             <TabsTrigger value="templates"><MessageSquare className="h-4 w-4 mr-1" />Mensagens</TabsTrigger>
@@ -109,6 +115,7 @@ function AppPage() {
             {isAdmin && <TabsTrigger value="admin"><Settings className="h-4 w-4 mr-1" />Admin</TabsTrigger>}
           </TabsList>
           <TabsContent value="dashboard"><Dashboard /></TabsContent>
+          <TabsContent value="tutorial"><TutorialTab /></TabsContent>
           <TabsContent value="instances"><InstancesTab /></TabsContent>
           <TabsContent value="groups"><GroupsTab /></TabsContent>
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
@@ -497,6 +504,158 @@ function AdminTab() {
                 </div>
               );
             })}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------- Tutorial ----------------
+function TutorialTab() {
+  const steps = [
+    {
+      icon: <Server className="h-5 w-5" />,
+      title: "1. Contrate ou instale a Evolution API",
+      body: (
+        <>
+          <p>A Evolution API é a ponte entre o WarmUp Pro e o WhatsApp. Você tem 3 caminhos:</p>
+          <ul className="list-disc pl-5 space-y-1 mt-2 text-sm">
+            <li><b>Serviço pronto</b> (mais rápido) — sites como <span className="font-mono">evolution-api.com</span> hospedam pra você. Cria conta, paga, recebe URL + API Key.</li>
+            <li><b>VPS + Docker</b> — contrata uma VPS (Contabo, Hostinger, DigitalOcean, ~R$30/mês) e roda o Docker Compose do repositório oficial <span className="font-mono">github.com/EvolutionAPI/evolution-api</span>.</li>
+            <li><b>Instalação própria</b> — mesmo repositório, você mesmo instala. Ilimitados números.</li>
+          </ul>
+          <p className="mt-2 text-sm text-muted-foreground">Ao final você terá: uma <b>URL</b> (ex: https://evo.seudominio.com) e uma <b>API Key</b>.</p>
+        </>
+      ),
+    },
+    {
+      icon: <Settings className="h-5 w-5" />,
+      title: "2. Configure no painel (aba Admin)",
+      body: (
+        <p className="text-sm">
+          Entre na aba <b>Admin</b>, cole a URL e a API Key da sua Evolution e salve. Isso é feito apenas <b>uma vez</b>.
+        </p>
+      ),
+    },
+    {
+      icon: <QrCode className="h-5 w-5" />,
+      title: "3. Conecte seus números",
+      body: (
+        <p className="text-sm">
+          Vá em <b>Números → Adicionar</b>. Dê um nome (ex: "chip-01"), clique criar e escaneie o QR Code com o WhatsApp do celular
+          (Configurações → Aparelhos conectados → Conectar aparelho). Repita para cada número que quiser aquecer.
+          Recomendamos <b>no mínimo 3 números</b> por grupo para conversas mais naturais.
+        </p>
+      ),
+    },
+    {
+      icon: <Users2 className="h-5 w-5" />,
+      title: "4. Crie um grupo de aquecimento",
+      body: (
+        <>
+          <p className="text-sm">
+            Em <b>Grupos → Novo grupo</b>, dê um nome e adicione <b>2 ou mais números</b> como membros.
+            Quanto mais números, mais orgânico — o sistema sorteia pares aleatórios a cada conversa (A→B, depois C→D, depois B→E...).
+          </p>
+          <p className="text-sm mt-2">Configure:</p>
+          <ul className="list-disc pl-5 space-y-1 mt-1 text-sm">
+            <li><b>Delay mín/máx</b> (segundos entre mensagens) — recomendado 60–300s para simular humano</li>
+            <li><b>Limite diário</b> — comece baixo (20–40 msgs/dia) e aumente gradualmente</li>
+          </ul>
+        </>
+      ),
+    },
+    {
+      icon: <Sparkles className="h-5 w-5" />,
+      title: "5. Ative e deixe a IA trabalhar",
+      body: (
+        <>
+          <p className="text-sm">
+            Ligue o switch <b>Ativo</b> no grupo. Pronto — o sistema roda sozinho 24/7:
+          </p>
+          <ul className="list-disc pl-5 space-y-1 mt-2 text-sm">
+            <li>Sorteia um par de números do grupo</li>
+            <li>A IA (Gemini) lê o histórico da conversa e gera resposta natural em português</li>
+            <li>Envia via Evolution do número A pro número B</li>
+            <li>Agenda o próximo envio com delay aleatório</li>
+            <li>Respeita o limite diário do plano</li>
+          </ul>
+          <p className="text-sm mt-2">Acompanhe tudo em <b>Logs</b>.</p>
+        </>
+      ),
+    },
+  ];
+
+  return (
+    <div className="mt-4 space-y-6">
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="p-6 flex items-start gap-4">
+          <div className="h-10 w-10 rounded-lg gradient-ember-bg grid place-items-center glow-ember shrink-0">
+            <BookOpen className="h-5 w-5 text-primary-foreground" />
+          </div>
+          <div>
+            <h2 className="font-display text-xl font-semibold">Como funciona o WarmUp Pro</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Aquecimento automático de WhatsApp com IA. Configure uma vez e deixe rodando —
+              seus números conversam entre si de forma natural, 24 horas por dia.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4">
+        {steps.map((s, i) => (
+          <Card key={i}>
+            <CardContent className="p-5 flex gap-4">
+              <div className="h-10 w-10 rounded-md bg-primary/10 text-primary grid place-items-center shrink-0">
+                {s.icon}
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold mb-2 flex items-center gap-2">
+                  {s.title}
+                  <CheckCircle2 className="h-4 w-4 text-muted-foreground/40" />
+                </h3>
+                <div className="text-sm">{s.body}</div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Dicas de segurança para não bloquear os chips</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-2 text-muted-foreground">
+          <p>• <b>Números novos:</b> comece com no máximo 20 msgs/dia na primeira semana e aumente 10 por semana.</p>
+          <p>• <b>Nunca ative um chip recém-conectado com limite alto</b> — o WhatsApp banimento por comportamento suspeito.</p>
+          <p>• <b>Use delays variados</b> (60–300s) — mensagens em intervalos regulares parecem robôs.</p>
+          <p>• <b>Mantenha os chips online</b> — celular ligado, WhatsApp Web ativo, ou instância Evolution rodando 24/7.</p>
+          <p>• <b>Não misture aquecimento e envio comercial no mesmo chip</b> por pelo menos 15 dias.</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Perguntas frequentes</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-3">
+          <div>
+            <p className="font-medium">Posso ter vários números conversando entre si?</p>
+            <p className="text-muted-foreground">Sim! Coloque 3, 5, 10 ou mais números no mesmo grupo. A cada tick o sistema sorteia um par aleatório diferente — as conversas se cruzam naturalmente.</p>
+          </div>
+          <div>
+            <p className="font-medium">Preciso ficar com o computador ligado?</p>
+            <p className="text-muted-foreground">Não. O aquecimento roda no servidor. Basta a Evolution API estar online (na sua VPS ou serviço) e os celulares com WhatsApp conectados.</p>
+          </div>
+          <div>
+            <p className="font-medium">A IA repete mensagens?</p>
+            <p className="text-muted-foreground">Não. A cada mensagem a IA olha as últimas 10 do histórico e gera algo diferente, em português coloquial, com personalidade aleatória.</p>
+          </div>
+          <div>
+            <p className="font-medium">E se um chip desconectar?</p>
+            <p className="text-muted-foreground">O sistema pula ele automaticamente e usa os outros do grupo. Você reconecta pelo QR Code e ele volta a participar.</p>
           </div>
         </CardContent>
       </Card>
