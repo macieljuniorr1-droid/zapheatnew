@@ -77,22 +77,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "LeadsPro — Distribua leads por DDD para sua equipe" },
-      {
-        name: "description",
-        content: "Suba uma lista de leads em TXT e deixe seus vendedores baixarem contatos por DDD, sem duplicação.",
-      },
-      { property: "og:title", content: "LeadsPro — Distribua leads por DDD para sua equipe" },
-      {
-        property: "og:description",
-        content: "Suba uma lista de leads em TXT e deixe seus vendedores baixarem contatos por DDD, sem duplicação.",
-      },
+      { title: "WarmUp Pro — Aquecimento automático de WhatsApp" },
+      { name: "description", content: "Conecte seus chips via QR Code e aqueça números WhatsApp automaticamente. Evite banimentos." },
+      { property: "og:title", content: "WarmUp Pro — Aquecimento automático de WhatsApp" },
+      { property: "og:description", content: "Conecte seus chips via QR Code e aqueça números WhatsApp automaticamente." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "LeadsPro — Distribua leads por DDD para sua equipe" },
-      { name: "twitter:description", content: "Suba uma lista de leads em TXT e deixe seus vendedores baixarem contatos por DDD, sem duplicação." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/13a224be-7825-4ec9-a6fc-281f1d2b5119/id-preview-f4194deb--c31ba9e6-9f12-47db-b03f-aa4fc60f320c.lovable.app-1783817480017.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/13a224be-7825-4ec9-a6fc-281f1d2b5119/id-preview-f4194deb--c31ba9e6-9f12-47db-b03f-aa4fc60f320c.lovable.app-1783817480017.png" },
+      { name: "twitter:title", content: "WarmUp Pro — Aquecimento automático de WhatsApp" },
+      { name: "twitter:description", content: "Conecte seus chips via QR Code e aqueça números WhatsApp automaticamente." },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
