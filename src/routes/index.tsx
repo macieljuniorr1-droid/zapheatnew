@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Users2,
 } from "lucide-react";
+import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -34,21 +35,27 @@ function Landing() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,transparent_60%,var(--background)_100%)]" aria-hidden />
 
       <header className="relative z-20 border-b border-border/40 backdrop-blur-md bg-background/40 sticky top-0">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Logo />
-            <span className="font-display font-semibold tracking-tight text-lg">WarmUp Pro</span>
-          </div>
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+          <Link to="/" className="flex items-center">
+            <img src={zapheatLogo.url} alt="ZapHeat" className="h-9 md:h-10 w-auto" />
+          </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#how" className="hover:text-foreground transition">Como funciona</a>
             <a href="#plans" className="hover:text-foreground transition">Planos</a>
             <a href="#faq" className="hover:text-foreground transition">FAQ</a>
           </nav>
-          <Link to="/auth">
-            <Button size="sm" className="gradient-ember-bg glow-ember hover:opacity-90">
-              Entrar
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/auth">
+              <Button size="sm" variant="ghost" className="hidden sm:inline-flex">
+                Entrar
+              </Button>
+            </Link>
+            <Link to="/auth">
+              <Button size="sm" className="gradient-ember-bg glow-ember hover:opacity-90">
+                Cadastrar
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 
