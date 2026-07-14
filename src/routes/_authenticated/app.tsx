@@ -25,7 +25,9 @@ import {
   adminUpdateUserPlan,
   adminGetEvolutionConfig,
   adminUpdateEvolutionConfig,
+  adminGetStats,
 } from "@/lib/warmup.functions";
+import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,10 +93,7 @@ function AppPage() {
       <header className="relative z-10 border-b border-border/40 backdrop-blur-md bg-background/60">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="relative h-8 w-8 rounded-lg gradient-ember-bg grid place-items-center glow-ember">
-              <Flame className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
-            </div>
-            <span className="font-display font-semibold tracking-tight">WarmUp Pro</span>
+            <img src={zapheatLogo.url} alt="ZapHeat" className="h-8 w-auto" />
             <Badge variant="secondary" className="ml-2 font-mono text-[10px] uppercase tracking-wider">{planName}</Badge>
             {isAdmin && <Badge className="ml-1 gradient-ember-bg text-primary-foreground border-0 font-mono text-[10px] uppercase tracking-wider">Admin</Badge>}
           </div>
