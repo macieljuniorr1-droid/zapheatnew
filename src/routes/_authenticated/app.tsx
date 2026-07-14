@@ -27,6 +27,15 @@ import {
   adminUpdateEvolutionConfig,
   adminGetStats,
 } from "@/lib/warmup.functions";
+import {
+  listContactLists,
+  createContactList,
+  deleteContactList,
+  listCampaigns,
+  createCampaign,
+  setCampaignStatus,
+  deleteCampaign,
+} from "@/lib/dispatch.functions";
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -58,6 +67,10 @@ import {
   Sparkles,
   Radio,
   TrendingUp,
+  Send,
+  Upload,
+  Play,
+  Pause,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app")({
@@ -111,6 +124,7 @@ function AppPage() {
             <TabsTrigger value="instances"><Smartphone className="h-4 w-4 mr-1" />Números</TabsTrigger>
             <TabsTrigger value="groups"><Users2 className="h-4 w-4 mr-1" />Grupos</TabsTrigger>
             <TabsTrigger value="templates"><MessageSquare className="h-4 w-4 mr-1" />Mensagens</TabsTrigger>
+            <TabsTrigger value="dispatch"><Send className="h-4 w-4 mr-1" />Disparos</TabsTrigger>
             <TabsTrigger value="live"><Radio className="h-4 w-4 mr-1" />Chat ao vivo</TabsTrigger>
             <TabsTrigger value="logs"><ScrollText className="h-4 w-4 mr-1" />Logs</TabsTrigger>
             <TabsTrigger value="plan"><CreditCard className="h-4 w-4 mr-1" />Plano</TabsTrigger>
@@ -121,6 +135,7 @@ function AppPage() {
           <TabsContent value="instances"><InstancesTab /></TabsContent>
           <TabsContent value="groups"><GroupsTab /></TabsContent>
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
+          <TabsContent value="dispatch"><DispatchTab /></TabsContent>
           <TabsContent value="live"><LiveChatTab /></TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
           <TabsContent value="plan"><PlanTab /></TabsContent>
@@ -926,5 +941,328 @@ function LiveChatTab() {
         </div>
       </Card>
     </div>
+  );
+}
+
+// ---------------- Dispatch (Disparos em massa) ----------------
+function DispatchTab() {
+  return (
+    <div className="mt-4 space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Send className="h-5 w-5" />Disparos em massa</CardTitle>
+          <CardDescription>
+            Envie mensagens em massa usando seus números conectados enquanto continuam aquecendo.
+            O sistema respeita intervalos aleatórios, limite por número/dia e janela de horário.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      <ContactListsSection />
+      <CampaignsSection />
+    </div>
+  );
+}
+
+function ContactListsSection() {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listContactLists);
+  const createFn = useServerFn(createContactList);
+  const delFn = useServerFn(deleteContactList);
+  const lists = useQuery({ queryKey: ["contact-lists"], queryFn: () => listFn() });
+
+  const [name, setName] = useState("");
+  const [raw, setRaw] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function parseContacts(text: string) {
+    const rows = text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return rows
+      .map((line) => {
+        const [phone, ...rest] = line.split(/[,;\t]/).map((s) => s.trim());
+        const digits = (phone || "").replace(/\D/g, "");
+        if (digits.length < 8) return null;
+        return { phone: digits, name: rest.join(" ") || undefined };
+      })
+      .filter((v): v is { phone: string; name: string | undefined } => v !== null);
+  }
+
+  const handleFile = async (f: File) => {
+    const txt = await f.text();
+    setRaw(txt);
+  };
+
+  const create = useMutation({
+    mutationFn: async () => {
+      setBusy(true);
+      const contacts = parseContacts(raw);
+      if (!contacts.length) throw new Error("Nenhum contato válido encontrado");
+      return createFn({ data: { name, contacts } });
+    },
+    onSuccess: () => {
+      toast.success("Lista criada");
+      setName("");
+      setRaw("");
+      setBusy(false);
+      qc.invalidateQueries({ queryKey: ["contact-lists"] });
+    },
+    onError: (e: any) => {
+      setBusy(false);
+      toast.error(e.message);
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Upload className="h-4 w-4" />Listas de contatos</CardTitle>
+        <CardDescription>Cole números (um por linha) ou envie CSV. Formato: <code>telefone,nome</code>. Ex: <code>5511999999999,João</code></CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="md:col-span-1">
+            <Label>Nome da lista</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Clientes VIP" />
+          </div>
+          <div className="md:col-span-2">
+            <Label>Contatos (CSV ou colar)</Label>
+            <textarea
+              value={raw}
+              onChange={(e) => setRaw(e.target.value)}
+              rows={4}
+              className="w-full mt-1 rounded-md border bg-background p-2 text-sm font-mono"
+              placeholder="5511999999999,João&#10;5511888888888,Maria"
+            />
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="file"
+                accept=".csv,.txt"
+                onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+                className="text-xs"
+              />
+              <span className="text-xs text-muted-foreground">
+                {parseContacts(raw).length} contato(s) válido(s)
+              </span>
+            </div>
+          </div>
+        </div>
+        <Button
+          onClick={() => name && create.mutate()}
+          disabled={!name || busy || parseContacts(raw).length === 0}
+        >
+          {busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+          Criar lista
+        </Button>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-4">
+          {lists.data?.map((l: any) => (
+            <div key={l.id} className="flex items-center justify-between border rounded px-3 py-2 bg-card text-sm">
+              <div>
+                <div className="font-medium">{l.name}</div>
+                <div className="text-xs text-muted-foreground">{l.contact_count} contatos</div>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => delFn({ data: { id: l.id } }).then(() => qc.invalidateQueries({ queryKey: ["contact-lists"] }))}>
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+          {lists.data?.length === 0 && <div className="text-sm text-muted-foreground col-span-full">Nenhuma lista ainda.</div>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CampaignsSection() {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listCampaigns);
+  const createFn = useServerFn(createCampaign);
+  const statusFn = useServerFn(setCampaignStatus);
+  const delFn = useServerFn(deleteCampaign);
+  const listsFn = useServerFn(listContactLists);
+  const instFn = useServerFn(listInstances);
+
+  const camps = useQuery({ queryKey: ["campaigns"], queryFn: () => listFn(), refetchInterval: 10000 });
+  const lists = useQuery({ queryKey: ["contact-lists"], queryFn: () => listsFn() });
+  const insts = useQuery({ queryKey: ["instances"], queryFn: () => instFn() });
+
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [message, setMessage] = useState("");
+  const [listId, setListId] = useState<string>("");
+  const [instanceIds, setInstanceIds] = useState<string[]>([]);
+  const [minD, setMinD] = useState(30);
+  const [maxD, setMaxD] = useState(90);
+  const [limit, setLimit] = useState(100);
+  const [h1, setH1] = useState(8);
+  const [h2, setH2] = useState(20);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["campaigns"] });
+
+  const create = useMutation({
+    mutationFn: () =>
+      createFn({
+        data: {
+          name,
+          message,
+          list_id: listId,
+          instance_ids: instanceIds,
+          min_delay_seconds: minD,
+          max_delay_seconds: maxD,
+          per_instance_daily_limit: limit,
+          active_hour_start: h1,
+          active_hour_end: h2,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Campanha criada. Clique em Iniciar para começar a enviar.");
+      setOpen(false);
+      setName(""); setMessage(""); setListId(""); setInstanceIds([]);
+      invalidate();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2"><Send className="h-4 w-4" />Campanhas</CardTitle>
+          <CardDescription>Rodam em paralelo ao aquecimento, usando os números que você escolher.</CardDescription>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button><Plus className="h-4 w-4 mr-1" />Nova campanha</Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>Nova campanha de disparo</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label>Nome</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+              <div>
+                <Label>Mensagem (use <code>{"{nome}"}</code> para personalizar)</Label>
+                <textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  rows={4}
+                  className="w-full mt-1 rounded-md border bg-background p-2 text-sm"
+                  placeholder="Olá {nome}, tudo bem?"
+                />
+              </div>
+              <div>
+                <Label>Lista de contatos</Label>
+                <Select value={listId} onValueChange={setListId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione uma lista" /></SelectTrigger>
+                  <SelectContent>
+                    {lists.data?.map((l: any) => (
+                      <SelectItem key={l.id} value={l.id}>{l.name} ({l.contact_count})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Números que vão disparar (marque um ou mais)</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {insts.data?.filter((i: any) => i.status === "connected").map((i: any) => {
+                    const on = instanceIds.includes(i.id);
+                    return (
+                      <button
+                        key={i.id}
+                        type="button"
+                        onClick={() => setInstanceIds((s) => on ? s.filter((x) => x !== i.id) : [...s, i.id])}
+                        className={`text-xs px-2 py-1 rounded border ${on ? "bg-primary text-primary-foreground border-primary" : "bg-card"}`}
+                      >
+                        {i.name}
+                      </button>
+                    );
+                  })}
+                  {insts.data?.filter((i: any) => i.status === "connected").length === 0 && (
+                    <div className="text-xs text-muted-foreground">Nenhum número conectado.</div>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div><Label>Delay mín (s)</Label><Input type="number" value={minD} onChange={(e) => setMinD(+e.target.value)} /></div>
+                <div><Label>Delay máx (s)</Label><Input type="number" value={maxD} onChange={(e) => setMaxD(+e.target.value)} /></div>
+                <div><Label>Limite/número/dia</Label><Input type="number" value={limit} onChange={(e) => setLimit(+e.target.value)} /></div>
+                <div className="col-span-2 md:col-span-1">
+                  <Label>Horário ativo</Label>
+                  <div className="flex items-center gap-1">
+                    <Input type="number" value={h1} onChange={(e) => setH1(+e.target.value)} min={0} max={23} />
+                    <span>–</span>
+                    <Input type="number" value={h2} onChange={(e) => setH2(+e.target.value)} min={1} max={24} />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => create.mutate()}
+                disabled={!name || !message || !listId || instanceIds.length === 0 || create.isPending}
+              >
+                {create.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}Criar campanha
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {camps.data?.map((c: any) => {
+          const p = c.progress;
+          const pct = p.total > 0 ? Math.round(((p.sent + p.failed) / p.total) * 100) : 0;
+          return (
+            <div key={c.id} className="border rounded-lg p-4 bg-card">
+              <div className="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <div className="font-semibold flex items-center gap-2">
+                    {c.name}
+                    <Badge variant={c.status === "running" ? "default" : c.status === "done" ? "secondary" : "outline"}>
+                      {c.status}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Lista: {c.list?.name ?? "—"} · {c.min_delay_seconds}s–{c.max_delay_seconds}s · até {c.per_instance_daily_limit}/número/dia · {c.active_hour_start}h–{c.active_hour_end}h
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {c.campaign_instances?.map((ci: any) => (
+                      <Badge key={ci.instance_id} variant="secondary" className="text-[10px]">{ci.whatsapp_instances?.name}</Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  {c.status !== "running" && c.status !== "done" && (
+                    <Button size="sm" onClick={() => statusFn({ data: { id: c.id, status: "running" } }).then(invalidate)}>
+                      <Play className="h-3 w-3 mr-1" />Iniciar
+                    </Button>
+                  )}
+                  {c.status === "running" && (
+                    <Button size="sm" variant="secondary" onClick={() => statusFn({ data: { id: c.id, status: "paused" } }).then(invalidate)}>
+                      <Pause className="h-3 w-3 mr-1" />Pausar
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => delFn({ data: { id: c.id } }).then(invalidate)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 flex justify-between">
+                  <span>{p.sent} enviadas · {p.failed} falhas · {p.pending} pendentes</span>
+                  <span>{pct}%</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {camps.data?.length === 0 && <div className="text-sm text-muted-foreground text-center py-6">Nenhuma campanha ainda.</div>}
+      </CardContent>
+    </Card>
   );
 }

@@ -14,6 +14,212 @@ export type Database = {
   }
   public: {
     Tables: {
+      campaign_instances: {
+        Row: {
+          campaign_id: string
+          instance_id: string
+        }
+        Insert: {
+          campaign_id: string
+          instance_id: string
+        }
+        Update: {
+          campaign_id?: string
+          instance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_instances_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_instances_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaign_targets: {
+        Row: {
+          campaign_id: string
+          contact_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          instance_id: string | null
+          name: string | null
+          phone: string
+          sent_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          instance_id?: string | null
+          name?: string | null
+          phone: string
+          sent_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          instance_id?: string | null
+          name?: string | null
+          phone?: string
+          sent_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_targets_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_targets_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_targets_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          active_hour_end: number
+          active_hour_start: number
+          created_at: string
+          id: string
+          list_id: string | null
+          max_delay_seconds: number
+          message: string
+          min_delay_seconds: number
+          name: string
+          next_run_at: string
+          per_instance_daily_limit: number
+          status: string
+          user_id: string
+        }
+        Insert: {
+          active_hour_end?: number
+          active_hour_start?: number
+          created_at?: string
+          id?: string
+          list_id?: string | null
+          max_delay_seconds?: number
+          message: string
+          min_delay_seconds?: number
+          name: string
+          next_run_at?: string
+          per_instance_daily_limit?: number
+          status?: string
+          user_id: string
+        }
+        Update: {
+          active_hour_end?: number
+          active_hour_start?: number
+          created_at?: string
+          id?: string
+          list_id?: string | null
+          max_delay_seconds?: number
+          message?: string
+          min_delay_seconds?: number
+          name?: string
+          next_run_at?: string
+          per_instance_daily_limit?: number
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "contact_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contact_lists: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      contacts: {
+        Row: {
+          created_at: string
+          id: string
+          list_id: string
+          name: string | null
+          phone: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          list_id: string
+          name?: string | null
+          phone: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          list_id?: string
+          name?: string | null
+          phone?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "contact_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       evolution_config: {
         Row: {
           api_key: string | null
