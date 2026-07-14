@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Users2,
 } from "lucide-react";
+import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
