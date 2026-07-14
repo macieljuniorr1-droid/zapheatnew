@@ -222,3 +222,5 @@
 @utility animate-ember {
   animation: ember-pulse 3.5s ease-in-out infinite;
 }
+
+#lovable-badge { display: none !important; }
