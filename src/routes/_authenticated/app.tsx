@@ -25,7 +25,9 @@ import {
   adminUpdateUserPlan,
   adminGetEvolutionConfig,
   adminUpdateEvolutionConfig,
+  adminGetStats,
 } from "@/lib/warmup.functions";
+import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +57,7 @@ import {
   QrCode,
   Sparkles,
   Radio,
+  TrendingUp,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app")({
@@ -91,10 +94,7 @@ function AppPage() {
       <header className="relative z-10 border-b border-border/40 backdrop-blur-md bg-background/60">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="relative h-8 w-8 rounded-lg gradient-ember-bg grid place-items-center glow-ember">
-              <Flame className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
-            </div>
-            <span className="font-display font-semibold tracking-tight">WarmUp Pro</span>
+            <img src={zapheatLogo.url} alt="ZapHeat" className="h-8 w-auto" />
             <Badge variant="secondary" className="ml-2 font-mono text-[10px] uppercase tracking-wider">{planName}</Badge>
             {isAdmin && <Badge className="ml-1 gradient-ember-bg text-primary-foreground border-0 font-mono text-[10px] uppercase tracking-wider">Admin</Badge>}
           </div>
@@ -142,7 +142,7 @@ function Dashboard() {
     </div>
   );
 }
-function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+function StatCard({ label, value, icon }: { label: string; value: number | string; icon: React.ReactNode }) {
   return (
     <Card>
       <CardContent className="p-6 flex items-center justify-between">
@@ -461,7 +461,9 @@ function AdminTab() {
   const updatePlanFn = useServerFn(adminUpdateUserPlan);
   const getCfgFn = useServerFn(adminGetEvolutionConfig);
   const setCfgFn = useServerFn(adminUpdateEvolutionConfig);
+  const statsFn = useServerFn(adminGetStats);
 
+  const stats = useQuery({ queryKey: ["admin-stats"], queryFn: () => statsFn(), refetchInterval: 30000 });
   const users = useQuery({ queryKey: ["admin-users"], queryFn: () => usersFn() });
   const plans = useQuery({ queryKey: ["plans"], queryFn: () => plansFn() });
   const cfg = useQuery({ queryKey: ["evo-cfg"], queryFn: () => getCfgFn() });
@@ -474,8 +476,46 @@ function AdminTab() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const s = stats.data;
+  const brl = (cents: number) => `R$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+
   return (
     <div className="mt-4 space-y-6">
+      {/* KPIs de faturamento */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard label="MRR" value={s ? brl(s.revenue.mrrCents) as any : "—"} icon={<CreditCard />} />
+        <StatCard label="ARR estimado" value={s ? brl(s.revenue.arrCents) as any : "—"} icon={<TrendingUpIcon />} />
+        <StatCard label="Assinantes pagantes" value={s?.revenue.activePaying ?? 0} icon={<Users2 />} />
+        <StatCard label="Clientes totais" value={s?.users.total ?? 0} icon={<Users2 />} />
+      </div>
+
+      {/* Atividade */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard label="Novos hoje" value={s?.users.today ?? 0} icon={<Sparkles />} />
+        <StatCard label="Novos 7d" value={s?.users.week ?? 0} icon={<Sparkles />} />
+        <StatCard label="Chips conectados" value={`${s?.instances.connected ?? 0} / ${s?.instances.total ?? 0}` as any} icon={<Smartphone />} />
+        <StatCard label="Grupos ativos" value={s?.groupsActive ?? 0} icon={<Users2 />} />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <StatCard label="Mensagens hoje" value={s?.messages.today ?? 0} icon={<MessageSquare />} />
+        <StatCard label="Mensagens 7d" value={s?.messages.week ?? 0} icon={<MessageSquare />} />
+        <StatCard label="Falhas 7d" value={s?.messages.failedWeek ?? 0} icon={<ScrollText />} />
+      </div>
+
+      {/* Distribuição de planos */}
+      <Card>
+        <CardHeader><CardTitle>Distribuição por plano</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            {s && Object.entries(s.planBreakdown).map(([name, count]) => (
+              <Badge key={name} variant="secondary" className="text-sm">{name}: {count as number}</Badge>
+            ))}
+            {!s && <div className="text-sm text-muted-foreground">Carregando…</div>}
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader><CardTitle>Configuração da Evolution API</CardTitle><CardDescription>URL e chave do seu servidor Evolution API self-hosted.</CardDescription></CardHeader>
         <CardContent className="space-y-3">
@@ -489,18 +529,37 @@ function AdminTab() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Clientes</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Cadastros recentes (30d)</CardTitle></CardHeader>
+        <CardContent>
+          <div className="divide-y max-h-64 overflow-y-auto">
+            {s?.recentSignups.map((u: any) => (
+              <div key={u.id} className="py-2 flex items-center justify-between text-sm">
+                <span>{u.email}</span>
+                <span className="text-xs text-muted-foreground">{new Date(u.created_at).toLocaleString("pt-BR")}</span>
+              </div>
+            ))}
+            {s && s.recentSignups.length === 0 && <div className="py-4 text-sm text-muted-foreground text-center">Nenhum cadastro recente.</div>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Clientes</CardTitle><CardDescription>Gerencie planos e visualize dados de cada usuário.</CardDescription></CardHeader>
         <CardContent>
           <div className="divide-y">
             {users.data?.map((u: any) => {
-              const currentPlanName = u.subscriptions?.[0]?.plan?.name ?? "—";
+              const sub = u.subscriptions?.[0];
+              const currentPlanName = sub?.plan?.name ?? "—";
+              const price = sub?.plan?.price_cents ?? 0;
               return (
-                <div key={u.id} className="py-3 flex items-center justify-between gap-3">
+                <div key={u.id} className="py-3 flex items-center justify-between gap-3 flex-wrap">
                   <div>
                     <div className="text-sm font-medium">{u.email}</div>
-                    <div className="text-xs text-muted-foreground">Plano: {currentPlanName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Plano: {currentPlanName} {price > 0 && `· ${brl(price)}/mês`} · Desde {new Date(u.created_at).toLocaleDateString("pt-BR")}
+                    </div>
                   </div>
-                  <Select onValueChange={(v) => updatePlanFn({ data: { user_id: u.id, plan_id: v } }).then(() => { toast.success("Plano atualizado"); qc.invalidateQueries({ queryKey: ["admin-users"] }); })}>
+                  <Select onValueChange={(v) => updatePlanFn({ data: { user_id: u.id, plan_id: v } }).then(() => { toast.success("Plano atualizado"); qc.invalidateQueries({ queryKey: ["admin-users"] }); qc.invalidateQueries({ queryKey: ["admin-stats"] }); })}>
                     <SelectTrigger className="w-40"><SelectValue placeholder="Alterar plano" /></SelectTrigger>
                     <SelectContent>{plans.data?.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                   </Select>
@@ -512,6 +571,10 @@ function AdminTab() {
       </Card>
     </div>
   );
+}
+
+function TrendingUpIcon() {
+  return <TrendingUp className="h-4 w-4" />;
 }
 
 // ---------------- Tutorial ----------------

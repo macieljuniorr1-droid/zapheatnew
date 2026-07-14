@@ -318,10 +318,91 @@ export const adminListUsers = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("profiles")
-      .select("id, email, created_at, subscriptions(plan:plans(name, max_instances, max_messages_per_day))")
+      .select("id, email, created_at, subscriptions(plan:plans(name, price_cents, max_instances, max_messages_per_day))")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
+  });
+
+export const adminGetStats = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+
+    const [
+      usersAll,
+      usersToday,
+      usersWeek,
+      instancesAll,
+      instancesConnected,
+      groupsActive,
+      msgsToday,
+      msgsWeek,
+      msgsFailed,
+      subs,
+    ] = await Promise.all([
+      supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }),
+      supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", today.toISOString()),
+      supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", weekAgo.toISOString()),
+      supabaseAdmin.from("whatsapp_instances").select("id", { count: "exact", head: true }),
+      supabaseAdmin.from("whatsapp_instances").select("id", { count: "exact", head: true }).eq("status", "connected"),
+      supabaseAdmin.from("warmup_groups").select("id", { count: "exact", head: true }).eq("active", true),
+      supabaseAdmin.from("warmup_logs").select("id", { count: "exact", head: true }).eq("status", "sent").gte("created_at", today.toISOString()),
+      supabaseAdmin.from("warmup_logs").select("id", { count: "exact", head: true }).eq("status", "sent").gte("created_at", weekAgo.toISOString()),
+      supabaseAdmin.from("warmup_logs").select("id", { count: "exact", head: true }).eq("status", "failed").gte("created_at", weekAgo.toISOString()),
+      supabaseAdmin.from("subscriptions").select("status, plan:plans(name, price_cents)"),
+    ]);
+
+    let mrrCents = 0;
+    let activePaying = 0;
+    const planBreakdown: Record<string, number> = {};
+    for (const s of subs.data ?? []) {
+      const price = (s as any).plan?.price_cents ?? 0;
+      const name = (s as any).plan?.name ?? "—";
+      planBreakdown[name] = (planBreakdown[name] ?? 0) + 1;
+      if (s.status === "active" && price > 0) {
+        mrrCents += price;
+        activePaying++;
+      }
+    }
+
+    // Recent signups
+    const { data: recentSignups } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email, created_at")
+      .gte("created_at", monthAgo.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    return {
+      users: {
+        total: usersAll.count ?? 0,
+        today: usersToday.count ?? 0,
+        week: usersWeek.count ?? 0,
+      },
+      instances: {
+        total: instancesAll.count ?? 0,
+        connected: instancesConnected.count ?? 0,
+      },
+      groupsActive: groupsActive.count ?? 0,
+      messages: {
+        today: msgsToday.count ?? 0,
+        week: msgsWeek.count ?? 0,
+        failedWeek: msgsFailed.count ?? 0,
+      },
+      revenue: {
+        mrrCents,
+        activePaying,
+        arrCents: mrrCents * 12,
+      },
+      planBreakdown,
+      recentSignups: recentSignups ?? [],
+    };
   });
 
 export const adminUpdateUserPlan = createServerFn({ method: "POST" })
