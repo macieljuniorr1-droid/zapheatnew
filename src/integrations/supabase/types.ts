@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_logs: {
+        Row: {
+          action: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          metadata: Json
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
       billing_events: {
         Row: {
           amount_cents: number | null
@@ -424,6 +454,8 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          member_role: string
+          owner_id: string | null
           phone: string | null
           source: string | null
           use_case: string | null
@@ -434,6 +466,8 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          member_role?: string
+          owner_id?: string | null
           phone?: string | null
           source?: string | null
           use_case?: string | null
@@ -444,6 +478,8 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          member_role?: string
+          owner_id?: string | null
           phone?: string | null
           source?: string | null
           use_case?: string | null
@@ -499,6 +535,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_presence: {
+        Row: {
+          last_seen_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          last_seen_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          last_seen_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -650,6 +704,7 @@ export type Database = {
       }
       whatsapp_instances: {
         Row: {
+          assigned_to: string | null
           created_at: string
           evolution_instance: string
           id: string
@@ -662,6 +717,7 @@ export type Database = {
           warmup_started_at: string | null
         }
         Insert: {
+          assigned_to?: string | null
           created_at?: string
           evolution_instance: string
           id?: string
@@ -674,6 +730,7 @@ export type Database = {
           warmup_started_at?: string | null
         }
         Update: {
+          assigned_to?: string | null
           created_at?: string
           evolution_instance?: string
           id?: string
@@ -703,6 +760,7 @@ export type Database = {
           suspended_users: number
         }[]
       }
+      billing_owner: { Args: { _user_id: string }; Returns: string }
       chip_temperature: {
         Args: { _instance_id: string }
         Returns: {
@@ -730,6 +788,10 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_team_master: {
+        Args: { _target: string; _viewer: string }
         Returns: boolean
       }
       messages_daily_series: {

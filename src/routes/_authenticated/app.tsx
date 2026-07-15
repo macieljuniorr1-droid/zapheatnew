@@ -54,6 +54,16 @@ import {
   adminForceRemoveNumberSubscription,
   adminListBillingUsers,
 } from "@/lib/billing.functions";
+import {
+  listTeamMembers,
+  createTeamMember,
+  removeTeamMember,
+  updateTeamMember,
+  assignInstanceToMember,
+  getTeamActivity,
+  heartbeat,
+  getMyTeamContext,
+} from "@/lib/team.functions";
 
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 import { supabase } from "@/integrations/supabase/client";
@@ -96,6 +106,8 @@ import {
   Activity,
   BarChart3,
   Zap,
+  UsersRound,
+  Circle,
 } from "lucide-react";
 import {
   LineChart,
@@ -125,6 +137,13 @@ function AppPage() {
   const { tab } = Route.useSearch();
   const fetchMe = useServerFn(getMe);
   const me = useQuery({ queryKey: ["me"], queryFn: () => fetchMe() });
+  const beatFn = useServerFn(heartbeat);
+  useEffect(() => {
+    if (!me.data) return;
+    beatFn().catch(() => {});
+    const iv = setInterval(() => beatFn().catch(() => {}), 60_000);
+    return () => clearInterval(iv);
+  }, [me.data, beatFn]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -169,6 +188,7 @@ function AppPage() {
             <TabsTrigger value="live"><Radio className="h-4 w-4 mr-1" />Chat ao vivo</TabsTrigger>
             <TabsTrigger value="logs"><ScrollText className="h-4 w-4 mr-1" />Logs</TabsTrigger>
             <TabsTrigger value="plan"><CreditCard className="h-4 w-4 mr-1" />Plano</TabsTrigger>
+            <TabsTrigger value="team"><UsersRound className="h-4 w-4 mr-1" />Equipe</TabsTrigger>
             {isAdmin && <TabsTrigger value="admin"><Settings className="h-4 w-4 mr-1" />Admin</TabsTrigger>}
           </TabsList>
           <TabsContent value="dashboard"><Dashboard /></TabsContent>
@@ -180,6 +200,7 @@ function AppPage() {
           <TabsContent value="live"><LiveChatTab /></TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
           <TabsContent value="plan"><PlanTab /></TabsContent>
+          <TabsContent value="team"><TeamTab /></TabsContent>
           {isAdmin && <TabsContent value="admin"><AdminTab /></TabsContent>}
         </Tabs>
       </main>
@@ -2246,5 +2267,391 @@ function CampaignsSection() {
         {camps.data?.length === 0 && <div className="text-sm text-muted-foreground text-center py-6">Nenhuma campanha ainda.</div>}
       </CardContent>
     </Card>
+  );
+}
+
+// ============================ TEAM TAB ============================
+
+function TeamTab() {
+  const qc = useQueryClient();
+  const ctxFn = useServerFn(getMyTeamContext);
+  const listFn = useServerFn(listTeamMembers);
+  const createFn = useServerFn(createTeamMember);
+  const removeFn = useServerFn(removeTeamMember);
+  const updateFn = useServerFn(updateTeamMember);
+  const assignFn = useServerFn(assignInstanceToMember);
+  const activityFn = useServerFn(getTeamActivity);
+  const instFn = useServerFn(listInstances);
+
+  const ctx = useQuery({ queryKey: ["team-ctx"], queryFn: () => ctxFn() });
+  const team = useQuery({
+    queryKey: ["team-members"],
+    queryFn: () => listFn(),
+    refetchInterval: 30_000,
+    enabled: !!ctx.data?.is_master,
+  });
+  const activity = useQuery({
+    queryKey: ["team-activity"],
+    queryFn: () => activityFn({ data: { limit: 50 } }),
+    refetchInterval: 30_000,
+    enabled: !!ctx.data?.is_master,
+  });
+  const insts = useQuery({
+    queryKey: ["instances"],
+    queryFn: () => instFn(),
+    enabled: !!ctx.data?.is_master,
+  });
+
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    full_name: "",
+    email: "",
+    password: "",
+    member_role: "operator" as "operator" | "manager",
+    number_count: 0,
+  });
+  const [busy, setBusy] = useState(false);
+
+  if (ctx.isLoading) {
+    return (
+      <div className="py-10 grid place-items-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // View de MEMBRO (não master)
+  if (!ctx.data?.is_master) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UsersRound className="h-5 w-5" /> Equipe
+          </CardTitle>
+          <CardDescription>
+            Você faz parte da equipe de{" "}
+            <b>{ctx.data?.master?.full_name || ctx.data?.master?.email || "seu gestor"}</b>. Todo o
+            faturamento e o gerenciamento de números fica com o usuário master.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          Seu papel:{" "}
+          <Badge variant="secondary" className="ml-1">
+            {ctx.data?.member_role === "manager" ? "Gerente" : "Operador"}
+          </Badge>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const members = team.data?.members ?? [];
+  const unassignedInsts = (insts.data ?? []).filter((i: any) => !i.assigned_to);
+
+  async function submit() {
+    if (!form.full_name || !form.email || form.password.length < 8) {
+      toast.error("Preencha nome, e-mail e senha (mín. 8 caracteres).");
+      return;
+    }
+    setBusy(true);
+    try {
+      await createFn({ data: form });
+      toast.success(
+        form.number_count > 0
+          ? `Funcionário criado. ${form.number_count} número(s) serão cobrados na próxima fatura.`
+          : "Funcionário criado.",
+      );
+      setOpen(false);
+      setForm({ full_name: "", email: "", password: "", member_role: "operator", number_count: 0 });
+      qc.invalidateQueries({ queryKey: ["team-members"] });
+      qc.invalidateQueries({ queryKey: ["team-activity"] });
+      qc.invalidateQueries({ queryKey: ["billing"] });
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <UsersRound className="h-5 w-5" /> Sua equipe
+            </CardTitle>
+            <CardDescription>
+              Adicione funcionários com login próprio. Os números que você provisionar entram na sua
+              próxima fatura recorrente (R$ 25,00 cada).
+            </CardDescription>
+          </div>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-1" /> Adicionar funcionário
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Novo funcionário</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <Label>Nome completo</Label>
+                  <Input
+                    value={form.full_name}
+                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>E-mail (login)</Label>
+                  <Input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Senha inicial</Label>
+                  <Input
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder="mínimo 8 caracteres"
+                  />
+                </div>
+                <div>
+                  <Label>Papel</Label>
+                  <Select
+                    value={form.member_role}
+                    onValueChange={(v) =>
+                      setForm({ ...form, member_role: v as "operator" | "manager" })
+                    }
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="operator">Operador</SelectItem>
+                      <SelectItem value="manager">Gerente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Quantos números para este funcionário?</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={form.number_count}
+                    onChange={(e) =>
+                      setForm({ ...form, number_count: Math.max(0, parseInt(e.target.value) || 0) })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {form.number_count > 0
+                      ? `+R$ ${(form.number_count * 25).toFixed(2)}/mês na próxima fatura do master.`
+                      : "Nenhum número extra provisionado agora."}
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+                  Cancelar
+                </Button>
+                <Button onClick={submit} disabled={busy}>
+                  {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Criar funcionário
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent>
+          {team.isLoading ? (
+            <div className="py-6 grid place-items-center">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : members.length === 0 ? (
+            <div className="text-sm text-muted-foreground text-center py-8">
+              Nenhum funcionário ainda. Adicione seu primeiro para delegar números e acompanhar a
+              atividade.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {members.map((m: any) => (
+                <div
+                  key={m.id}
+                  className="border border-border/40 rounded-lg p-3 flex flex-col md:flex-row md:items-center gap-3"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <Circle
+                      className={`h-3 w-3 ${
+                        m.is_online ? "fill-green-500 text-green-500" : "fill-muted text-muted"
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        {m.full_name || m.email}{" "}
+                        <Badge variant="secondary" className="ml-1 text-[10px]">
+                          {m.member_role === "manager" ? "Gerente" : "Operador"}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {m.email} · {m.is_online ? "online agora" : m.last_seen_at ? `visto ${new Date(m.last_seen_at).toLocaleString()}` : "nunca acessou"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant="outline">{m.instance_count} número(s)</Badge>
+                    <Badge variant="outline">{m.msgs_7d} msgs / 7d</Badge>
+                    {m.msgs_7d_failed > 0 && (
+                      <Badge variant="destructive">{m.msgs_7d_failed} falhas</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={m.member_role}
+                      onValueChange={(v) =>
+                        updateFn({
+                          data: { member_id: m.id, member_role: v as "operator" | "manager" },
+                        }).then(() => {
+                          toast.success("Papel atualizado");
+                          qc.invalidateQueries({ queryKey: ["team-members"] });
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-[110px] text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="operator">Operador</SelectItem>
+                        <SelectItem value="manager">Gerente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        if (!confirm(`Remover ${m.full_name || m.email}? Isso apaga o login dele; os números pagos permanecem no master.`)) return;
+                        removeFn({ data: { member_id: m.id } }).then(() => {
+                          toast.success("Funcionário removido");
+                          qc.invalidateQueries({ queryKey: ["team-members"] });
+                        }).catch((e: any) => toast.error(e.message));
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Atribuição de números */}
+      {members.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Smartphone className="h-4 w-4" /> Números não atribuídos
+            </CardTitle>
+            <CardDescription>
+              Envie um número existente para um funcionário operar. Ele passará a aparecer no painel
+              dele.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {unassignedInsts.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                Todos os seus números já estão atribuídos ou você ainda não criou nenhum.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {unassignedInsts.map((i: any) => (
+                  <div
+                    key={i.id}
+                    className="flex items-center justify-between gap-2 border border-border/40 rounded-md px-3 py-2"
+                  >
+                    <div className="text-sm truncate">
+                      {i.name}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        · {i.evolution_instance}
+                      </span>
+                    </div>
+                    <Select
+                      onValueChange={(v) =>
+                        assignFn({ data: { instance_id: i.id, member_id: v } }).then(() => {
+                          toast.success("Número atribuído");
+                          qc.invalidateQueries({ queryKey: ["instances"] });
+                          qc.invalidateQueries({ queryKey: ["team-members"] });
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-[200px] text-xs">
+                        <SelectValue placeholder="Atribuir a…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {members.map((m: any) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.full_name || m.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Feed de atividade */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Activity className="h-4 w-4" /> Atividade da equipe
+          </CardTitle>
+          <CardDescription>
+            Ações administrativas dos seus funcionários (últimas 50).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {activity.isLoading ? (
+            <div className="py-6 grid place-items-center">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (activity.data?.logs ?? []).length === 0 ? (
+            <div className="text-sm text-muted-foreground text-center py-6">
+              Ainda não há registros.
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {(activity.data?.logs ?? []).map((l: any) => (
+                <div
+                  key={l.id}
+                  className="text-xs flex items-start gap-2 border-b border-border/30 py-2 last:border-0"
+                >
+                  <Badge variant="outline" className="mt-0.5 shrink-0">
+                    {l.user_label}
+                  </Badge>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">
+                      <span className="font-mono">{l.action}</span>{" "}
+                      {l.entity_type && (
+                        <span className="text-muted-foreground">
+                          · {l.entity_type}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {new Date(l.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
