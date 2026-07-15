@@ -1009,13 +1009,18 @@ function TemplatesTab() {
             {liveLogs.map((l, idx) => (
               <div
                 key={l.id}
-                className={`p-3 rounded-lg border bg-card ${idx === 0 ? "animate-in fade-in slide-in-from-top-2 border-primary/40" : ""}`}
+                className={`p-3 rounded-lg border ${l.status === "sent" ? "bg-green-500/5 border-green-500/25" : "bg-card"} ${idx === 0 ? "animate-in fade-in slide-in-from-top-2" : ""}`}
               >
                 <div className="flex items-center gap-2 text-xs mb-1.5">
                   <Badge variant="outline" className="text-[10px]">{l.from_instance?.name ?? "?"}</Badge>
                   <span className="text-muted-foreground">→</span>
                   <Badge variant="outline" className="text-[10px]">{l.to_instance?.name ?? "?"}</Badge>
                   <span className="text-muted-foreground ml-auto">{timeAgo(l.created_at)}</span>
+                  {l.status === "sent" && (
+                    <Badge className="bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30 text-[10px]">
+                      <CheckCircle2 className="h-2.5 w-2.5 mr-1" />Entregue
+                    </Badge>
+                  )}
                   {idx === 0 && (
                     <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px]">
                       <Sparkles className="h-2.5 w-2.5 mr-1" />IA
@@ -2362,6 +2367,7 @@ function LiveChatTab() {
                   <div className="whitespace-pre-wrap break-words">{m.content}</div>
                   <div className={`text-[10px] mt-1 ${isA ? "text-muted-foreground" : "text-primary-foreground/70"}`}>
                     {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    {m.status === "sent" && " · ✓ entregue"}
                     {m.status === "failed" && " · falhou"}
                   </div>
                 </div>
