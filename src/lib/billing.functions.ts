@@ -163,12 +163,18 @@ export const purchaseNumber = createServerFn({ method: "POST" })
       throw new Error(gwErr ?? "Pagar.me recusou a cobrança. Verifique seus dados.");
     }
 
-    // Cartão aprovado direto → já ativa a assinatura
+    // Cartão aprovado direto → já ativa a assinatura + salva card_id p/ recorrência
     if (data.payment_method === "credit_card" && chargeFailed?.status === "paid") {
       const in30d = new Date(Date.now() + 30 * 86400_000).toISOString();
+      const cardId: string | null = chargeFailed?.last_transaction?.card?.id ?? null;
       await supabase
         .from("number_subscriptions")
-        .update({ status: "active", current_period_end: in30d })
+        .update({
+          status: "active",
+          current_period_end: in30d,
+          pagarme_card_id: cardId,
+          last_order_id: order?.id ?? null,
+        })
         .eq("id", nsRow.id);
     }
 
