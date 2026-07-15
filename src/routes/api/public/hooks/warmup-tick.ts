@@ -251,6 +251,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     if (!ack.delivered) {
       status = "failed";
       errMsg = ack.error ?? "Mensagem aceita pela Evolution, mas não confirmada como entregue";
+      await markInstance(supabaseAdmin, from.id, "disconnected");
     }
   } catch (e: any) {
     const firstError = e?.message ?? "erro";
