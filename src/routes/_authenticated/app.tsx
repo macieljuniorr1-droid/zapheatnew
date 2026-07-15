@@ -779,10 +779,17 @@ function TemplatesTab() {
     if (initialLogs.data) setLiveLogs((initialLogs.data as LiveLog[]).slice(0, 12));
   }, [initialLogs.data]);
 
-  // realtime: when a new msg lands, briefly show "IA pensando..." for the next pair, then reveal
+  // realtime: escuta broadcasts do cron ("typing_start" antes de gerar, "typing_end" ao enviar)
+  // + insert em warmup_logs pra aparecer a mensagem já enviada
   useEffect(() => {
     const channel = supabase
       .channel("ai-engine-live")
+      .on("broadcast", { event: "typing_start" }, ({ payload }) => {
+        setThinking({ from: payload?.from_name ?? "Chip", to: payload?.to_name ?? "Chip" });
+      })
+      .on("broadcast", { event: "typing_end" }, () => {
+        setThinking(null);
+      })
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "warmup_logs" },
@@ -793,20 +800,13 @@ function TemplatesTab() {
             .select("id, name")
             .in("id", [row.from_instance_id, row.to_instance_id]);
           const map = new Map((names ?? []).map((n: any) => [n.id, n.name]));
-          const fromName = map.get(row.from_instance_id) ?? "Chip";
-          const toName = map.get(row.to_instance_id) ?? "Chip";
-
-          // simulate "pensando" bubble briefly before revealing
-          setThinking({ from: fromName, to: toName });
-          setTimeout(() => {
-            setThinking(null);
-            const enriched: LiveLog = {
-              ...row,
-              from_instance: { name: fromName },
-              to_instance: { name: toName },
-            };
-            setLiveLogs((prev) => [enriched, ...prev].slice(0, 12));
-          }, 1200);
+          const enriched: LiveLog = {
+            ...row,
+            from_instance: { name: map.get(row.from_instance_id) ?? "Chip" },
+            to_instance: { name: map.get(row.to_instance_id) ?? "Chip" },
+          };
+          setThinking(null);
+          setLiveLogs((prev) => [enriched, ...prev].slice(0, 12));
         },
       )
       .subscribe();
