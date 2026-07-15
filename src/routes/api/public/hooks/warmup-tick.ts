@@ -18,6 +18,7 @@ const SENDER_REPAIR_WINDOW_MS = 20 * 60 * 1000;
 const PAIR_STREAK_WINDOW_MS = 8 * 60 * 1000;
 const PAIR_STREAK_LIMIT = 4;
 const MAX_SEND_ATTEMPTS_PER_PAIR = 3;
+const SESSION_SETTLE_MS = 1_100;
 
 type Chip = {
   id: string;
@@ -542,9 +543,12 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const senderOpen = await ensureOpenSession(evolution, from.evolution_instance, true);
   if (!senderOpen) {
-    const error = "falha temporária: remetente não abriu sessão";
-    await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, error);
-    return await logPairResult(supabaseAdmin, group, from, to, cleanMessage, "failed", error);
+    // Não aborta o envio só porque a checagem preventiva não confirmou "open".
+    // Em sessões Baileys zumbis o WhatsApp ainda recebe push, mas o endpoint de
+    // estado oscila; o teste real é tentar enviar e, se falhar, recuperar e
+    // repetir. Antes daqui o motor registrava "remetente não abriu sessão" sem
+    // sequer chamar /message/sendText, deixando chips como o 2196 só recebendo.
+    await repairSenderSession(evolution, from.evolution_instance, normalizePhone(to.phone));
   }
 
   // O destinatário não precisa estar com o socket da Evolution aberto para
@@ -573,6 +577,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS_PER_PAIR; attempt++) {
       for (const target of sendTargets) {
         try {
+          await ensureOpenSession(evolution, from.evolution_instance, attempt > 0);
           await markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid);
           await primeChatSession(evolution, from.evolution_instance, target.number);
           await evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs);
@@ -584,11 +589,11 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
         } catch (sendErr: any) {
           lastErr = sendErr;
           if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
-          await recoverOpenSession(evolution, from.evolution_instance, true);
+          await repairSenderSession(evolution, from.evolution_instance, target.number);
         }
       }
       if (!isClosedSessionError(lastErr?.message) && !isDeliverySyncFailure(lastErr?.message)) break;
-      await new Promise((r) => setTimeout(r, 650));
+      await new Promise((r) => setTimeout(r, SESSION_SETTLE_MS));
     }
     throw lastErr ?? new Error(`Não foi possível resolver o destinatário ${toNumber}`);
   };
