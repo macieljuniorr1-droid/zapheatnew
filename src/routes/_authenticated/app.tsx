@@ -2199,18 +2199,222 @@ function pairKey(a: string, b: string) {
 }
 
 function LiveChatTab() {
+  const [mode, setMode] = useState<"whatsapp" | "warmup">("whatsapp");
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Button
+          variant={mode === "whatsapp" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setMode("whatsapp")}
+        >
+          WhatsApp real
+        </Button>
+        <Button
+          variant={mode === "warmup" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setMode("warmup")}
+        >
+          Aquecimento (interno)
+        </Button>
+      </div>
+      {mode === "whatsapp" ? <WhatsappRealChat /> : <WarmupInternalChat />}
+    </div>
+  );
+}
+
+function WhatsappRealChat() {
+  const fnInstances = useServerFn(listInstances);
+  const fnChats = useServerFn(listWhatsappChats);
+  const fnMessages = useServerFn(listWhatsappMessages);
+
+  const instances = useQuery({ queryKey: ["li-instances"], queryFn: () => fnInstances() });
+  const connected = (instances.data ?? []).filter((i: any) => i.status === "connected");
+  const [instanceId, setInstanceId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedJid, setSelectedJid] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!instanceId && connected.length > 0) setInstanceId(connected[0].id);
+  }, [connected, instanceId]);
+
+  const chatsQ = useQuery({
+    queryKey: ["wa-chats", instanceId],
+    queryFn: () => fnChats({ data: { instanceId: instanceId! } }),
+    enabled: !!instanceId,
+    refetchInterval: 15_000,
+  });
+
+  const messagesQ = useQuery({
+    queryKey: ["wa-messages", instanceId, selectedJid],
+    queryFn: () => fnMessages({ data: { instanceId: instanceId!, remoteJid: selectedJid! } }),
+    enabled: !!instanceId && !!selectedJid,
+    refetchInterval: 8_000,
+  });
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messagesQ.data, selectedJid]);
+
+  const allChats = chatsQ.data?.chats ?? [];
+  const filteredChats = allChats.filter((c: any) => {
+    if (!showArchived && c.archived) return false;
+    if (showArchived && !c.archived) return false;
+    if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+  const archivedCount = allChats.filter((c: any) => c.archived).length;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-[70vh]">
+      <Card className="overflow-hidden flex flex-col">
+        <CardHeader className="p-3 border-b space-y-2">
+          <div className="flex items-center gap-2">
+            <Select value={instanceId ?? ""} onValueChange={(v) => { setInstanceId(v); setSelectedJid(null); }}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione um chip" /></SelectTrigger>
+              <SelectContent>
+                {connected.map((i: any) => (
+                  <SelectItem key={i.id} value={i.id}>{i.name ?? i.phone ?? i.evolution_instance}</SelectItem>
+                ))}
+                {connected.length === 0 && <div className="p-2 text-xs text-muted-foreground">Nenhum chip conectado</div>}
+              </SelectContent>
+            </Select>
+          </div>
+          <Input
+            placeholder="Buscar conversa…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 text-xs"
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              variant={!showArchived ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs flex-1"
+              onClick={() => setShowArchived(false)}
+            >
+              Todas ({allChats.length - archivedCount})
+            </Button>
+            <Button
+              variant={showArchived ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs flex-1"
+              onClick={() => setShowArchived(true)}
+            >
+              Arquivadas ({archivedCount})
+            </Button>
+          </div>
+        </CardHeader>
+        <div className="flex-1 overflow-y-auto">
+          {chatsQ.isLoading && <div className="p-6 text-xs text-muted-foreground text-center">Carregando…</div>}
+          {chatsQ.error && (
+            <div className="p-4 text-xs text-destructive">
+              {(chatsQ.error as Error).message}
+            </div>
+          )}
+          {!chatsQ.isLoading && !chatsQ.error && filteredChats.length === 0 && (
+            <div className="p-6 text-xs text-muted-foreground text-center">
+              {showArchived ? "Nenhuma conversa arquivada" : "Nenhuma conversa"}
+            </div>
+          )}
+          {filteredChats.map((c: any) => (
+            <button
+              key={c.remoteJid}
+              onClick={() => setSelectedJid(c.remoteJid)}
+              className={`w-full text-left px-3 py-2.5 border-b hover:bg-accent/40 transition-colors ${
+                selectedJid === c.remoteJid ? "bg-accent/60" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                  {c.isGroup && <span className="text-[10px] px-1 rounded bg-muted">grupo</span>}
+                  {c.name}
+                </div>
+                {c.unreadCount > 0 && (
+                  <Badge className="text-[10px] shrink-0">{c.unreadCount}</Badge>
+                )}
+              </div>
+              <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                {c.lastMessageTimestamp
+                  ? new Date(c.lastMessageTimestamp * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+                  : c.remoteJid.split("@")[0]}
+              </div>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden flex flex-col">
+        <CardHeader className="p-3 border-b">
+          <CardTitle className="text-sm">
+            {selectedJid
+              ? allChats.find((c: any) => c.remoteJid === selectedJid)?.name ?? selectedJid
+              : "Selecione uma conversa"}
+          </CardTitle>
+        </CardHeader>
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/20">
+          {!selectedJid && (
+            <div className="text-center text-sm text-muted-foreground py-12">
+              Escolha uma conversa à esquerda para visualizar as mensagens
+            </div>
+          )}
+          {selectedJid && messagesQ.isLoading && (
+            <div className="text-center text-sm text-muted-foreground py-12">Carregando mensagens…</div>
+          )}
+          {selectedJid && messagesQ.error && (
+            <div className="text-center text-sm text-destructive py-12">
+              {(messagesQ.error as Error).message}
+            </div>
+          )}
+          {(messagesQ.data ?? []).map((m: any) => (
+            <div key={m.id} className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+                  m.fromMe
+                    ? "gradient-ember-bg text-primary-foreground rounded-br-sm"
+                    : "bg-card border rounded-bl-sm"
+                }`}
+              >
+                {!m.fromMe && m.pushName && (
+                  <div className="text-[10px] font-medium mb-0.5 text-muted-foreground">{m.pushName}</div>
+                )}
+                <div className="whitespace-pre-wrap break-words">{m.text}</div>
+                <div className={`text-[10px] mt-1 ${m.fromMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                  {m.timestamp ? new Date(m.timestamp * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}
+                  {m.fromMe && m.status && ` · ${statusIcon(m.status)}`}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function statusIcon(s: string) {
+  const up = String(s).toUpperCase();
+  if (up === "READ" || up === "PLAYED") return "✓✓ lida";
+  if (up === "DELIVERY_ACK") return "✓✓ entregue";
+  if (up === "SERVER_ACK") return "✓ enviada";
+  if (up === "PENDING") return "· enviando";
+  if (up === "ERROR") return "! falhou";
+  return s;
+}
+
+function WarmupInternalChat() {
   const fn = useServerFn(listLogs);
   const initial = useQuery({ queryKey: ["live-logs"], queryFn: () => fn() });
   const [logs, setLogs] = useState<LiveLog[]>([]);
   const [selectedPair, setSelectedPair] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // seed with initial data
   useEffect(() => {
     if (initial.data) setLogs(initial.data as LiveLog[]);
   }, [initial.data]);
 
-  // realtime subscription
   useEffect(() => {
     const channel = supabase
       .channel("warmup-live")
@@ -2219,7 +2423,6 @@ function LiveChatTab() {
         { event: "INSERT", schema: "public", table: "warmup_logs" },
         async (payload) => {
           const row = payload.new as any;
-          // fetch instance names for this new row
           const { data: names } = await supabase
             .from("whatsapp_instances")
             .select("id, name")
@@ -2239,7 +2442,6 @@ function LiveChatTab() {
     };
   }, []);
 
-  // group by conversation pair
   const pairs = new Map<string, { key: string; a: string; b: string; nameA: string; nameB: string; last: LiveLog; count: number }>();
   for (const l of logs) {
     const k = pairKey(l.from_instance_id, l.to_instance_id);
@@ -2269,18 +2471,14 @@ function LiveChatTab() {
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     : [];
 
-  // auto-scroll to bottom on new message
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [conversation.length, activeKey]);
 
   const activePair = pairList.find((p) => p.key === activeKey);
 
   return (
-    <div className="mt-4 grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 h-[70vh]">
-      {/* Sidebar with conversations */}
+    <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 h-[70vh]">
       <Card className="overflow-hidden flex flex-col">
         <CardHeader className="p-3 border-b">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -2288,28 +2486,13 @@ function LiveChatTab() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
             </span>
-            Conversas ao vivo
+            Conversas do aquecimento
           </CardTitle>
         </CardHeader>
         <div className="flex-1 overflow-y-auto">
-          {initial.isLoading && (
-            <div className="p-6 text-xs text-muted-foreground text-center">Carregando…</div>
-          )}
-          {initial.error && (
-            <div className="p-6 text-xs text-destructive text-center">
-              Erro ao carregar: {(initial.error as Error).message}
-            </div>
-          )}
-          {!initial.isLoading && !initial.error && pairList.length === 0 && (
-            <div className="p-6 text-xs text-muted-foreground text-center space-y-2">
-              <p className="font-medium text-foreground">Nenhuma conversa ainda</p>
-              <p>Para começar a ver mensagens aqui:</p>
-              <ol className="text-left list-decimal pl-4 space-y-1">
-                <li>Conecte pelo menos 2 chips na aba <b>Chips</b> (escaneie o QR)</li>
-                <li>Crie um grupo na aba <b>Grupos</b> e adicione os chips</li>
-                <li>Deixe o grupo ativo — as mensagens aparecem aqui em tempo real</li>
-              </ol>
-            </div>
+          {initial.isLoading && <div className="p-6 text-xs text-muted-foreground text-center">Carregando…</div>}
+          {!initial.isLoading && pairList.length === 0 && (
+            <div className="p-6 text-xs text-muted-foreground text-center">Nenhuma conversa ainda</div>
           )}
           {pairList.map((p) => (
             <button
@@ -2320,49 +2503,33 @@ function LiveChatTab() {
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium truncate">
-                  {p.nameA} ↔ {p.nameB}
-                </div>
+                <div className="text-sm font-medium truncate">{p.nameA} ↔ {p.nameB}</div>
                 <Badge variant="secondary" className="text-[10px] shrink-0">{p.count}</Badge>
               </div>
               <div className="text-xs text-muted-foreground truncate mt-0.5">{p.last.content}</div>
             </button>
           ))}
         </div>
-
       </Card>
 
-      {/* Conversation panel */}
       <Card className="overflow-hidden flex flex-col">
         <CardHeader className="p-3 border-b">
           <CardTitle className="text-sm">
             {activePair ? `${activePair.nameA} ↔ ${activePair.nameB}` : "Selecione uma conversa"}
           </CardTitle>
         </CardHeader>
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/20"
-        >
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/20">
           {conversation.length === 0 && (
-            <div className="text-center text-sm text-muted-foreground py-12">
-              Aguardando mensagens…
-            </div>
+            <div className="text-center text-sm text-muted-foreground py-12">Aguardando mensagens…</div>
           )}
           {conversation.map((m) => {
             const isA = activePair && m.from_instance_id === activePair.a;
             const senderName = m.from_instance?.name ?? "?";
             return (
-              <div
-                key={m.id}
-                className={`flex ${isA ? "justify-start" : "justify-end"}`}
-              >
-                <div
-                  className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
-                    isA
-                      ? "bg-card border rounded-bl-sm"
-                      : "gradient-ember-bg text-primary-foreground rounded-br-sm"
-                  }`}
-                >
+              <div key={m.id} className={`flex ${isA ? "justify-start" : "justify-end"}`}>
+                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+                  isA ? "bg-card border rounded-bl-sm" : "gradient-ember-bg text-primary-foreground rounded-br-sm"
+                }`}>
                   <div className={`text-[10px] font-mono uppercase tracking-wider mb-0.5 ${isA ? "text-muted-foreground" : "text-primary-foreground/70"}`}>
                     {senderName}
                   </div>
