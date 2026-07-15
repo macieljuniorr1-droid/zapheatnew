@@ -186,8 +186,8 @@ async function pruneDuplicateGroupMembers(supabaseAdmin: any, group: any, member
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(
     members.map(async (m) => {
-      const awaitingQr = m.status === "qr";
-      const isPaired = Boolean(m.phone || m.warmup_started_at) && !awaitingQr;
+      const isPaired = Boolean(m.phone || m.warmup_started_at);
+      const awaitingQr = m.status === "qr" && !isPaired;
       try {
         const state = await evolution.connectionState(m.evolution_instance);
         const s = state?.instance?.state ?? state?.state;
@@ -224,7 +224,7 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         m.temporarily_unavailable = true;
         if (isPaired) {
           m.status = "connected";
-          // não sobrescreve o status no banco — mantém "connected" preservado
+          await markInstance(supabaseAdmin, m.id, "connected");
         } else {
           m.status = "connecting";
           await markInstance(supabaseAdmin, m.id, "connecting");
@@ -245,6 +245,7 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         m.temporarily_unavailable = true;
         if (isPaired) {
           m.status = "connected";
+          await markInstance(supabaseAdmin, m.id, "connected");
         } else {
           m.status = "connecting";
           await markInstance(supabaseAdmin, m.id, "connecting");
@@ -637,23 +638,14 @@ async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, gro
   }
   if (consecutiveFailures < 2) return;
 
-  // Quando uma sessão recebe mensagens mas não consegue enviar, restart/connect
-  // não é suficiente: ela precisa sair do aquecimento e gerar novo QR para
-  // sincronizar as credenciais Baileys com o WhatsApp real. Isso impede que um
-  // número quebrado continue recebendo mensagens sem responder.
-  let qr: string | null = null;
-  try {
-    await evolution.logout(from.evolution_instance);
-  } catch {}
-  try {
-    qr = await normalizeQr(await evolution.connect(from.evolution_instance));
-  } catch {}
-  await supabaseAdmin
-    .from("whatsapp_instances")
-    .update({ status: "qr", last_qr: qr, updated_at: new Date().toISOString() })
-    .eq("id", from.id);
-  from.status = "qr";
-  from.temporarily_unavailable = true;
+  // Não derruba pareamento automaticamente. Antes, depois de algumas falhas,
+  // o motor fazia logout e colocava o chip em QR; isso tirava números saudáveis
+  // do rodízio e parecia que "parou de vez". A recuperação agora é apenas
+  // restart/connect, preservando o vínculo do WhatsApp.
+  await recoverOpenSession(evolution, from.evolution_instance, true);
+  await markInstance(supabaseAdmin, from.id, "connected");
+  from.status = "connected";
+  from.temporarily_unavailable = false;
 }
 
 async function logPairResult(supabaseAdmin: any, group: any, from: Chip, to: Chip, content: string, status: "sent" | "failed", error?: string | null) {
@@ -842,7 +834,7 @@ function isClosedSessionError(message: string | null | undefined) {
 }
 
 function isDeliverySyncFailure(message: string | null | undefined) {
-  return /whatsapp retornou error|sem confirma[cç][aã]o real|sem ack|pending|server_ack/i.test(String(message ?? ""));
+  return /whatsapp retornou error/i.test(String(message ?? ""));
 }
 
 function isRepairableSessionFailure(message: string | null | undefined) {
