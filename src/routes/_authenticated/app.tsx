@@ -153,7 +153,7 @@ function AppPage() {
             <TabsTrigger value="tutorial"><BookOpen className="h-4 w-4 mr-1" />Tutorial</TabsTrigger>
             <TabsTrigger value="instances"><Smartphone className="h-4 w-4 mr-1" />Números</TabsTrigger>
             <TabsTrigger value="groups"><Users2 className="h-4 w-4 mr-1" />Grupos</TabsTrigger>
-            <TabsTrigger value="templates"><MessageSquare className="h-4 w-4 mr-1" />Mensagens</TabsTrigger>
+            <TabsTrigger value="templates"><Sparkles className="h-4 w-4 mr-1" />Motor IA</TabsTrigger>
             <TabsTrigger value="dispatch"><Send className="h-4 w-4 mr-1" />Disparos</TabsTrigger>
             <TabsTrigger value="live"><Radio className="h-4 w-4 mr-1" />Chat ao vivo</TabsTrigger>
             <TabsTrigger value="logs"><ScrollText className="h-4 w-4 mr-1" />Logs</TabsTrigger>
@@ -714,39 +714,199 @@ function AddMemberSelect({ groupId, used, instances, onAdd }: { groupId: string;
   );
 }
 
-// ---------------- Templates ----------------
+// ---------------- Motor IA (antes: Templates) ----------------
 function TemplatesTab() {
   const qc = useQueryClient();
   const listFn = useServerFn(listTemplates);
   const addFn = useServerFn(addTemplate);
   const delFn = useServerFn(deleteTemplate);
+  const logsFn = useServerFn(listLogs);
   const q = useQuery({ queryKey: ["templates"], queryFn: () => listFn() });
+  const initialLogs = useQuery({ queryKey: ["ai-live-logs"], queryFn: () => logsFn() });
+
   const [text, setText] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [liveLogs, setLiveLogs] = useState<LiveLog[]>([]);
+  const [thinking, setThinking] = useState<{ from: string; to: string } | null>(null);
+
   const add = useMutation({
     mutationFn: () => addFn({ data: { content: text } }),
     onSuccess: () => { setText(""); qc.invalidateQueries({ queryKey: ["templates"] }); },
     onError: (e: any) => toast.error(e.message),
   });
+
+  // seed
+  useEffect(() => {
+    if (initialLogs.data) setLiveLogs((initialLogs.data as LiveLog[]).slice(0, 12));
+  }, [initialLogs.data]);
+
+  // realtime: when a new msg lands, briefly show "IA pensando..." for the next pair, then reveal
+  useEffect(() => {
+    const channel = supabase
+      .channel("ai-engine-live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "warmup_logs" },
+        async (payload) => {
+          const row = payload.new as any;
+          const { data: names } = await supabase
+            .from("whatsapp_instances")
+            .select("id, name")
+            .in("id", [row.from_instance_id, row.to_instance_id]);
+          const map = new Map((names ?? []).map((n: any) => [n.id, n.name]));
+          const fromName = map.get(row.from_instance_id) ?? "Chip";
+          const toName = map.get(row.to_instance_id) ?? "Chip";
+
+          // simulate "pensando" bubble briefly before revealing
+          setThinking({ from: fromName, to: toName });
+          setTimeout(() => {
+            setThinking(null);
+            const enriched: LiveLog = {
+              ...row,
+              from_instance: { name: fromName },
+              to_instance: { name: toName },
+            };
+            setLiveLogs((prev) => [enriched, ...prev].slice(0, 12));
+          }, 1200);
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const totalGenerated = liveLogs.length;
+  const lastAt = liveLogs[0]?.created_at ?? null;
+
   return (
     <div className="mt-4 space-y-4">
-      <Card>
-        <CardHeader><CardTitle>Mensagens do aquecimento</CardTitle><CardDescription>Mensagens curtas e naturais funcionam melhor. Emojis são incentivados.</CardDescription></CardHeader>
-        <CardContent className="flex gap-2">
-          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex: Oi, tudo bem?" />
-          <Button onClick={() => text && add.mutate()} disabled={!text}><Plus className="h-4 w-4" /></Button>
+      {/* Hero explicativo */}
+      <Card className="border-primary/30 bg-gradient-to-br from-primary/5 via-background to-background">
+        <CardContent className="p-6 flex items-start gap-4">
+          <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+            <Sparkles className="h-6 w-6 text-primary" />
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold">A IA gera as mensagens automaticamente</h3>
+              <Badge className="bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30">
+                <span className="relative flex h-1.5 w-1.5 mr-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+                </span>
+                Motor ativo
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Você <b>não precisa digitar nada</b>. A cada ciclo, a IA analisa o histórico entre os chips do
+              seu grupo e cria uma resposta em português coloquial, com personalidade aleatória — como se
+              fossem pessoas reais conversando. Quanto mais o motor rodar, mais quentes seus números ficam.
+            </p>
+          </div>
         </CardContent>
       </Card>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-        {q.data?.map((t: any) => (
-          <div key={t.id} className="flex items-center justify-between border rounded px-3 py-2 bg-card text-sm">
-            <span>{t.content}</span>
-            <div className="flex items-center gap-1">
-              {t.is_global && <Badge variant="outline" className="text-[10px]">padrão</Badge>}
-              {!t.is_global && <Button size="sm" variant="ghost" onClick={() => delFn({ data: { id: t.id } }).then(() => qc.invalidateQueries({ queryKey: ["templates"] }))}><Trash2 className="h-3 w-3" /></Button>}
+
+      {/* Painel ao vivo */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Activity className="h-4 w-4 text-primary" />
+                IA em ação — ao vivo
+              </CardTitle>
+              <CardDescription>Mostrando as últimas mensagens que a IA gerou para você</CardDescription>
+            </div>
+            <div className="text-right text-xs text-muted-foreground">
+              <div><b className="text-foreground">{totalGenerated}</b> geradas na sessão</div>
+              <div>última: {lastAt ? timeAgo(lastAt) : "aguardando…"}</div>
             </div>
           </div>
-        ))}
-      </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            {thinking && (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20 animate-in fade-in slide-in-from-top-1">
+                <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center">
+                  <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs text-muted-foreground">
+                    IA gerando mensagem: <b className="text-foreground">{thinking.from}</b> → <b className="text-foreground">{thinking.to}</b>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+                    <span className="text-xs text-muted-foreground ml-2">pensando…</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {liveLogs.length === 0 && !thinking && (
+              <div className="p-8 text-center text-sm text-muted-foreground space-y-2">
+                <Sparkles className="h-8 w-8 mx-auto text-muted-foreground/40" />
+                <p>Nenhuma conversa ainda. Ative um grupo com pelo menos 2 chips conectados na aba <b>Grupos</b>.</p>
+              </div>
+            )}
+
+            {liveLogs.map((l, idx) => (
+              <div
+                key={l.id}
+                className={`p-3 rounded-lg border bg-card ${idx === 0 ? "animate-in fade-in slide-in-from-top-2 border-primary/40" : ""}`}
+              >
+                <div className="flex items-center gap-2 text-xs mb-1.5">
+                  <Badge variant="outline" className="text-[10px]">{l.from_instance?.name ?? "?"}</Badge>
+                  <span className="text-muted-foreground">→</span>
+                  <Badge variant="outline" className="text-[10px]">{l.to_instance?.name ?? "?"}</Badge>
+                  <span className="text-muted-foreground ml-auto">{timeAgo(l.created_at)}</span>
+                  {idx === 0 && (
+                    <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px]">
+                      <Sparkles className="h-2.5 w-2.5 mr-1" />IA
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-sm leading-relaxed">{l.content}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Avançado: fallback templates */}
+      <Card>
+        <CardHeader className="pb-2 cursor-pointer" onClick={() => setShowAdvanced((v) => !v)}>
+          <CardTitle className="text-sm flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Avançado: frases de reserva (opcional)
+            </span>
+            <span className="text-xs text-muted-foreground">{showAdvanced ? "esconder" : "mostrar"}</span>
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Usadas <b>apenas</b> se a IA falhar por algum motivo. Você pode ignorar esta seção.
+          </CardDescription>
+        </CardHeader>
+        {showAdvanced && (
+          <CardContent className="space-y-3">
+            <div className="flex gap-2">
+              <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex: Oi, tudo bem?" />
+              <Button onClick={() => text && add.mutate()} disabled={!text}><Plus className="h-4 w-4" /></Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {q.data?.map((t: any) => (
+                <div key={t.id} className="flex items-center justify-between border rounded px-3 py-2 bg-card text-sm">
+                  <span>{t.content}</span>
+                  <div className="flex items-center gap-1">
+                    {t.is_global && <Badge variant="outline" className="text-[10px]">padrão</Badge>}
+                    {!t.is_global && <Button size="sm" variant="ghost" onClick={() => delFn({ data: { id: t.id } }).then(() => qc.invalidateQueries({ queryKey: ["templates"] }))}><Trash2 className="h-3 w-3" /></Button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        )}
+      </Card>
     </div>
   );
 }
