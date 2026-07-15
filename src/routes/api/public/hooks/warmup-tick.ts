@@ -28,6 +28,18 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             const members = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
               .filter((i: any) => i && i.status === "connected" && i.phone);
+
+            // Marca warmup_started_at para números já conectados que ainda não têm data
+            for (const m of members) {
+              if (!(m as any).warmup_started_at) {
+                await supabaseAdmin
+                  .from("whatsapp_instances")
+                  .update({ warmup_started_at: new Date().toISOString() } as any)
+                  .eq("id", m.id)
+                  .is("warmup_started_at", null);
+              }
+            }
+
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
               continue;
