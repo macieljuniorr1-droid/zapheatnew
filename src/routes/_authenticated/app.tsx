@@ -149,7 +149,7 @@ function AppPage() {
   const changeTab = (value: string) => {
     setActiveTab(value);
     navigate({
-      to: "/_authenticated/app",
+      to: "/app",
       search: { tab: value === "dashboard" ? undefined : value },
       replace: true,
     });
