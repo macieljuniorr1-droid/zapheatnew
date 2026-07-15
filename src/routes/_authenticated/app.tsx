@@ -86,6 +86,7 @@ export const Route = createFileRoute("/_authenticated/app")({
 
 function AppPage() {
   const navigate = useNavigate();
+  const { tab } = Route.useSearch();
   const fetchMe = useServerFn(getMe);
   const me = useQuery({ queryKey: ["me"], queryFn: () => fetchMe() });
 
