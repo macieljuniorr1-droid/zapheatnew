@@ -349,6 +349,102 @@ export const listLogs = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
+// ---------------- WhatsApp real chats (via Evolution) ----------------
+
+export const listWhatsappChats = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { instanceId: string }) => input)
+  .handler(async ({ data, context }) => {
+    const { data: inst, error } = await context.supabase
+      .from("whatsapp_instances")
+      .select("id, name, evolution_instance, phone, status")
+      .eq("id", data.instanceId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!inst) throw new Error("Chip não encontrado");
+    const { evolution } = await import("@/lib/evolution.server");
+    let chats: any[] = [];
+    try {
+      const resp = await evolution.findChats(inst.evolution_instance);
+      chats = Array.isArray(resp) ? resp : resp?.chats ?? resp?.records ?? [];
+    } catch (e: any) {
+      throw new Error(`Não foi possível buscar conversas: ${e?.message ?? "erro"}`);
+    }
+    // Normaliza: id, name, unread, archived, lastMessageTimestamp, isGroup
+    const normalized = chats
+      .map((c: any) => {
+        const remoteJid: string = c?.remoteJid ?? c?.id ?? c?.jid ?? "";
+        if (!remoteJid || remoteJid.endsWith("@broadcast")) return null;
+        const name: string =
+          c?.pushName ?? c?.name ?? c?.subject ?? c?.profilePicUrl?.name ?? remoteJid.split("@")[0] ?? "Contato";
+        return {
+          remoteJid,
+          name,
+          isGroup: remoteJid.endsWith("@g.us"),
+          archived: Boolean(c?.archived ?? c?.isArchived ?? false),
+          unreadCount: Number(c?.unreadCount ?? c?.unread ?? 0),
+          lastMessageTimestamp: Number(
+            c?.lastMessageTimestamp ?? c?.updatedAt ?? c?.conversationTimestamp ?? 0,
+          ),
+          profilePicUrl: c?.profilePicUrl ?? null,
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => !!c)
+      .sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
+    return { instance: { id: inst.id, name: inst.name, phone: inst.phone, status: inst.status }, chats: normalized };
+  });
+
+export const listWhatsappMessages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { instanceId: string; remoteJid: string }) => input)
+  .handler(async ({ data, context }) => {
+    const { data: inst, error } = await context.supabase
+      .from("whatsapp_instances")
+      .select("id, evolution_instance")
+      .eq("id", data.instanceId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!inst) throw new Error("Chip não encontrado");
+    const { evolution } = await import("@/lib/evolution.server");
+    let records: any[] = [];
+    try {
+      const resp = await evolution.findMessages(inst.evolution_instance, data.remoteJid);
+      records = resp?.messages?.records ?? resp?.records ?? (Array.isArray(resp) ? resp : []);
+    } catch (e: any) {
+      throw new Error(`Não foi possível buscar mensagens: ${e?.message ?? "erro"}`);
+    }
+    const msgs = records
+      .map((r: any) => {
+        const msg = r?.message ?? {};
+        const text: string =
+          msg?.conversation ??
+          msg?.extendedTextMessage?.text ??
+          msg?.imageMessage?.caption ??
+          msg?.videoMessage?.caption ??
+          msg?.documentMessage?.caption ??
+          (msg?.imageMessage ? "[imagem]" : "") ??
+          (msg?.videoMessage ? "[vídeo]" : "") ??
+          (msg?.audioMessage ? "[áudio]" : "") ??
+          (msg?.stickerMessage ? "[figurinha]" : "") ??
+          (msg?.documentMessage ? "[documento]" : "") ??
+          "";
+        const ts = Number(r?.messageTimestamp?.low ?? r?.messageTimestamp ?? 0);
+        return {
+          id: r?.key?.id ?? `${ts}-${Math.random()}`,
+          fromMe: Boolean(r?.key?.fromMe),
+          participant: r?.key?.participant ?? null,
+          pushName: r?.pushName ?? null,
+          timestamp: ts,
+          text: text || "[mensagem]",
+          status: r?.status ?? null,
+        };
+      })
+      .filter((m) => m.timestamp > 0)
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-200);
+    return msgs;
+  });
+
 export const getStats = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
