@@ -1240,9 +1240,104 @@ function AdminTab() {
           </div>
         </CardContent>
       </Card>
+
+      <AdminBillingSection />
     </div>
   );
 }
+
+// ---------------- Admin: Financeiro (Pagar.me) ----------------
+function AdminBillingSection() {
+  const qc = useQueryClient();
+  const summaryFn = useServerFn(adminFinancialSummary);
+  const usersFn = useServerFn(adminListBillingUsers);
+  const bonusFn = useServerFn(adminAddFreeNumbers);
+  const suspendFn = useServerFn(adminSetUserSuspended);
+  const removeFn = useServerFn(adminForceRemoveNumberSubscription);
+
+  const summary = useQuery({ queryKey: ["admin-fin-summary"], queryFn: () => summaryFn(), refetchInterval: 30000 });
+  const rows = useQuery({ queryKey: ["admin-billing-users"], queryFn: () => usersFn() });
+  const brl = (cents: number) => `R$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+  const s = summary.data;
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ["admin-fin-summary"] });
+    qc.invalidateQueries({ queryKey: ["admin-billing-users"] });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="text-lg font-semibold flex items-center gap-2"><CreditCard className="h-5 w-5" /> Financeiro (Pagar.me)</div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <StatCard label="MRR" value={s ? brl(s.mrr_cents) as any : "—"} icon={<CreditCard />} />
+        <StatCard label="Números pagos ativos" value={s?.active_paid_numbers ?? 0} icon={<Smartphone />} />
+        <StatCard label="Vencidos (past due)" value={s?.past_due_numbers ?? 0} icon={<ScrollText />} />
+        <StatCard label="Cancelados 30d" value={s?.canceled_last_30d ?? 0} icon={<ScrollText />} />
+        <StatCard label="Usuários ativos" value={s?.active_users ?? 0} icon={<Users2 />} />
+        <StatCard label="Suspensos" value={s?.suspended_users ?? 0} icon={<Users2 />} />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ações por cliente</CardTitle>
+          <CardDescription>Liberar números de cortesia, suspender ou reativar contas.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="divide-y">
+            {(rows.data ?? []).map((r: any) => (
+              <div key={r.user_id} className="py-3 flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">{r.full_name || r.email || r.user_id}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {r.email}
+                    {" · "}Bônus: {r.free_bonus}
+                    {" · "}Pagos ativos: {r.paid_active}
+                    {r.past_due > 0 && ` · Vencidos: ${r.past_due}`}
+                    {r.mrr_cents > 0 && ` · ${brl(r.mrr_cents)}/mês`}
+                    {r.suspended && " · SUSPENSO"}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <Button size="sm" variant="outline" onClick={() => {
+                    bonusFn({ data: { user_id: r.user_id, delta: 1 } }).then(() => { toast.success("+1 número de cortesia"); invalidateAll(); }).catch((e: any) => toast.error(e.message));
+                  }}>+1 grátis</Button>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    bonusFn({ data: { user_id: r.user_id, delta: -1 } }).then(() => { toast.success("-1 número de cortesia"); invalidateAll(); }).catch((e: any) => toast.error(e.message));
+                  }}>-1 grátis</Button>
+                  {r.suspended ? (
+                    <Button size="sm" onClick={() => {
+                      suspendFn({ data: { user_id: r.user_id, suspended: false } }).then(() => { toast.success("Reativado"); invalidateAll(); });
+                    }}>Reativar</Button>
+                  ) : (
+                    <Button size="sm" variant="destructive" onClick={() => {
+                      const reason = prompt("Motivo da suspensão (opcional):") ?? undefined;
+                      suspendFn({ data: { user_id: r.user_id, suspended: true, reason } }).then(() => { toast.success("Suspenso"); invalidateAll(); });
+                    }}>Suspender</Button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {(rows.data ?? []).length === 0 && <div className="py-4 text-sm text-muted-foreground text-center">Nenhum cliente ainda.</div>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuração do webhook Pagar.me</CardTitle>
+          <CardDescription>Configure no dashboard do Pagar.me para receber os eventos de pagamento.</CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm space-y-2">
+          <div><b>URL do webhook:</b> <code className="text-xs bg-muted px-2 py-1 rounded">https://zapheatnew.lovable.app/api/public/hooks/pagarme-webhook</code></div>
+          <div><b>Eventos:</b> <span className="text-xs text-muted-foreground">order.paid, charge.paid, charge.payment_failed, charge.refunded, charge.chargedback, order.canceled</span></div>
+          <div className="text-xs text-muted-foreground">O segredo do webhook está armazenado como <code>PAGARME_WEBHOOK_SECRET</code>. Configure o mesmo valor no dashboard do Pagar.me.</div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 
 function AdminPlatformDashboard() {
   const fn = useServerFn(adminPlatformDashboard);
