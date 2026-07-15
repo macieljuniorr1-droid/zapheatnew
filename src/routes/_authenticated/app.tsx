@@ -3185,6 +3185,28 @@ function TeamTab() {
                       </SelectContent>
                     </Select>
                     <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const pwd = prompt(
+                          `Definir nova senha para ${m.full_name || m.email}\n(mínimo 8 caracteres):`,
+                        );
+                        if (pwd == null) return;
+                        if (pwd.length < 8) {
+                          toast.error("Senha deve ter no mínimo 8 caracteres.");
+                          return;
+                        }
+                        resetPwdFn({ data: { member_id: m.id, new_password: pwd } })
+                          .then(() => {
+                            toast.success("Senha redefinida. Informe a nova senha ao funcionário.");
+                            qc.invalidateQueries({ queryKey: ["team-activity"] });
+                          })
+                          .catch((e: any) => toast.error(e.message));
+                      }}
+                    >
+                      Redefinir senha
+                    </Button>
+                    <Button
                       size="icon"
                       variant="ghost"
                       onClick={() => {
