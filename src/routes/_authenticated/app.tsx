@@ -1097,6 +1097,7 @@ function PlanTab() {
   const [open, setOpen] = useState(false);
   const [fullName, setFullName] = useState("");
   const [doc, setDoc] = useState("");
+  const [phone, setPhone] = useState("");
   const [method, setMethod] = useState<"pix" | "credit_card">("pix");
   const [checkoutData, setCheckoutData] = useState<null | {
     number_subscription_id: string;
