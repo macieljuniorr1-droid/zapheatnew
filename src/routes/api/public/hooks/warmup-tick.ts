@@ -9,7 +9,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 7_000;
+const DELIVERY_ACK_WAIT_MS = 15_000;
 const MAX_BURST_ROUNDS = 1;
 const BURST_BUDGET_MS = 20_000;
 const REPLY_GAP_MS = 500;
@@ -60,13 +60,14 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             const claimed = await claimGroupForThisTick(supabaseAdmin, g, now);
             if (!claimed) continue;
 
-            const rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
+            let rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
               .filter((i: any) => i);
 
             await syncConnectedUserChipsIntoGroup(supabaseAdmin, g, rawMembers);
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
-            await backfillPhones(supabaseAdmin, evolution, rawMembers);
+            await refreshConnectedPhones(supabaseAdmin, evolution, rawMembers);
+            rawMembers = await pruneDuplicateGroupMembers(supabaseAdmin, g, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
             // Chips com histórico recente de ERROR de entrega recebem recuperação
             // preventiva antes de tentar enviar de novo. Sem isso a sessão fica
@@ -188,6 +189,38 @@ function uniqueSendableMembers(members: Chip[]) {
   return [...byPhone.values()];
 }
 
+async function pruneDuplicateGroupMembers(supabaseAdmin: any, group: any, members: Chip[]) {
+  const byPhone = new Map<string, Chip[]>();
+  for (const member of members) {
+    const phone = normalizePhone(member.phone);
+    if (!phone) continue;
+    const list = byPhone.get(phone) ?? [];
+    list.push(member);
+    byPhone.set(phone, list);
+  }
+
+  const removeIds = new Set<string>();
+  for (const duplicates of byPhone.values()) {
+    if (duplicates.length < 2) continue;
+    duplicates.sort((a, b) => {
+      const aStarted = a.warmup_started_at ? new Date(a.warmup_started_at).getTime() : 0;
+      const bStarted = b.warmup_started_at ? new Date(b.warmup_started_at).getTime() : 0;
+      return bStarted - aStarted;
+    });
+    for (const duplicate of duplicates.slice(1)) removeIds.add(duplicate.id);
+  }
+
+  if (!removeIds.size) return members;
+
+  await supabaseAdmin
+    .from("warmup_group_members")
+    .delete()
+    .eq("group_id", group.id)
+    .in("instance_id", [...removeIds]);
+
+  return members.filter((member) => !removeIds.has(member.id));
+}
+
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(
     members.map(async (m) => {
@@ -274,17 +307,17 @@ async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
 }
 
 
-async function backfillPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
+async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
   for (const m of members) {
-    if (m.status !== "connected" || m.phone) continue;
+    if (m.status !== "connected") continue;
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
       const rec = Array.isArray(fetched) ? fetched[0] : fetched?.instance ?? fetched;
-      const jid: string | undefined = rec?.ownerJid ?? rec?.owner ?? rec?.wuid ?? rec?.number;
-      const phoneMatch = jid ? String(jid).match(/(\d{8,20})/) : null;
-      if (phoneMatch) {
-        m.phone = phoneMatch[1];
-        await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone }).eq("id", m.id);
+      const values = [rec?.ownerJid, rec?.profile?.id, rec?.owner, rec?.wuid, rec?.number, rec?.phone];
+      const phoneMatch = values.map((v) => String(v ?? "").match(/(\d{8,20})/)?.[1]).find(Boolean);
+      if (phoneMatch && phoneMatch !== normalizePhone(m.phone)) {
+        m.phone = phoneMatch;
+        await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone, updated_at: new Date().toISOString() }).eq("id", m.id);
       }
     } catch {}
   }
@@ -450,7 +483,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
   }
 
   const idle = [...members]
-    .filter((m) => !selected.has(m.id) && !m.temporarily_unavailable)
+    .filter((m) => !selected.has(m.id))
     .sort(() => Math.random() - 0.5);
 
   while (idle.length >= 2) {
@@ -516,7 +549,9 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     const recovered = await recoverOpenSession(evolution, from.evolution_instance, true);
     if (!recovered) {
       await markInstance(supabaseAdmin, from.id, "connected");
-      return await logPairResult(supabaseAdmin, group, from, to, "falha temporária: remetente não abriu sessão", "failed");
+      const result = await logPairResult(supabaseAdmin, group, from, to, "falha temporária: remetente não abriu sessão", "failed");
+      await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, result.error ?? null);
+      return result;
     }
   }
   if (!toOpen) {
@@ -623,7 +658,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 }
 
 async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, groupId: string, from: Chip, errMsg: string | null) {
-  if (!isDeliverySyncFailure(errMsg)) return;
+  if (!isRepairableSessionFailure(errMsg)) return;
   const { data: recent } = await supabaseAdmin
     .from("warmup_logs")
     .select("status, error, created_at")
@@ -636,7 +671,7 @@ async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, gro
   let consecutiveFailures = 0;
   for (const log of recent ?? []) {
     if (log.status === "sent") break;
-    if (log.status === "failed" && isDeliverySyncFailure(log.error)) consecutiveFailures++;
+    if (log.status === "failed" && isRepairableSessionFailure(log.error)) consecutiveFailures++;
   }
   if (consecutiveFailures < 2) return;
 
@@ -846,6 +881,10 @@ function isClosedSessionError(message: string | null | undefined) {
 
 function isDeliverySyncFailure(message: string | null | undefined) {
   return /whatsapp retornou error|sem confirma[cç][aã]o real|sem ack|pending|server_ack/i.test(String(message ?? ""));
+}
+
+function isRepairableSessionFailure(message: string | null | undefined) {
+  return isDeliverySyncFailure(message) || /remetente n[aã]o abriu sess[aã]o|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
 }
 
 async function normalizeQr(payload: any): Promise<string | null> {
