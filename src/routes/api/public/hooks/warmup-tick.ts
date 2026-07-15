@@ -5,9 +5,9 @@ import { createFileRoute } from "@tanstack/react-router";
 // as possible, and only stores a log as "sent" after Evolution confirms the
 // WhatsApp delivery ACK. A plain 201/PENDING response is not considered sent.
 
-const MAX_DELAY_SECONDS = 12;
+const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 18_000;
+const DELIVERY_ACK_WAIT_MS = 7_000;
 const MAX_BURST_ROUNDS = 3;
 const BURST_BUDGET_MS = 24_000;
 const REPLY_GAP_MS = 1_500;
@@ -130,13 +130,19 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         // Não derruba o chip na plataforma por uma leitura instável da Evolution.
         // Chips já conectados ficam conectados no painel e só são ignorados neste ciclo.
         m.temporarily_unavailable = true;
-        if (m.status !== "connected") {
+        if (m.status !== "connected" && m.phone && m.warmup_started_at) {
+          m.status = "connected";
+          await markInstance(supabaseAdmin, m.id, "connected");
+        } else if (m.status !== "connected") {
           m.status = s === "connecting" ? "connecting" : "disconnected";
           await markInstance(supabaseAdmin, m.id, m.status as "connecting" | "disconnected");
         }
       } catch {
         m.temporarily_unavailable = true;
-        if (m.status !== "connected") {
+        if (m.status !== "connected" && m.phone && m.warmup_started_at) {
+          m.status = "connected";
+          await markInstance(supabaseAdmin, m.id, "connected");
+        } else if (m.status !== "connected") {
           m.status = "disconnected";
           await markInstance(supabaseAdmin, m.id, "disconnected");
         }
@@ -273,7 +279,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
   const messageContent = await generateMessage(supabaseAdmin, group.user_id, from.id, to.id, history);
-  const typingMs = Math.min(3000, Math.max(700, messageContent.length * 25));
+  const typingMs = Math.min(1600, Math.max(350, messageContent.length * 15));
   const toNumber = String(to.phone).replace(/\D/g, "");
   const remoteJid = `${toNumber}@s.whatsapp.net`;
 
@@ -366,7 +372,7 @@ async function generateMessage(supabaseAdmin: any, userId: string, fromId: strin
       .in("id", [fromId, toId]);
     const map = new Map<string, string | null>((names ?? []).map((n: any) => [String(n.id), typeof n.name === "string" ? n.name : null]));
     return await generateReply(history, {
-      pairSeed: [fromId, toId].sort().join(":"),
+      pairSeed: fromId,
       fromName: map.get(fromId) ?? null,
       toName: map.get(toId) ?? null,
     });
