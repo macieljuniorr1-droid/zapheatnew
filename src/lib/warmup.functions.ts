@@ -151,7 +151,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
     if (!inst) throw new Error("Instância não encontrada");
 
     const { evolution } = await import("@/lib/evolution.server");
-    let status = "disconnected";
+    let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = (inst as any).last_qr ?? null;
     let phone: string | null = (inst as any).phone ?? null;
     try {
@@ -159,10 +159,14 @@ export const refreshInstance = createServerFn({ method: "POST" })
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else if (s === "connecting") status = "connecting";
-      else status = "disconnected";
+      else if ((inst as any).status === "connected") {
+        const recovered = await recoverInstanceConnection(evolution, inst.evolution_instance);
+        status = recovered ? "connected" : "connected";
+      } else status = "disconnected";
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
-      status = "disconnected";
+      // Falha momentânea de leitura da Evolution não pode derrubar o chip no painel.
+      status = (inst as any).status === "connected" ? "connected" : "disconnected";
     }
 
     // Quando conectado, garante que o telefone (ownerJid) esteja salvo. A v2
@@ -593,7 +597,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!inst) throw new Error("Instância não encontrada");
     const { evolution } = await import("@/lib/evolution.server");
-    let status = "disconnected";
+    let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = null;
     let phone: string | null = (inst as any).phone ?? null;
     try {
@@ -601,8 +605,14 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else if (s === "connecting") status = "connecting";
+      else if ((inst as any).status === "connected") {
+        const recovered = await recoverInstanceConnection(evolution, (inst as any).evolution_instance);
+        status = recovered ? "connected" : "connected";
+      }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
-    } catch {}
+    } catch {
+      status = (inst as any).status === "connected" ? "connected" : "disconnected";
+    }
     if (status === "connected" && !phone) {
       try {
         const fetched = await evolution.fetchInstance((inst as any).evolution_instance);
