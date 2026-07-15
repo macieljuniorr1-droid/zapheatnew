@@ -604,8 +604,8 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     // várias vezes antes de registrar falha, porque resposta recebida é prioridade.
     for (let retry = 0; ack.explicitError && retry < 1; retry++) {
       try {
-        await recoverOpenSession(evolution, from.evolution_instance, true);
-        await new Promise((r) => setTimeout(r, 750));
+        await repairSenderSession(evolution, from.evolution_instance, toNumber);
+        await new Promise((r) => setTimeout(r, SESSION_SETTLE_MS));
         ack = await attemptSend();
       } catch (retryErr: any) {
         errMsg = retryErr?.message ?? ack.error ?? null;
@@ -618,7 +618,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   } catch (e: any) {
     const firstError = e?.message ?? "erro";
     try {
-      await recoverOpenSession(evolution, from.evolution_instance, true);
+      await repairSenderSession(evolution, from.evolution_instance, toNumber);
       const ack = await attemptSend();
       if (ack.explicitError) {
         status = "failed";
