@@ -177,12 +177,14 @@ export const refreshInstance = createServerFn({ method: "POST" })
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = (inst as any).last_qr ?? null;
     let phone: string | null = (inst as any).phone ?? null;
+    let triedSoftReconnect = false;
     try {
       const state = await evolution.connectionState(inst.evolution_instance);
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else {
         if (s === "connecting") status = "connecting";
+        triedSoftReconnect = true;
         const recovered = await reconnectInstance(evolution, inst.evolution_instance);
         if (recovered.connected) {
           status = "connected";
@@ -213,7 +215,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
     }
 
     const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
-    const canRegenerateQr = !(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected";
+    const canRegenerateQr = !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect(inst.evolution_instance);
@@ -728,12 +730,14 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = null;
     let phone: string | null = (inst as any).phone ?? null;
+    let triedSoftReconnect = false;
     try {
       const state = await evolution.connectionState((inst as any).evolution_instance);
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else {
         if (s === "connecting") status = "connecting";
+        triedSoftReconnect = true;
         const recovered = await reconnectInstance(evolution, (inst as any).evolution_instance);
         if (recovered.connected) {
           status = "connected";
@@ -757,7 +761,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
     const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
-    const canRegenerateQr = !(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected";
+    const canRegenerateQr = !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
