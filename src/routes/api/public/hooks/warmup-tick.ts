@@ -9,12 +9,14 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 10_000;
-const MAX_BURST_ROUNDS = 6;
-const BURST_BUDGET_MS = 45_000;
+const DELIVERY_ACK_WAIT_MS = 7_000;
+const MAX_BURST_ROUNDS = 1;
+const BURST_BUDGET_MS = 20_000;
 const REPLY_GAP_MS = 500;
 const FAILING_PAIR_COOLDOWN_MS = 90 * 1000;
 const SENDER_REPAIR_WINDOW_MS = 20 * 60 * 1000;
+const PAIR_STREAK_WINDOW_MS = 8 * 60 * 1000;
+const PAIR_STREAK_LIMIT = 4;
 
 type Chip = {
   id: string;
@@ -55,6 +57,9 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
         const results: any[] = [];
         for (const g of groups ?? []) {
           try {
+            const claimed = await claimGroupForThisTick(supabaseAdmin, g, now);
+            if (!claimed) continue;
+
             const rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
               .filter((i: any) => i);
@@ -115,6 +120,22 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
     },
   },
 });
+
+async function claimGroupForThisTick(supabaseAdmin: any, group: any, nowIso: string) {
+  // O cron chama este endpoint a cada ~30s. Um ciclo pode levar alguns segundos
+  // esperando ACK real do WhatsApp; sem essa reserva, duas execuções pegam o
+  // mesmo grupo ao mesmo tempo e criam envios duplicados/race na Evolution.
+  const holdUntil = new Date(Date.now() + 60_000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("warmup_groups")
+    .update({ next_run_at: holdUntil })
+    .eq("id", group.id)
+    .lte("next_run_at", nowIso)
+    .select("id")
+    .maybeSingle();
+  if (error) return false;
+  return Boolean(data?.id);
+}
 
 async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, rawMembers: Chip[]) {
   const existing = new Set(rawMembers.map((m) => m.id));
