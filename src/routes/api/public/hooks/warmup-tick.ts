@@ -131,25 +131,15 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           return;
         }
 
-        // Não derruba o chip na plataforma por uma leitura instável da Evolution.
-        // Chips já conectados ficam conectados no painel e só são ignorados neste ciclo.
         m.temporarily_unavailable = true;
-        if (m.status !== "connected" && m.phone && m.warmup_started_at) {
-          m.status = "connected";
-          await markInstance(supabaseAdmin, m.id, "connected");
-        } else if (m.status !== "connected") {
-          m.status = s === "connecting" ? "connecting" : "disconnected";
-          await markInstance(supabaseAdmin, m.id, m.status as "connecting" | "disconnected");
-        }
+        // Se não confirmou OPEN, não deixa o painel mentir como conectado.
+        // Mantém em reconexão para o usuário saber que o chip precisa voltar.
+        m.status = "connecting";
+        await markInstance(supabaseAdmin, m.id, "connecting");
       } catch {
         m.temporarily_unavailable = true;
-        if (m.status !== "connected" && m.phone && m.warmup_started_at) {
-          m.status = "connected";
-          await markInstance(supabaseAdmin, m.id, "connected");
-        } else if (m.status !== "connected") {
-          m.status = "disconnected";
-          await markInstance(supabaseAdmin, m.id, "disconnected");
-        }
+        m.status = "connecting";
+        await markInstance(supabaseAdmin, m.id, "connecting");
       }
     }),
   );
@@ -213,6 +203,8 @@ async function preemptiveRecoverFailingChips(supabaseAdmin: any, evolution: any,
       const ok = await waitForOpen(evolution, m.evolution_instance);
       if (!ok) {
         m.temporarily_unavailable = true;
+        m.status = "connecting";
+        await markInstance(supabaseAdmin, m.id, "connecting");
       }
     }),
   );
@@ -306,12 +298,14 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   if (!fromOpen) {
     const recovered = await recoverOpenSession(evolution, from.evolution_instance);
     if (!recovered) {
+      await markInstance(supabaseAdmin, from.id, "connecting");
       return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Remetente indisponível neste ciclo" };
     }
   }
   if (!toOpen) {
     const recovered = await recoverOpenSession(evolution, to.evolution_instance);
     if (!recovered) {
+      await markInstance(supabaseAdmin, to.id, "connecting");
       return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Destinatário indisponível neste ciclo" };
     }
   }
