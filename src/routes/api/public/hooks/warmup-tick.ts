@@ -178,7 +178,9 @@ async function pruneDuplicateGroupMembers(supabaseAdmin: any, group: any, member
   // faz o usuário enxergar chips "conectados" que não participam do aquecimento.
   // A proteção contra autoenvio fica no pickPairs/processPair, que apenas evita
   // formar uma dupla entre telefones iguais.
-  return members.filter((member) => !removeIds.has(member.id));
+  void supabaseAdmin;
+  void group;
+  return members;
 }
 
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
