@@ -112,19 +112,31 @@ export const purchaseNumber = createServerFn({ method: "POST" })
       },
     });
 
-    // 4. Extrai QR PIX ou payment_url
+    // 4. Extrai QR PIX (texto EMV + imagem) ou URL de checkout do cartão
     const charge = order?.charges?.[0];
-    const pix_qr_code =
-      charge?.last_transaction?.qr_code ??
-      charge?.last_transaction?.qr_code_url ??
+    const lt = charge?.last_transaction ?? {};
+    const pix_qr_code: string | null =
+      lt.qr_code ?? charge?.qr_code ?? order?.qr_code ?? null;
+    const pix_qr_code_url: string | null =
+      lt.qr_code_url ?? charge?.qr_code_url ?? null;
+    const payment_url: string | null =
+      lt.url ??
+      lt.payment_url ??
+      charge?.payment_url ??
+      (Array.isArray(charge?.checkout) ? charge.checkout[0]?.payment_url : null) ??
+      charge?.checkout?.payment_url ??
       null;
-    const payment_url = charge?.last_transaction?.url ?? charge?.checkout?.[0]?.payment_url ?? null;
+
+    if (!pix_qr_code && !pix_qr_code_url && !payment_url) {
+      // Nada retornado → devolve o payload para o cliente saber que falhou
+      console.error("Pagar.me sem dados de checkout:", JSON.stringify(order));
+    }
 
     await supabase
       .from("number_subscriptions")
       .update({
         last_pix_qr_code: pix_qr_code,
-        last_charge_url: payment_url,
+        last_charge_url: payment_url ?? pix_qr_code_url,
       })
       .eq("id", nsRow.id);
 
@@ -132,8 +144,23 @@ export const purchaseNumber = createServerFn({ method: "POST" })
       number_subscription_id: nsRow.id,
       order_id: order.id,
       pix_qr_code,
+      pix_qr_code_url,
       payment_url,
     };
+  });
+
+// Polling do status da assinatura de número (para o modal de checkout)
+export const getNumberSubscriptionStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { data: row } = await context.supabase
+      .from("number_subscriptions")
+      .select("id, status, current_period_end")
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    return { status: row?.status ?? "unknown", current_period_end: row?.current_period_end ?? null };
   });
 
 export const cancelNumberSubscription = createServerFn({ method: "POST" })
