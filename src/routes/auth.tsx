@@ -34,8 +34,6 @@ function AuthPage() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [company, setCompany] = useState("");
-  const [useCase, setUseCase] = useState("");
-  const [source, setSource] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
