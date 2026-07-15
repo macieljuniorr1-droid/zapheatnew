@@ -181,6 +181,7 @@ function AppPage() {
             <TabsTrigger value="live"><Radio className="h-4 w-4 mr-1" />Chat ao vivo</TabsTrigger>
             <TabsTrigger value="logs"><ScrollText className="h-4 w-4 mr-1" />Logs</TabsTrigger>
             <TabsTrigger value="plan"><CreditCard className="h-4 w-4 mr-1" />Plano</TabsTrigger>
+            <TabsTrigger value="team"><UsersRound className="h-4 w-4 mr-1" />Equipe</TabsTrigger>
             {isAdmin && <TabsTrigger value="admin"><Settings className="h-4 w-4 mr-1" />Admin</TabsTrigger>}
           </TabsList>
           <TabsContent value="dashboard"><Dashboard /></TabsContent>
@@ -192,6 +193,7 @@ function AppPage() {
           <TabsContent value="live"><LiveChatTab /></TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
           <TabsContent value="plan"><PlanTab /></TabsContent>
+          <TabsContent value="team"><TeamTab /></TabsContent>
           {isAdmin && <TabsContent value="admin"><AdminTab /></TabsContent>}
         </Tabs>
       </main>
