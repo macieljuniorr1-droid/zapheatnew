@@ -5,9 +5,12 @@ import { createFileRoute } from "@tanstack/react-router";
 // as possible, and only stores a log as "sent" after Evolution confirms the
 // WhatsApp delivery ACK. A plain 201/PENDING response is not considered sent.
 
-const MAX_DELAY_SECONDS = 30;
-const REPLY_TIMEOUT_MS = 30 * 1000;
+const MAX_DELAY_SECONDS = 12;
+const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 const DELIVERY_ACK_WAIT_MS = 18_000;
+const MAX_BURST_ROUNDS = 3;
+const BURST_BUDGET_MS = 24_000;
+const REPLY_GAP_MS = 1_500;
 
 type Chip = {
   id: string;
@@ -49,7 +52,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
           try {
             const rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
-              .filter((i: any) => i && i.status === "connected");
+              .filter((i: any) => i);
 
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
             await backfillPhones(supabaseAdmin, evolution, rawMembers);
@@ -67,21 +70,31 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               continue;
             }
 
-            const recentLogs = await fetchRecentLogs(supabaseAdmin, (g as any).id);
-            const pairs = pickPairs(members, recentLogs);
-            if (!pairs.length) {
-              await scheduleNext(supabaseAdmin, g);
-              results.push({ group: (g as any).id, status: "waiting", reason: "aguardando respostas" });
-              continue;
+            const broadcast = createBroadcast();
+            const groupResults: any[] = [];
+            const deadline = Date.now() + BURST_BUDGET_MS;
+
+            for (let round = 0; round < MAX_BURST_ROUNDS && Date.now() < deadline; round++) {
+              const recentLogs = await fetchRecentLogs(supabaseAdmin, (g as any).id);
+              const pairs = pickPairs(members, recentLogs);
+              if (!pairs.length) {
+                if (round === 0) groupResults.push({ group: (g as any).id, status: "waiting", reason: "aguardando respostas" });
+                break;
+              }
+
+              const pairResults = await Promise.all(
+                pairs.map((pair) => processPair({ supabaseAdmin, evolution, group: g, pair, broadcast })),
+              );
+              groupResults.push(...pairResults);
+
+              if (!pairResults.some((r) => r.status === "sent")) break;
+              if (round < MAX_BURST_ROUNDS - 1 && Date.now() + REPLY_GAP_MS < deadline) {
+                await new Promise((r) => setTimeout(r, REPLY_GAP_MS));
+              }
             }
 
-            const broadcast = createBroadcast();
-            const pairResults = await Promise.all(
-              pairs.map((pair) => processPair({ supabaseAdmin, evolution, group: g, pair, broadcast })),
-            );
-
             await scheduleNext(supabaseAdmin, g);
-            results.push(...pairResults);
+            results.push(...groupResults);
           } catch (e: any) {
             results.push({ group: (g as any).id, error: e?.message ?? "erro" });
           }
