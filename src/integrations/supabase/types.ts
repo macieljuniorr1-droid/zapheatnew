@@ -297,19 +297,34 @@ export type Database = {
       }
       profiles: {
         Row: {
+          company: string | null
           created_at: string
           email: string | null
+          full_name: string | null
           id: string
+          phone: string | null
+          source: string | null
+          use_case: string | null
         }
         Insert: {
+          company?: string | null
           created_at?: string
           email?: string | null
+          full_name?: string | null
           id: string
+          phone?: string | null
+          source?: string | null
+          use_case?: string | null
         }
         Update: {
+          company?: string | null
           created_at?: string
           email?: string | null
+          full_name?: string | null
           id?: string
+          phone?: string | null
+          source?: string | null
+          use_case?: string | null
         }
         Relationships: []
       }

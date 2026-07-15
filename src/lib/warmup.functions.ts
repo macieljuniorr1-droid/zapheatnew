@@ -318,7 +318,7 @@ export const adminListUsers = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("profiles")
-      .select("id, email, created_at, subscriptions(plan:plans(name, price_cents, max_instances, max_messages_per_day))")
+      .select("id, email, full_name, phone, company, use_case, source, created_at, subscriptions(plan:plans(name, price_cents, max_instances, max_messages_per_day))")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -445,3 +445,90 @@ export const adminUpdateEvolutionConfig = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// ---------------- Admin: manage all WhatsApp instances ----------------
+
+export const adminListInstances = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("id, user_id, name, evolution_instance, phone, status, created_at, updated_at, profiles:profiles!whatsapp_instances_user_id_fkey(email, full_name)")
+      .order("created_at", { ascending: false });
+    if (error) {
+      // Fallback without join if FK naming differs
+      const alt = await supabaseAdmin
+        .from("whatsapp_instances")
+        .select("id, user_id, name, evolution_instance, phone, status, created_at, updated_at")
+        .order("created_at", { ascending: false });
+      if (alt.error) throw new Error(alt.error.message);
+      const ids = Array.from(new Set((alt.data ?? []).map((r: any) => r.user_id)));
+      const { data: profs } = await supabaseAdmin.from("profiles").select("id, email, full_name").in("id", ids);
+      const map = new Map((profs ?? []).map((p: any) => [p.id, p]));
+      return (alt.data ?? []).map((r: any) => ({ ...r, profiles: map.get(r.user_id) ?? null }));
+    }
+    return data ?? [];
+  });
+
+export const adminRefreshInstance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: inst } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("*")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!inst) throw new Error("Instância não encontrada");
+    const { evolution } = await import("@/lib/evolution.server");
+    let status = "disconnected";
+    let qr: string | null = null;
+    let phone: string | null = (inst as any).phone ?? null;
+    try {
+      const state = await evolution.connectionState((inst as any).evolution_instance);
+      const s = state?.instance?.state ?? state?.state;
+      if (s === "open") status = "connected";
+      else if (s === "connecting") status = "connecting";
+      phone = state?.instance?.owner ?? phone;
+    } catch {}
+    if (status !== "connected") {
+      try {
+        const conn = await evolution.connect((inst as any).evolution_instance);
+        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? conn?.code ?? null;
+        if (qr) status = "qr";
+      } catch {}
+    }
+    const { error } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .update({ status, last_qr: qr, phone, updated_at: new Date().toISOString() })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true, status, phone };
+  });
+
+export const adminDeleteInstance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: inst } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("evolution_instance")
+      .eq("id", data.id)
+      .maybeSingle();
+    if ((inst as any)?.evolution_instance) {
+      try {
+        const { evolution } = await import("@/lib/evolution.server");
+        await evolution.deleteInstance((inst as any).evolution_instance);
+      } catch {}
+    }
+    const { error } = await supabaseAdmin.from("whatsapp_instances").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
