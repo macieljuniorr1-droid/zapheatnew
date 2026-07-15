@@ -224,6 +224,182 @@ function Landing() {
   );
 }
 
+// ---------- Live animated simulation ----------
+const CHIPS = [
+  { id: 1, label: "Chip 01", phone: "+55 11 9•••• 4821" },
+  { id: 2, label: "Chip 02", phone: "+55 21 9•••• 7733" },
+  { id: 3, label: "Chip 03", phone: "+55 31 9•••• 2109" },
+  { id: 4, label: "Chip 04", phone: "+55 47 9•••• 5588" },
+];
+
+const CONVO_SCRIPT: Array<{ from: number; to: number; text: string }> = [
+  { from: 1, to: 2, text: "oi, bom dia 👋" },
+  { from: 3, to: 4, text: "e aí, como foi ontem?" },
+  { from: 2, to: 1, text: "opa, bom dia! tudo tranquilo" },
+  { from: 4, to: 3, text: "foi bom demais kkk" },
+  { from: 1, to: 2, text: "beleza demais 🙌" },
+  { from: 3, to: 4, text: "bora marcar de novo" },
+  { from: 2, to: 1, text: "combinado, depois te chamo" },
+  { from: 4, to: 3, text: "bora sim, sexta?" },
+];
+
+function useLiveConvo() {
+  const [messages, setMessages] = useState<Array<{ id: number; from: number; to: number; text: string; time: string }>>([]);
+  const [typing, setTyping] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    let idx = 0;
+    let alive = true;
+    const tick = () => {
+      if (!alive) return;
+      const step = CONVO_SCRIPT[idx % CONVO_SCRIPT.length];
+      idx++;
+      // typing indicator
+      setTyping((prev) => new Set(prev).add(step.from));
+      const typingTimeout = setTimeout(() => {
+        if (!alive) return;
+        setTyping((prev) => {
+          const n = new Set(prev);
+          n.delete(step.from);
+          return n;
+        });
+        const now = new Date();
+        const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        setMessages((prev) => [
+          ...prev.slice(-7),
+          { id: Date.now() + Math.random(), from: step.from, to: step.to, text: step.text, time },
+        ]);
+      }, 900);
+      const nextTimeout = setTimeout(tick, 2200 + Math.random() * 1200);
+      return () => {
+        clearTimeout(typingTimeout);
+        clearTimeout(nextTimeout);
+      };
+    };
+    const timer = setTimeout(tick, 400);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  return { messages, typing };
+}
+
+function LiveSimulation() {
+  const { messages, typing } = useLiveConvo();
+
+  return (
+    <section id="live" className="max-w-6xl mx-auto px-6 py-16">
+      <div className="text-center max-w-2xl mx-auto mb-10">
+        <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">ao vivo · simulação</div>
+        <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
+          Veja seus chips conversando entre si
+        </h2>
+        <p className="mt-3 text-muted-foreground">
+          Vários números trocam mensagens simultaneamente. Cada um aguarda a resposta antes de iniciar outra conversa — humano, natural, 24h por dia.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {CHIPS.map((c) => {
+          const isTyping = typing.has(c.id);
+          return (
+            <div
+              key={c.id}
+              className={`panel rounded-xl p-4 transition-all duration-300 ${
+                isTyping ? "border-ember/60 glow-ember scale-[1.02]" : ""
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <div className="h-8 w-8 rounded-full gradient-ember-bg grid place-items-center text-primary-foreground text-xs font-bold">
+                    {c.id}
+                  </div>
+                  <span
+                    className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${
+                      isTyping ? "bg-ember animate-ember" : "bg-emerald-500"
+                    }`}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate">{c.label}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono truncate">{c.phone}</div>
+                </div>
+              </div>
+              <div className="mt-3 text-[11px] font-mono h-4">
+                {isTyping ? (
+                  <span className="text-ember inline-flex items-center gap-1">
+                    <TypingDots /> digitando…
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">online</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="panel rounded-2xl p-6 relative overflow-hidden">
+        <div className="absolute -top-3 left-6 px-2 py-0.5 rounded-md bg-background border border-ember/30 text-[10px] font-mono uppercase tracking-widest text-ember">
+          fluxo ao vivo
+        </div>
+        <div className="flex items-center gap-2 pb-4 border-b border-border/50">
+          <span className="h-2.5 w-2.5 rounded-full bg-ember animate-ember" />
+          <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">
+            conversas simultâneas · sem limite diário
+          </span>
+          <Activity className="h-3.5 w-3.5 text-ember/70 ml-auto" />
+        </div>
+        <div className="mt-4 space-y-2 font-mono text-sm min-h-[240px]">
+          {messages.length === 0 && (
+            <div className="text-muted-foreground text-center py-8">iniciando conversas…</div>
+          )}
+          {messages.map((m, idx) => {
+            const from = CHIPS.find((c) => c.id === m.from)!;
+            const to = CHIPS.find((c) => c.id === m.to)!;
+            const isLast = idx === messages.length - 1;
+            return (
+              <div
+                key={m.id}
+                className="flex items-center gap-3 flex-wrap sm:flex-nowrap animate-fade-in"
+              >
+                <span className="text-muted-foreground/60 shrink-0 text-xs">{m.time}</span>
+                <span className="text-gold shrink-0">{from.label}</span>
+                <span className="text-muted-foreground/40 shrink-0">→</span>
+                <span className="text-ember shrink-0">{to.label}</span>
+                <span
+                  className={`text-foreground/90 min-w-0 ${
+                    isLast ? "border-b border-dashed border-ember/40" : ""
+                  }`}
+                >
+                  {m.text}
+                </span>
+                {isLast && (
+                  <span className="ml-auto h-1.5 w-1.5 rounded-full bg-ember animate-ember shrink-0" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TypingDots() {
+  return (
+    <span className="inline-flex gap-0.5">
+      <span className="h-1 w-1 rounded-full bg-ember animate-bounce [animation-delay:-0.3s]" />
+      <span className="h-1 w-1 rounded-full bg-ember animate-bounce [animation-delay:-0.15s]" />
+      <span className="h-1 w-1 rounded-full bg-ember animate-bounce" />
+    </span>
+  );
+}
+
+
+
 function Logo({ small }: { small?: boolean }) {
   const size = small ? "h-6 w-6" : "h-8 w-8";
   const icon = small ? "h-3 w-3" : "h-4 w-4";
