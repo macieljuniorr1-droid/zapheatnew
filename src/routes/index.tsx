@@ -189,7 +189,7 @@ function Landing() {
             />
           </div>
           <p className="text-center text-xs text-muted-foreground font-mono mt-8">
-            exemplo: 10 chips = R$ 250/mês · 30 chips = R$ 750/mês · <a className="text-ember underline decoration-dotted" href="mailto:contato@warmuppro.app">fale com a gente</a>
+            exemplo: 10 chips = R$ 250/mês · 30 chips = R$ 750/mês · <a className="text-ember underline decoration-dotted" href="https://wa.me/212786573855" target="_blank" rel="noopener noreferrer">fale com o suporte no WhatsApp</a>
           </p>
         </section>
 
