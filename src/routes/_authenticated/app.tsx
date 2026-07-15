@@ -314,12 +314,12 @@ function GroupsTab() {
   return (
     <div className="mt-4 space-y-4">
       <Card>
-        <CardHeader><CardTitle>Novo grupo de aquecimento</CardTitle><CardDescription>Números do grupo conversam entre si em intervalos aleatórios.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Novo grupo de aquecimento</CardTitle><CardDescription>Adicione 2 ou mais números. Eles conversam entre si 24h por dia, sem limite de mensagens. Cada número só participa de uma conversa por vez — aguarda a resposta antes de iniciar outra.</CardDescription></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div><Label>Nome</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
           <div><Label>Intervalo mín (s)</Label><Input type="number" value={minD} onChange={(e) => setMinD(+e.target.value)} /></div>
           <div><Label>Intervalo máx (s)</Label><Input type="number" value={maxD} onChange={(e) => setMaxD(+e.target.value)} /></div>
-          <div><Label>Limite/dia</Label><Input type="number" value={dl} onChange={(e) => setDl(+e.target.value)} /></div>
+          <div><Label>Limite/dia (0 = ilimitado)</Label><Input type="number" value={dl} onChange={(e) => setDl(+e.target.value)} /></div>
           <div className="col-span-2 md:col-span-4"><Button onClick={() => name && create.mutate()} disabled={!name || create.isPending}><Plus className="h-4 w-4 mr-1" />Criar</Button></div>
         </CardContent>
       </Card>
@@ -332,9 +332,10 @@ function GroupsTab() {
                 <div>
                   <div className="font-semibold">{g.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {g.min_delay_seconds}s–{g.max_delay_seconds}s · até {g.daily_limit} msgs/dia
+                    {g.min_delay_seconds}s–{g.max_delay_seconds}s · mensagens ilimitadas · 24h · turnos 1-a-1
                   </div>
                 </div>
+
                 <div className="flex items-center gap-2">
                   <Switch checked={g.active} onCheckedChange={(v) => toggleFn({ data: { id: g.id, active: v } }).then(invalidate)} />
                   <span className="text-xs">{g.active ? "Ativo" : "Pausado"}</span>
