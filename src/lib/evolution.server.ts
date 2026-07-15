@@ -19,14 +19,25 @@ async function getConfig(): Promise<EvolutionConfig> {
 
 async function evoFetch(path: string, init: RequestInit = {}) {
   const cfg = await getConfig();
-  const res = await fetch(`${cfg.api_url}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      apikey: cfg.api_key,
-      ...(init.headers || {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.api_url}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        apikey: cfg.api_key,
+        ...(init.headers || {}),
+      },
+    });
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new Error(`Evolution timeout em ${path}`);
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
   const text = await res.text();
   let body: unknown;
   try {
