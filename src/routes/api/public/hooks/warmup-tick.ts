@@ -494,8 +494,8 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
   const messageContent = await generateMessage(supabaseAdmin, group.user_id, from.id, to.id, history);
   const typingMs = Math.min(900, Math.max(250, messageContent.length * 10));
-  const toNumber = String(to.phone).replace(/\D/g, "");
-  const remoteJid = `${toNumber}@s.whatsapp.net`;
+  const toNumber = normalizePhone(to.phone);
+  const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, toNumber);
 
   let status = "sent";
   let errMsg: string | null = null;
@@ -509,26 +509,23 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   });
 
   const attemptSend = async () => {
-    // Aquece o cache de contatos do Baileys. Sem isso a Evolution ocasionalmente
-    // retorna 400 "Cannot read properties of undefined (reading 'id')" porque o
-    // JID do destinatário ainda não foi resolvido internamente.
-    try {
-      const res = await evolution.whatsappNumbers(from.evolution_instance, [toNumber]);
-      const arr = Array.isArray(res) ? res : res?.result ?? res?.numbers ?? [];
-      const rec = arr.find?.((r: any) => String(r?.number ?? "").includes(toNumber) || String(r?.jid ?? "").includes(toNumber));
-      if (rec && rec.exists === false) {
-        throw new Error(`Destinatário ${toNumber} não está no WhatsApp`);
+    let lastErr: any = null;
+    for (const target of sendTargets) {
+      try {
+        await markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid);
+        await evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs);
+        await new Promise((r) => setTimeout(r, typingMs));
+        const sentAtMs = Date.now();
+        const sendResp = await evolution.sendText(from.evolution_instance, target.number, messageContent);
+        const ackJid = extractRemoteJid(sendResp) ?? target.remoteJid;
+        return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, extractMessageId(sendResp), messageContent, sentAtMs);
+      } catch (sendErr: any) {
+        lastErr = sendErr;
+        if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
+        await recoverOpenSession(evolution, from.evolution_instance, true);
       }
-    } catch (checkErr: any) {
-      if (checkErr?.message?.includes("não está no WhatsApp")) throw checkErr;
-      // Silencia falhas do check — segue a tentativa de envio.
     }
-    await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
-    await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
-    await new Promise((r) => setTimeout(r, typingMs));
-    const sentAtMs = Date.now();
-    const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
-    return await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, extractMessageId(sendResp), messageContent, sentAtMs);
+    throw lastErr ?? new Error(`Não foi possível resolver o destinatário ${toNumber}`);
   };
 
   try {
