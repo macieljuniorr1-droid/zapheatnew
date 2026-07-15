@@ -7,7 +7,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 7_000;
+const DELIVERY_ACK_WAIT_MS = 10_000;
 const MAX_BURST_ROUNDS = 6;
 const BURST_BUDGET_MS = 45_000;
 const REPLY_GAP_MS = 500;
@@ -685,7 +685,12 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  // Sem ACK explícito dentro da janela: consideramos entregue (a Evolution
-  // aceitou o envio) e apenas registramos o status observado.
-  return { delivered: true, explicitError: false, ack: lastStatus ?? "PENDING" };
+  // Sem ACK explícito do servidor dentro da janela: a sessão Baileys provavelmente
+  // está dessincronizada (Evolution aceitou o sendText mas WhatsApp real não confirmou).
+  // Nunca marcar como entregue nesse caso — força retry/recover e, se persistir, falha.
+  return {
+    delivered: false,
+    explicitError: true,
+    error: `Sem ACK de entrega em ${DELIVERY_ACK_WAIT_MS}ms (status=${lastStatus ?? "PENDING"})`,
+  };
 }
