@@ -571,7 +571,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     if (status !== "connected") {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
-        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? null;
+        qr = normalizeQr(conn);
         if (qr) status = "qr";
       } catch {}
     }
