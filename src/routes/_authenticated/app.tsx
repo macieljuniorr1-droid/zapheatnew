@@ -821,6 +821,9 @@ function AdminTab() {
 
   return (
     <div className="mt-4 space-y-6">
+      <AdminPlatformDashboard />
+
+
       {/* KPIs de faturamento */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="MRR" value={s ? brl(s.revenue.mrrCents) as any : "—"} icon={<CreditCard />} />
