@@ -970,7 +970,123 @@ function LogsTab() {
   );
 }
 
+// ---------------- Checkout interno (QR PIX + polling) ----------------
+function CheckoutView({
+  data,
+  onClose,
+}: {
+  data: {
+    number_subscription_id: string;
+    pix_qr_code: string | null;
+    pix_qr_code_url: string | null;
+    payment_url: string | null;
+  };
+  onClose: () => void;
+}) {
+  const statusFn = useServerFn(getNumberSubscriptionStatus);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(data.pix_qr_code_url ?? null);
+
+  // Gera imagem do QR a partir do código EMV se o Pagar.me não devolveu URL pronta
+  useEffect(() => {
+    if (data.pix_qr_code_url) { setQrDataUrl(data.pix_qr_code_url); return; }
+    if (!data.pix_qr_code) return;
+    let cancelled = false;
+    import("qrcode").then((QR) =>
+      QR.toDataURL(data.pix_qr_code!, { width: 320, margin: 1 }).then((url) => {
+        if (!cancelled) setQrDataUrl(url);
+      }),
+    );
+    return () => { cancelled = true; };
+  }, [data.pix_qr_code, data.pix_qr_code_url]);
+
+  // Polling de status a cada 3s
+  const status = useQuery({
+    queryKey: ["ns-status", data.number_subscription_id],
+    queryFn: () => statusFn({ data: { id: data.number_subscription_id } }),
+    refetchInterval: 3000,
+  });
+
+  const paid = status.data?.status === "active";
+
+  if (paid) {
+    return (
+      <div className="space-y-3 text-center py-4">
+        <div className="text-4xl">✅</div>
+        <div className="font-medium">Pagamento confirmado!</div>
+        <div className="text-xs text-muted-foreground">Seu novo número já está disponível.</div>
+        <Button className="w-full" onClick={onClose}>Fechar</Button>
+      </div>
+    );
+  }
+
+  const isPix = !!(data.pix_qr_code || data.pix_qr_code_url);
+  const isCard = !isPix && !!data.payment_url;
+
+  return (
+    <div className="space-y-4 text-sm">
+      {isPix && (
+        <>
+          <div className="font-medium">Escaneie o QR Code no seu app do banco:</div>
+          {qrDataUrl ? (
+            <div className="flex justify-center bg-white p-3 rounded-lg">
+              <img src={qrDataUrl} alt="QR Code PIX" className="w-56 h-56" />
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground text-center py-8">Gerando QR Code…</div>
+          )}
+          {data.pix_qr_code && (
+            <>
+              <div className="text-xs text-muted-foreground">Ou copie o código PIX (copia e cola):</div>
+              <textarea
+                readOnly
+                className="w-full h-24 text-xs p-2 rounded border bg-muted font-mono"
+                value={data.pix_qr_code}
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                className="w-full"
+                onClick={() => {
+                  navigator.clipboard.writeText(data.pix_qr_code!);
+                  toast.success("Código PIX copiado");
+                }}
+              >
+                Copiar código PIX
+              </Button>
+            </>
+          )}
+        </>
+      )}
+
+      {isCard && (
+        <div className="space-y-2">
+          <div className="font-medium">Finalize o pagamento com cartão:</div>
+          <a href={data.payment_url!} target="_blank" rel="noreferrer">
+            <Button className="w-full">Abrir checkout seguro do cartão</Button>
+          </a>
+          <div className="text-xs text-muted-foreground">
+            O checkout do cartão abre em nova aba. Volte aqui após concluir — a tela atualiza sozinha.
+          </div>
+        </div>
+      )}
+
+      {!isPix && !isCard && (
+        <div className="text-sm text-destructive">
+          Não foi possível gerar a cobrança. Tente novamente ou fale com o suporte.
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 text-xs text-muted-foreground border-t pt-3">
+        <div className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
+        Aguardando confirmação do pagamento…
+      </div>
+    </div>
+  );
+}
+
 // ---------------- Plan (novo modelo: 2 grátis + R$25/mês por número extra) ----------------
+
 function PlanTab() {
   const qc = useQueryClient();
   const billingFn = useServerFn(getMyBilling);
