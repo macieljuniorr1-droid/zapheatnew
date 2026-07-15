@@ -60,9 +60,9 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
             await backfillPhones(supabaseAdmin, evolution, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
-            // Chips com histórico recente de ERROR de entrega recebem um restart
-            // preventivo antes de tentar enviar de novo. Sem isso a sessão da
-            // Evolution fica dessincronizada e todo envio falha em loop.
+            // Chips com histórico recente de ERROR de entrega recebem recuperação
+            // preventiva antes de tentar enviar de novo. Sem isso a sessão fica
+            // aberta no painel, mas dessincronizada para envio.
             await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
 
             const members = rawMembers.filter((i) => i.status === "connected" && i.phone && !i.temporarily_unavailable);
@@ -155,10 +155,10 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         }
 
         m.temporarily_unavailable = true;
-        // Se não confirmou OPEN, não deixa o painel mentir como conectado.
-        // Mantém em reconexão para o usuário saber que o chip precisa voltar.
-        m.status = "connecting";
-        await markInstance(supabaseAdmin, m.id, "connecting");
+        // Não derruba no painel um chip que já foi pareado. O motor apenas
+        // pula neste ciclo e segue tentando recuperar nos próximos ticks.
+        m.status = m.phone || m.warmup_started_at ? "connected" : "connecting";
+        await markInstance(supabaseAdmin, m.id, m.status as "connected" | "connecting");
       } catch {
         const recovered = await recoverOpenSession(evolution, m.evolution_instance);
         if (recovered) {
@@ -167,8 +167,8 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           return;
         }
         m.temporarily_unavailable = true;
-        m.status = "connecting";
-        await markInstance(supabaseAdmin, m.id, "connecting");
+        m.status = m.phone || m.warmup_started_at ? "connected" : "connecting";
+        await markInstance(supabaseAdmin, m.id, m.status as "connected" | "connecting");
       }
     }),
   );
@@ -224,16 +224,11 @@ async function preemptiveRecoverFailingChips(supabaseAdmin: any, evolution: any,
     members.map(async (m) => {
       const failed = streak.get(m.id) ?? 0;
       if (failed < 2) return;
-      try {
-        // Reabre a sessão sem apagar o pareamento. Restart em sessão Baileys
-        // pode forçar novo QR e parecer que o celular "desconectou sozinho".
-        await evolution.connect(m.evolution_instance);
-      } catch {}
-      const ok = await waitForOpen(evolution, m.evolution_instance);
+      const ok = await recoverOpenSession(evolution, m.evolution_instance, true);
       if (!ok) {
         m.temporarily_unavailable = true;
-        m.status = "connecting";
-        await markInstance(supabaseAdmin, m.id, "connecting");
+        m.status = m.phone || m.warmup_started_at ? "connected" : "connecting";
+        await markInstance(supabaseAdmin, m.id, m.status as "connected" | "connecting");
       }
     }),
   );
@@ -370,14 +365,14 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   if (!fromOpen) {
     const recovered = await recoverOpenSession(evolution, from.evolution_instance);
     if (!recovered) {
-      await markInstance(supabaseAdmin, from.id, "connecting");
+      await markInstance(supabaseAdmin, from.id, "connected");
       return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Remetente indisponível neste ciclo" };
     }
   }
   if (!toOpen) {
     const recovered = await recoverOpenSession(evolution, to.evolution_instance);
     if (!recovered) {
-      await markInstance(supabaseAdmin, to.id, "connecting");
+      await markInstance(supabaseAdmin, to.id, "connected");
       return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Destinatário indisponível neste ciclo" };
     }
   }
@@ -415,8 +410,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     // de novo antes de marcar como falha.
     if (ack.explicitError) {
       try {
-        await evolution.connect(from.evolution_instance);
-        await waitForOpen(evolution, from.evolution_instance);
+        await recoverOpenSession(evolution, from.evolution_instance, true);
         ack = await attemptSend();
       } catch (retryErr: any) {
         errMsg = retryErr?.message ?? ack.error ?? null;
@@ -431,8 +425,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     const firstError = e?.message ?? "erro";
     if (isClosedSessionError(firstError)) {
       try {
-        await evolution.connect(from.evolution_instance);
-        await waitForOpen(evolution, from.evolution_instance);
+        await recoverOpenSession(evolution, from.evolution_instance, true);
         const ack = await attemptSend();
         if (ack.explicitError) {
           status = "failed";
@@ -565,19 +558,31 @@ function isClosedSessionError(message: string | null | undefined) {
 }
 
 async function waitForOpen(evolution: any, instanceName: string) {
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     if (await isOpen(evolution, instanceName)) return true;
     await new Promise((r) => setTimeout(r, 1500));
   }
   return false;
 }
 
-async function recoverOpenSession(evolution: any, instanceName: string) {
+async function recoverOpenSession(evolution: any, instanceName: string, forceRestart = false) {
   if (await isOpen(evolution, instanceName)) return true;
   try {
     await evolution.connect(instanceName);
   } catch {}
-  return await waitForOpen(evolution, instanceName);
+  if (await waitForOpen(evolution, instanceName)) return true;
+
+  // Fonte do erro vista nos logs: a sessão aparece conectada no painel, mas o
+  // envio retorna ERROR continuamente. O restart da Evolution preserva o
+  // pareamento e recria o socket interno da sessão Baileys.
+  if (forceRestart) {
+    try {
+      await evolution.restart(instanceName);
+    } catch {}
+    return await waitForOpen(evolution, instanceName);
+  }
+
+  return false;
 }
 
 function extractMessageId(sendResp: any) {
