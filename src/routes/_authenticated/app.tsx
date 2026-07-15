@@ -54,6 +54,16 @@ import {
   adminForceRemoveNumberSubscription,
   adminListBillingUsers,
 } from "@/lib/billing.functions";
+import {
+  listTeamMembers,
+  createTeamMember,
+  removeTeamMember,
+  updateTeamMember,
+  assignInstanceToMember,
+  getTeamActivity,
+  heartbeat,
+  getMyTeamContext,
+} from "@/lib/team.functions";
 
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 import { supabase } from "@/integrations/supabase/client";
