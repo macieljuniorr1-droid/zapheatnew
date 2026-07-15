@@ -22,6 +22,25 @@ export const getMe = createServerFn({ method: "GET" })
 
 export const WARMUP_DAYS_REQUIRED = 3;
 
+// Normaliza o QR retornado pela Evolution para uma data URL PNG que o <img>
+// consegue renderizar. A API v2 devolve o base64 em campos variados
+// (qrcode.base64, base64, qrcode.code) e frequentemente SEM o prefixo
+// "data:image/png;base64,". Sem o prefixo o celular tenta decodificar como
+// texto e mostra "não foi possível conectar".
+function normalizeQr(payload: any): string | null {
+  const raw: string | undefined =
+    payload?.base64 ??
+    payload?.qrcode?.base64 ??
+    payload?.qrcode ??
+    payload?.qr ??
+    undefined;
+  if (!raw || typeof raw !== "string") return null;
+  if (raw.startsWith("data:")) return raw;
+  // Se veio um EMV/pairing code puro (não é base64 de imagem), descarta.
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(raw) || raw.length < 200) return null;
+  return `data:image/png;base64,${raw.replace(/\s+/g, "")}`;
+}
+
 export const listInstances = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -76,16 +95,18 @@ export const createInstance = createServerFn({ method: "POST" })
 
     const { evolution } = await import("@/lib/evolution.server");
     const resp = await evolution.createInstance(evolutionInstance);
-    let qr: string | null = resp?.qrcode?.base64 ?? null;
-    // Se a criação não devolveu uma imagem base64 pronta, força um /instance/connect
-    // para obter um QR novo e válido (evita mostrar código EMV como se fosse imagem,
-    // o que provoca "não foi possível conectar" no celular ao escanear).
-    if (!qr || !qr.startsWith("data:")) {
+    // Evolution v2 pode devolver o QR em campos diferentes e sem o prefixo data:.
+    // Usamos o QR devolvido pelo create quando ele já veio pronto; só chamamos
+    // /instance/connect quando o create não entregou um QR utilizável — porque
+    // um connect após um create com QR válido invalida o primeiro código e é a
+    // causa do "não foi possível conectar" no celular a partir do 2º número.
+    let qr: string | null = normalizeQr(resp);
+    if (!qr) {
       try {
         const conn = await evolution.connect(evolutionInstance);
-        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? qr;
+        qr = normalizeQr(conn);
       } catch {
-        // mantém o QR inicial se o connect falhar; usuário pode clicar em Atualizar
+        // mantém null; usuário pode clicar em Atualizar
       }
     }
 
@@ -135,7 +156,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
     if (status !== "connected") {
       try {
         const conn = await evolution.connect(inst.evolution_instance);
-        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? null;
+        qr = normalizeQr(conn);
         if (qr) status = "qr";
       } catch {}
     }
@@ -550,7 +571,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     if (status !== "connected") {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
-        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? null;
+        qr = normalizeQr(conn);
         if (qr) status = "qr";
       } catch {}
     }
