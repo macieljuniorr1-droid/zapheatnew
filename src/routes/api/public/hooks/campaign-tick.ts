@@ -16,7 +16,7 @@ export const Route = createFileRoute("/api/public/hooks/campaign-tick")({
         const { data: camps, error } = await supabaseAdmin
           .from("campaigns")
           .select(
-            "id, user_id, message, min_delay_seconds, max_delay_seconds, per_instance_daily_limit, active_hour_start, active_hour_end, campaign_instances(instance_id, whatsapp_instances(id, evolution_instance, status, phone))",
+            "id, user_id, message, media_url, media_type, media_filename, min_delay_seconds, max_delay_seconds, per_instance_daily_limit, active_hour_start, active_hour_end, campaign_instances(instance_id, whatsapp_instances(id, evolution_instance, status, phone, warmup_started_at))",
           )
           .eq("status", "running")
           .lte("next_run_at", nowIso)
