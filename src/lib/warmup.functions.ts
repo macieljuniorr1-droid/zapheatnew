@@ -52,6 +52,20 @@ function extractPhone(...candidates: any[]): string | null {
   return null;
 }
 
+async function recoverInstanceConnection(evolution: any, instanceName: string): Promise<boolean> {
+  try {
+    await evolution.restart(instanceName);
+  } catch {}
+  for (let i = 0; i < 6; i++) {
+    try {
+      const state = await evolution.connectionState(instanceName);
+      if ((state?.instance?.state ?? state?.state) === "open") return true;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  return false;
+}
+
 export const listInstances = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -151,7 +165,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
     if (!inst) throw new Error("Instância não encontrada");
 
     const { evolution } = await import("@/lib/evolution.server");
-    let status = "disconnected";
+    let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = (inst as any).last_qr ?? null;
     let phone: string | null = (inst as any).phone ?? null;
     try {
@@ -159,10 +173,14 @@ export const refreshInstance = createServerFn({ method: "POST" })
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else if (s === "connecting") status = "connecting";
-      else status = "disconnected";
+      else if ((inst as any).status === "connected") {
+        const recovered = await recoverInstanceConnection(evolution, inst.evolution_instance);
+        status = recovered ? "connected" : "connected";
+      } else status = "disconnected";
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
-      status = "disconnected";
+      // Falha momentânea de leitura da Evolution não pode derrubar o chip no painel.
+      status = (inst as any).status === "connected" ? "connected" : "disconnected";
     }
 
     // Quando conectado, garante que o telefone (ownerJid) esteja salvo. A v2
@@ -593,7 +611,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!inst) throw new Error("Instância não encontrada");
     const { evolution } = await import("@/lib/evolution.server");
-    let status = "disconnected";
+    let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = null;
     let phone: string | null = (inst as any).phone ?? null;
     try {
@@ -601,8 +619,14 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else if (s === "connecting") status = "connecting";
+      else if ((inst as any).status === "connected") {
+        const recovered = await recoverInstanceConnection(evolution, (inst as any).evolution_instance);
+        status = recovered ? "connected" : "connected";
+      }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
-    } catch {}
+    } catch {
+      status = (inst as any).status === "connected" ? "connected" : "disconnected";
+    }
     if (status === "connected" && !phone) {
       try {
         const fetched = await evolution.fetchInstance((inst as any).evolution_instance);
@@ -799,16 +823,49 @@ export const getGroupEngineStatus = createServerFn({ method: "GET" })
       .maybeSingle();
     if (!g || (g as any).user_id !== userId) throw new Error("Grupo não encontrado");
 
-    const { data: s } = await supabase.rpc("group_engine_status", { _group_id: data.id });
-    const row = Array.isArray(s) ? s[0] : s;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const [{ data: group }, { data: members }, { data: lastLog }, { count: todayCount }, { count: totalCount }] = await Promise.all([
+      supabaseAdmin
+        .from("warmup_groups")
+        .select("active, next_run_at")
+        .eq("id", data.id)
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("warmup_group_members")
+        .select("id, whatsapp_instances(status)")
+        .eq("group_id", data.id),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("created_at")
+        .eq("group_id", data.id)
+        .eq("status", "sent")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("group_id", data.id)
+        .eq("status", "sent")
+        .gte("created_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("group_id", data.id)
+        .eq("status", "sent"),
+    ]);
+
+    const totalMembers = members?.length ?? 0;
+    const connectedMembers = (members ?? []).filter((m: any) => m.whatsapp_instances?.status === "connected").length;
     return {
-      last_activity: row?.last_activity ?? null,
-      next_run_at: row?.next_run_at ?? null,
-      msgs_today: Number(row?.msgs_today ?? 0),
-      msgs_total: Number(row?.msgs_total ?? 0),
-      active: !!row?.active,
-      connected_members: Number(row?.connected_members ?? 0),
-      total_members: Number(row?.total_members ?? 0),
+      last_activity: (lastLog as any)?.created_at ?? null,
+      next_run_at: (group as any)?.next_run_at ?? null,
+      msgs_today: Number(todayCount ?? 0),
+      msgs_total: Number(totalCount ?? 0),
+      active: !!(group as any)?.active,
+      connected_members: connectedMembers,
+      total_members: totalMembers,
     };
   });
 

@@ -136,11 +136,13 @@ export const Route = createFileRoute("/_authenticated/app")({
 
 function AppPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { tab } = Route.useSearch();
   const [activeTab, setActiveTab] = useState(tab || "dashboard");
   const fetchMe = useServerFn(getMe);
   const me = useQuery({ queryKey: ["me"], queryFn: () => fetchMe() });
   const beatFn = useServerFn(heartbeat);
+  const lastDeliveryToast = useRef(0);
 
   useEffect(() => {
     setActiveTab(tab || "dashboard");
@@ -161,6 +163,37 @@ function AppPage() {
     const iv = setInterval(() => beatFn().catch(() => {}), 60_000);
     return () => clearInterval(iv);
   }, [me.data, beatFn]);
+
+  useEffect(() => {
+    if (!me.data) return;
+    const invalidateWarmup = () => {
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["daily-series"] });
+      queryClient.invalidateQueries({ queryKey: ["logs"] });
+      queryClient.invalidateQueries({ queryKey: ["live-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["ai-live-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      queryClient.invalidateQueries({ queryKey: ["engine-status"] });
+      queryClient.invalidateQueries({ queryKey: ["instances-health"] });
+      queryClient.invalidateQueries({ queryKey: ["instances"] });
+      queryClient.invalidateQueries({ queryKey: ["group-instances"] });
+    };
+    const channel = supabase
+      .channel("warmup-platform-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "warmup_logs" }, (payload) => {
+        invalidateWarmup();
+        const row = (payload as any).new;
+        if (row?.status === "sent" && Date.now() - lastDeliveryToast.current > 5000) {
+          lastDeliveryToast.current = Date.now();
+          toast.success("✅ Envio confirmado no WhatsApp", { duration: 1800 });
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_instances" }, invalidateWarmup)
+      .on("postgres_changes", { event: "*", schema: "public", table: "warmup_groups" }, invalidateWarmup)
+      .on("postgres_changes", { event: "*", schema: "public", table: "warmup_group_members" }, invalidateWarmup)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [me.data, queryClient]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -555,6 +588,17 @@ function timeAgo(iso: string): string {
   return `há ${d}d`;
 }
 
+function deliveryBadge(status: string) {
+  if (status === "sent") {
+    return (
+      <Badge className="text-xs bg-green-500/20 text-green-700 dark:text-green-400 border border-green-500/40 shadow-sm">
+        <CheckCircle2 className="h-3 w-3 mr-1" /> Entregue
+      </Badge>
+    );
+  }
+  return <Badge variant="destructive" className="text-xs">Falhou</Badge>;
+}
+
 function ChipReportDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
   const fn = useServerFn(getChipReport);
   const q = useQuery({
@@ -765,16 +809,17 @@ function GroupEnginePanel({ groupId }: { groupId: string }) {
   const nextIn = s.next_run_at ? Math.max(0, Math.floor((new Date(s.next_run_at).getTime() - Date.now()) / 1000)) : null;
   const nextLabel = nextIn == null ? "—" : nextIn === 0 ? "agora" : nextIn < 60 ? `${nextIn}s` : `${Math.floor(nextIn / 60)}m ${nextIn % 60}s`;
   const running = s.active && s.connected_members >= 2;
+  const activeNow = running && (nextIn === 0 || !!s.last_activity);
   return (
-    <div className="mt-3 rounded-lg border bg-muted/30 p-3">
+    <div className={`mt-3 rounded-lg border p-3 ${running ? "border-green-500/40 bg-green-500/10" : "bg-muted/30"}`}>
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
           <span className={`relative flex h-2 w-2`}>
-            {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />}
-            <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? "bg-primary" : "bg-muted-foreground/40"}`} />
+            {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-70" />}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? "bg-green-500" : "bg-muted-foreground/40"}`} />
           </span>
           <Zap className="h-3 w-3" />
-          {running ? "Motor rodando" : s.active ? "Aguardando chips conectados" : "Motor pausado"}
+          {running ? (activeNow ? "Motor ativo em tempo real" : "Motor pronto") : s.active ? "Aguardando 2 chips conectados" : "Motor pausado"}
         </div>
         <span className="text-muted-foreground">·</span>
         <span><span className="text-muted-foreground">Próximo tick:</span> <span className="font-mono">{nextLabel}</span></span>
@@ -783,7 +828,12 @@ function GroupEnginePanel({ groupId }: { groupId: string }) {
         <span className="text-muted-foreground">·</span>
         <span><span className="text-muted-foreground">Total:</span> <span className="font-semibold">{s.msgs_total}</span></span>
         <span className="text-muted-foreground">·</span>
-        <span><span className="text-muted-foreground">Chips:</span> <span className="font-semibold">{s.connected_members}/{s.total_members}</span> ativos</span>
+        <span><span className="text-muted-foreground">Chips:</span> <span className={running ? "font-semibold text-green-600 dark:text-green-400" : "font-semibold"}>{s.connected_members}/{s.total_members}</span> ativos</span>
+        {running && (
+          <Badge className="bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30 text-[10px]">
+            <CheckCircle2 className="h-3 w-3 mr-1" /> Troca funcionando
+          </Badge>
+        )}
         {s.last_activity && (
           <>
             <span className="text-muted-foreground">·</span>
@@ -959,13 +1009,18 @@ function TemplatesTab() {
             {liveLogs.map((l, idx) => (
               <div
                 key={l.id}
-                className={`p-3 rounded-lg border bg-card ${idx === 0 ? "animate-in fade-in slide-in-from-top-2 border-primary/40" : ""}`}
+                className={`p-3 rounded-lg border ${l.status === "sent" ? "bg-green-500/5 border-green-500/25" : "bg-card"} ${idx === 0 ? "animate-in fade-in slide-in-from-top-2" : ""}`}
               >
                 <div className="flex items-center gap-2 text-xs mb-1.5">
                   <Badge variant="outline" className="text-[10px]">{l.from_instance?.name ?? "?"}</Badge>
                   <span className="text-muted-foreground">→</span>
                   <Badge variant="outline" className="text-[10px]">{l.to_instance?.name ?? "?"}</Badge>
                   <span className="text-muted-foreground ml-auto">{timeAgo(l.created_at)}</span>
+                  {l.status === "sent" && (
+                    <Badge className="bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30 text-[10px]">
+                      <CheckCircle2 className="h-2.5 w-2.5 mr-1" />Entregue
+                    </Badge>
+                  )}
                   {idx === 0 && (
                     <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px]">
                       <Sparkles className="h-2.5 w-2.5 mr-1" />IA
@@ -1020,19 +1075,29 @@ function TemplatesTab() {
 // ---------------- Logs ----------------
 function LogsTab() {
   const fn = useServerFn(listLogs);
-  const q = useQuery({ queryKey: ["logs"], queryFn: () => fn(), refetchInterval: 10000 });
+  const q = useQuery({ queryKey: ["logs"], queryFn: () => fn(), refetchInterval: 3000 });
   return (
     <div className="mt-4">
       <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CheckCircle2 className="h-4 w-4 text-green-500" /> Entregas confirmadas
+          </CardTitle>
+          <CardDescription>Logs atualizados em tempo real; verde significa que o WhatsApp confirmou o envio.</CardDescription>
+        </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y max-h-[600px] overflow-y-auto">
             {q.data?.map((l: any) => (
-              <div key={l.id} className="p-3 text-sm flex items-center justify-between">
+              <div key={l.id} className={`p-3 text-sm flex items-center justify-between gap-3 ${l.status === "sent" ? "bg-green-500/5" : ""}`}>
                 <div>
                   <div><span className="font-medium">{l.from_instance?.name ?? "?"}</span> → <span className="font-medium">{l.to_instance?.name ?? "?"}</span>: <span className="text-muted-foreground">{l.content}</span></div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{new Date(l.created_at).toLocaleString("pt-BR")}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                    {new Date(l.created_at).toLocaleString("pt-BR")}
+                    {l.status === "sent" && <span className="text-green-600 dark:text-green-400 font-medium">✓ enviado e recebido</span>}
+                    {l.error && <span className="text-destructive">{l.error}</span>}
+                  </div>
                 </div>
-                <Badge variant={l.status === "sent" ? "secondary" : "destructive"} className="text-xs">{l.status}</Badge>
+                {deliveryBadge(l.status)}
               </div>
             ))}
             {q.data?.length === 0 && <div className="p-8 text-center text-muted-foreground text-sm">Nenhuma mensagem enviada ainda.</div>}
@@ -2302,6 +2367,7 @@ function LiveChatTab() {
                   <div className="whitespace-pre-wrap break-words">{m.content}</div>
                   <div className={`text-[10px] mt-1 ${isA ? "text-muted-foreground" : "text-primary-foreground/70"}`}>
                     {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    {m.status === "sent" && " · ✓ entregue"}
                     {m.status === "failed" && " · falhou"}
                   </div>
                 </div>
