@@ -842,7 +842,7 @@ async function isOpen(evolution: any, instanceName: string) {
 }
 
 function isClosedSessionError(message: string | null | undefined) {
-  return /connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
+  return /remetente n[aã]o abriu sess[aã]o|sender has not opened session|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
 }
 
 function isDeliverySyncFailure(message: string | null | undefined) {
@@ -850,7 +850,7 @@ function isDeliverySyncFailure(message: string | null | undefined) {
 }
 
 function isRepairableSessionFailure(message: string | null | undefined) {
-  return isDeliverySyncFailure(message) || /remetente n[aã]o abriu sess[aã]o|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
+  return isDeliverySyncFailure(message) || /remetente n[aã]o abriu sess[aã]o|destinat[aá]rio n[aã]o confirmou sess[aã]o aberta|sender has not opened session|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
 }
 
 async function normalizeQr(payload: any): Promise<string | null> {
@@ -882,6 +882,33 @@ async function waitForOpen(evolution: any, instanceName: string) {
     await new Promise((r) => setTimeout(r, 1500));
   }
   return false;
+}
+
+async function ensureOpenSession(evolution: any, instanceName: string, forceRestart = false) {
+  if (await isOpen(evolution, instanceName)) return true;
+  const recovered = await recoverOpenSession(evolution, instanceName, forceRestart);
+  if (recovered) return true;
+
+  // Última tentativa curta: algumas instalações retornam `connect` antes do
+  // socket ficar efetivamente aberto. Sem essa espera, o próximo sendText cai em
+  // "sender has not opened session" mesmo com o painel mostrando conectado.
+  try {
+    await evolution.connect(instanceName);
+  } catch {}
+  return await waitForOpen(evolution, instanceName);
+}
+
+async function primeChatSession(evolution: any, instanceName: string, number: string) {
+  // Faz uma leitura leve do contato antes do envio. Isso força a Evolution/
+  // Baileys a resolver o JID do destinatário e reduz o erro temporário de sessão
+  // ainda não aberta no primeiro envio entre dois chips.
+  try {
+    await evolution.whatsappNumbers(instanceName, [normalizePhone(number)]);
+  } catch {}
+  try {
+    await evolution.sendPresence(instanceName, number, "paused", 300);
+  } catch {}
+  await new Promise((r) => setTimeout(r, 700));
 }
 
 async function recoverOpenSession(evolution: any, instanceName: string, forceRestart = false) {
