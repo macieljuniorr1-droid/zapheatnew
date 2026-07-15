@@ -74,7 +74,11 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             // aberta no painel, mas dessincronizada para envio.
             await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
 
-            const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone && !i.temporarily_unavailable));
+            // Enquanto a instância estiver marcada como conectada e pareada no
+            // painel, ela entra no rodízio. A checagem definitiva de sessão
+            // aberta acontece em ensureOpenSession() logo antes do envio — se
+            // por acaso o socket cair, o motor faz connect+restart e segue.
+            const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone));
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
               results.push({
