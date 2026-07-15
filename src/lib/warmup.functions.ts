@@ -345,12 +345,24 @@ export const adminListUsers = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin
+    const { data: profs, error } = await supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, phone, company, use_case, source, created_at, subscriptions(plan:plans(name, price_cents, max_instances, max_messages_per_day))")
+      .select("id, email, full_name, phone, company, use_case, source, created_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return data ?? [];
+    const ids = (profs ?? []).map((p: any) => p.id);
+    const { data: subs } = ids.length
+      ? await supabaseAdmin
+          .from("subscriptions")
+          .select("user_id, status, plan:plans(name, price_cents, max_instances, max_messages_per_day)")
+          .in("user_id", ids)
+      : { data: [] as any[] };
+    const subByUser = new Map<string, any>();
+    for (const s of subs ?? []) subByUser.set((s as any).user_id, s);
+    return (profs ?? []).map((p: any) => ({
+      ...p,
+      subscriptions: subByUser.has(p.id) ? [subByUser.get(p.id)] : [],
+    }));
   });
 
 export const adminGetStats = createServerFn({ method: "GET" })
