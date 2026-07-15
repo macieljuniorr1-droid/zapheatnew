@@ -153,7 +153,7 @@ function AppPage() {
             <TabsTrigger value="tutorial"><BookOpen className="h-4 w-4 mr-1" />Tutorial</TabsTrigger>
             <TabsTrigger value="instances"><Smartphone className="h-4 w-4 mr-1" />Números</TabsTrigger>
             <TabsTrigger value="groups"><Users2 className="h-4 w-4 mr-1" />Grupos</TabsTrigger>
-            <TabsTrigger value="templates"><MessageSquare className="h-4 w-4 mr-1" />Mensagens</TabsTrigger>
+            <TabsTrigger value="templates"><Sparkles className="h-4 w-4 mr-1" />Motor IA</TabsTrigger>
             <TabsTrigger value="dispatch"><Send className="h-4 w-4 mr-1" />Disparos</TabsTrigger>
             <TabsTrigger value="live"><Radio className="h-4 w-4 mr-1" />Chat ao vivo</TabsTrigger>
             <TabsTrigger value="logs"><ScrollText className="h-4 w-4 mr-1" />Logs</TabsTrigger>
