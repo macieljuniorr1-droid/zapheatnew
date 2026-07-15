@@ -275,7 +275,8 @@ async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, member
     if (m.status !== "connected") continue;
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
-      const rec = Array.isArray(fetched) ? fetched[0] : fetched?.instance ?? fetched;
+      const records = Array.isArray(fetched) ? fetched : Array.isArray(fetched?.instances) ? fetched.instances : [fetched?.instance ?? fetched];
+      const rec = records.find((item: any) => item?.name === m.evolution_instance || item?.instanceName === m.evolution_instance || item?.instance?.instanceName === m.evolution_instance) ?? records[0];
       const values = [rec?.ownerJid, rec?.profile?.id, rec?.owner, rec?.wuid, rec?.number, rec?.phone];
       const phoneMatch = values.map((v) => String(v ?? "").match(/(\d{8,20})/)?.[1]).find(Boolean);
       if (phoneMatch && phoneMatch !== normalizePhone(m.phone)) {
@@ -506,25 +507,16 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     return { group: group.id, from: from.id, to: to.id, status: "skipped", reason: "números duplicados" };
   }
 
-  const fromOpen = await isOpen(evolution, from.evolution_instance);
-  const toOpen = await isOpen(evolution, to.evolution_instance);
-  if (!fromOpen) {
-    const recovered = await recoverOpenSession(evolution, from.evolution_instance, true);
-    if (!recovered) {
-      await markInstance(supabaseAdmin, from.id, "connected");
-      const result = await logPairResult(supabaseAdmin, group, from, to, "falha temporária: remetente não abriu sessão", "failed");
-      await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, result.error ?? null);
-      return result;
-    }
+  // Não bloqueia o envio só porque o endpoint de estado não respondeu "open".
+  // Em algumas instalações a Evolution aceita /sendText mesmo quando
+  // /connectionState oscila; o próprio envio é o teste real da sessão.
+  if (!(await isOpen(evolution, from.evolution_instance))) {
+    await recoverOpenSession(evolution, from.evolution_instance, true);
+    await markInstance(supabaseAdmin, from.id, "connected");
   }
-  if (!toOpen) {
-    const recovered = await recoverOpenSession(evolution, to.evolution_instance, true);
-    if (!recovered) {
-      await markInstance(supabaseAdmin, to.id, "connected");
-      // O destinatário offline não deve impedir a tentativa quando há dívida de
-      // resposta: o envio via WhatsApp pode ser aceito mesmo sem o aparelho abrir
-      // no momento. Apenas seguimos para tentar enviar.
-    }
+  if (!(await isOpen(evolution, to.evolution_instance))) {
+    await recoverOpenSession(evolution, to.evolution_instance, false);
+    await markInstance(supabaseAdmin, to.id, "connected");
   }
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
