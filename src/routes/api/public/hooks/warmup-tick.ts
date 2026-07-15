@@ -126,6 +126,22 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               content: r.content as string,
             }));
 
+            // Broadcast "typing" event so the UI shows a real typing indicator BEFORE we generate/send.
+            const typingChannel = supabaseAdmin.channel("ai-engine-live");
+            try {
+              await typingChannel.send({
+                type: "broadcast",
+                event: "typing_start",
+                payload: {
+                  group_id: (g as any).id,
+                  from_id: from.id,
+                  to_id: to.id,
+                  from_name: from.name ?? "Chip",
+                  to_name: to.name ?? "Chip",
+                },
+              });
+            } catch {}
+
             // Generate reply via AI, fallback to template pool if AI fails
             let messageContent = "";
             try {
@@ -145,14 +161,30 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               }
             }
 
+            // Tempo realista de digitação: ~55ms por caractere, entre 1.4s e 9s.
+            const typingMs = Math.min(9000, Math.max(1400, messageContent.length * 55));
+
             const toNumber = String(to.phone).replace(/\D/g, "");
             let status = "sent";
             let errMsg: string | null = null;
             try {
+              // Mostra "digitando..." no WhatsApp do destinatário (cosmético, real)
+              await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
+              // Aguarda o tempo de digitação antes de enviar de fato
+              await new Promise((r) => setTimeout(r, typingMs));
               await evolution.sendText(from.evolution_instance, toNumber, messageContent);
             } catch (e: any) {
               status = "failed";
               errMsg = e?.message ?? "erro";
+            } finally {
+              try {
+                await typingChannel.send({
+                  type: "broadcast",
+                  event: "typing_end",
+                  payload: { group_id: (g as any).id, from_id: from.id, to_id: to.id },
+                });
+                await supabaseAdmin.removeChannel(typingChannel);
+              } catch {}
             }
 
             await supabaseAdmin.from("warmup_logs").insert({
