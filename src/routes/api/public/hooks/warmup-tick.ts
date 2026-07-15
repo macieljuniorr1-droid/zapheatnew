@@ -280,6 +280,17 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     if (nowMs - new Date(log.created_at).getTime() >= FAILING_PAIR_COOLDOWN_MS) continue;
     senderFailures.set(log.from_instance_id, (senderFailures.get(log.from_instance_id) ?? 0) + 1);
   }
+  const lastOutboundStatus = new Map<string, string>();
+  for (const log of recentLogs) {
+    if (!log.from_instance_id || lastOutboundStatus.has(log.from_instance_id)) continue;
+    lastOutboundStatus.set(log.from_instance_id, log.status);
+  }
+  // Se o último envio real de um chip falhou, ele não pode continuar recebendo
+  // novas mensagens. Ele só entra em novas duplas como remetente até provar que
+  // voltou a entregar; assim nenhum número fica acumulando mensagens sem resposta.
+  const blockedRecipients = new Set(
+    [...lastOutboundStatus.entries()].filter(([, status]) => status === "failed").map(([id]) => id),
+  );
 
   // Última mensagem trocada POR PAR (não por instância). Assim uma dívida de
   // resposta entre A↔B não é apagada porque A depois falou com C.
@@ -326,6 +337,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     const from = chipById.get(debt.instanceId);
     const to = chipById.get(debt.peerId);
     if (!from || !to) continue;
+    if (blockedRecipients.has(to.id) && !blockedRecipients.has(from.id)) continue;
     pairs.push({ from, to });
     selected.add(from.id);
     selected.add(to.id);
@@ -352,6 +364,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
         const b = idle[j];
         if (selected.has(a.id) || selected.has(b.id)) continue;
         if (recentFailedPairs.has(pairKey(a.id, b.id))) continue;
+        if (blockedRecipients.has(a.id) && blockedRecipients.has(b.id)) continue;
         const count = pairCount.get(pairKey(a.id, b.id)) ?? 0;
         if (!best || count < best.count) best = { a, b, count };
       }
@@ -359,7 +372,13 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     if (!best) break;
     const aFailures = senderFailures.get(best.a.id) ?? 0;
     const bFailures = senderFailures.get(best.b.id) ?? 0;
-    pairs.push(aFailures > bFailures ? { from: best.b, to: best.a } : { from: best.a, to: best.b });
+    const aBlocked = blockedRecipients.has(best.a.id);
+    const bBlocked = blockedRecipients.has(best.b.id);
+    if (aBlocked || bBlocked) {
+      pairs.push(aBlocked ? { from: best.a, to: best.b } : { from: best.b, to: best.a });
+    } else {
+      pairs.push(aFailures > bFailures ? { from: best.a, to: best.b } : { from: best.b, to: best.a });
+    }
     selected.add(best.a.id);
     selected.add(best.b.id);
     for (let i = idle.length - 1; i >= 0; i--) {
