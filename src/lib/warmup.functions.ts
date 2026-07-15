@@ -174,8 +174,9 @@ export const createInstance = createServerFn({ method: "POST" })
         evolution_instance: evolutionInstance,
         status: "qr",
         last_qr: qr,
+        last_qr_at: qr ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
-      })
+      } as any)
       .select()
       .single();
     if (error) throw new Error(error.message);
