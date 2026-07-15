@@ -982,13 +982,27 @@ function PlanTab() {
   const [fullName, setFullName] = useState("");
   const [doc, setDoc] = useState("");
   const [method, setMethod] = useState<"pix" | "credit_card">("pix");
-  const [checkoutData, setCheckoutData] = useState<null | { pix_qr_code: string | null; payment_url: string | null }>(null);
+  const [checkoutData, setCheckoutData] = useState<null | {
+    number_subscription_id: string;
+    pix_qr_code: string | null;
+    pix_qr_code_url: string | null;
+    payment_url: string | null;
+  }>(null);
 
   const purchase = useMutation({
     mutationFn: () => purchaseFn({ data: { full_name: fullName, document: doc, payment_method: method } }),
     onSuccess: (res: any) => {
-      setCheckoutData({ pix_qr_code: res.pix_qr_code, payment_url: res.payment_url });
+      setCheckoutData({
+        number_subscription_id: res.number_subscription_id,
+        pix_qr_code: res.pix_qr_code,
+        pix_qr_code_url: res.pix_qr_code_url,
+        payment_url: res.payment_url,
+      });
       qc.invalidateQueries({ queryKey: ["my-billing"] });
+      // Se cartão: já redireciona pro checkout hospedado do Pagar.me numa nova aba
+      if (method === "credit_card" && res.payment_url) {
+        window.open(res.payment_url, "_blank", "noopener");
+      }
       toast.success("Cobrança gerada! Complete o pagamento.");
     },
     onError: (e: any) => toast.error(e.message),
