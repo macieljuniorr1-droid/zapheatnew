@@ -353,6 +353,17 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
   const sentLogs = recentLogs.filter((log) => log.status === "sent");
   const nowMs = Date.now();
 
+  const overheatedPairs = new Set<string>();
+  const recentPairCounts = new Map<string, number>();
+  for (const log of sentLogs) {
+    if (!log.from_instance_id || !log.to_instance_id) continue;
+    if (nowMs - new Date(log.created_at).getTime() > PAIR_STREAK_WINDOW_MS) continue;
+    const key = pairKey(log.from_instance_id, log.to_instance_id);
+    const count = (recentPairCounts.get(key) ?? 0) + 1;
+    recentPairCounts.set(key, count);
+    if (count >= PAIR_STREAK_LIMIT) overheatedPairs.add(key);
+  }
+
   const recentFailedPairs = new Set(
     recentLogs
       .filter((log) => log.status === "failed" && nowMs - new Date(log.created_at).getTime() < FAILING_PAIR_COOLDOWN_MS)
@@ -398,6 +409,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
   for (const [key, log] of lastByPair.entries()) {
     const age = nowMs - new Date(log.created_at).getTime();
     if (age > REPLY_TIMEOUT_MS) continue;
+    if (overheatedPairs.has(key)) continue;
     // Quem deve resposta é o `to` do último log (recebeu por último).
     const lastFailedAt = latestFailedAtForPair(recentLogs, log.to_instance_id, log.from_instance_id);
     debts.push({ instanceId: log.to_instance_id, peerId: log.from_instance_id, age, lastFailedAt });
@@ -449,6 +461,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
         const b = idle[j];
         if (selected.has(a.id) || selected.has(b.id)) continue;
         if (normalizePhone(a.phone) === normalizePhone(b.phone)) continue;
+        if (overheatedPairs.has(pairKey(a.id, b.id))) continue;
         if (recentFailedPairs.has(pairKey(a.id, b.id))) continue;
         if (blockedRecipients.has(a.id) && blockedRecipients.has(b.id)) continue;
         const count = pairCount.get(pairKey(a.id, b.id)) ?? 0;
