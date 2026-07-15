@@ -64,14 +64,14 @@ function Landing() {
         <section className="max-w-5xl mx-auto px-6 pt-20 pb-20 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-ember/30 bg-ember/5 px-3 py-1 text-xs text-ember backdrop-blur-sm">
             <Sparkles className="h-3 w-3" />
-            <span className="font-mono uppercase tracking-widest">IA Generativa · Gemini 3</span>
+            <span className="font-mono uppercase tracking-widest">IA · 24h por dia · Sem limites</span>
           </div>
           <h1 className="mt-6 font-display text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight leading-[1.02]">
-            Aqueça seus WhatsApps<br />
-            <span className="gradient-ember-text">com conversas de verdade.</span>
+            A IA aquece seus chips<br />
+            <span className="gradient-ember-text">conversando entre si 24h/dia.</span>
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Uma IA gera diálogos naturais entre seus próprios chips — bate-papo do dia a dia, gírias, tempo de resposta humano. Seus números aquecem 24/7 sem parecer robôs.
+            Seus próprios números trocam mensagens naturais uns com os outros, sem parar, com <b className="text-foreground">mensagens ilimitadas</b> e diálogos gerados por IA. Cada chip aguarda a resposta antes de iniciar outra conversa — igual a um humano.
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
             <Link to="/auth">
@@ -79,36 +79,30 @@ function Landing() {
                 Começar grátis · 2 números
               </Button>
             </Link>
-            <a href="#how">
+            <a href="#live">
               <Button size="lg" variant="ghost" className="h-12 px-8 text-base">
-                Ver demonstração
+                Ver ao vivo
               </Button>
             </a>
           </div>
           <div className="mt-6 text-xs text-muted-foreground font-mono">
-            sem cartão · configuração em 5 minutos
-          </div>
-
-          {/* Console preview */}
-          <div id="how" className="mt-20 panel rounded-2xl p-6 text-left mx-auto max-w-3xl relative">
-            <div className="absolute -top-3 left-6 px-2 py-0.5 rounded-md bg-background border border-ember/30 text-[10px] font-mono uppercase tracking-widest text-ember">
-              ao vivo
-            </div>
-            <div className="flex items-center gap-2 pb-4 border-b border-border/50">
-              <span className="h-2.5 w-2.5 rounded-full bg-ember animate-ember" />
-              <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">
-                console · warmup live
-              </span>
-              <Activity className="h-3.5 w-3.5 text-ember/70 ml-auto" />
-            </div>
-            <div className="mt-4 space-y-3 font-mono text-sm">
-              <ConsoleLine time="10:42" from="Chip 01" to="Chip 02" text="oi tudo bem?" />
-              <ConsoleLine time="10:44" from="Chip 02" to="Chip 01" text="tudo tranquilo e vc?" />
-              <ConsoleLine time="10:47" from="Chip 03" to="Chip 01" text="bora almoçar amanhã?" />
-              <ConsoleLine time="10:49" from="Chip 01" to="Chip 03" text="bora sim, que horas" fresh />
-            </div>
+            sem cartão · 24h ativo · turnos 1-a-1
           </div>
         </section>
+
+        {/* LIVE ANIMATED SIMULATION */}
+        <LiveSimulation />
+
+        {/* STATS */}
+        <section id="how" className="max-w-5xl mx-auto px-6 py-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Stat value="24/7" label="operação automática" />
+            <Stat value="∞" label="mensagens por dia" />
+            <Stat value="1-a-1" label="turnos naturais" />
+            <Stat value="< 5min" label="para configurar" />
+          </div>
+        </section>
+
 
         {/* STATS */}
         <section className="max-w-5xl mx-auto px-6 py-8">
