@@ -364,7 +364,7 @@ async function generateMessage(supabaseAdmin: any, userId: string, fromId: strin
       .from("whatsapp_instances")
       .select("id, name")
       .in("id", [fromId, toId]);
-    const map = new Map((names ?? []).map((n: any) => [n.id, n.name]));
+    const map = new Map<string, string | null>((names ?? []).map((n: any) => [String(n.id), typeof n.name === "string" ? n.name : null]));
     return await generateReply(history, {
       pairSeed: [fromId, toId].sort().join(":"),
       fromName: map.get(fromId) ?? null,
