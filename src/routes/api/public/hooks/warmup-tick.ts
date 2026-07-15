@@ -530,7 +530,48 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     error: errMsg,
   });
 
+  if (status === "failed") {
+    await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, errMsg);
+  }
+
   return { group: group.id, from: from.id, to: to.id, status, error: errMsg ?? undefined };
+}
+
+async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, groupId: string, from: Chip, errMsg: string | null) {
+  if (!isDeliverySyncFailure(errMsg)) return;
+  const { data: recent } = await supabaseAdmin
+    .from("warmup_logs")
+    .select("status, error, created_at")
+    .eq("group_id", groupId)
+    .eq("from_instance_id", from.id)
+    .gte("created_at", new Date(Date.now() - SENDER_REPAIR_WINDOW_MS).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  let consecutiveFailures = 1;
+  for (const log of recent ?? []) {
+    if (log.status === "sent") break;
+    if (log.status === "failed" && isDeliverySyncFailure(log.error)) consecutiveFailures++;
+  }
+  if (consecutiveFailures < 2) return;
+
+  // Quando uma sessão recebe mensagens mas não consegue enviar, restart/connect
+  // não é suficiente: ela precisa sair do aquecimento e gerar novo QR para
+  // sincronizar as credenciais Baileys com o WhatsApp real. Isso impede que um
+  // número quebrado continue recebendo mensagens sem responder.
+  let qr: string | null = null;
+  try {
+    await evolution.logout(from.evolution_instance);
+  } catch {}
+  try {
+    qr = normalizeQr(await evolution.connect(from.evolution_instance));
+  } catch {}
+  await supabaseAdmin
+    .from("whatsapp_instances")
+    .update({ status: "qr", last_qr: qr, updated_at: new Date().toISOString() })
+    .eq("id", from.id);
+  from.status = "qr";
+  from.temporarily_unavailable = true;
 }
 
 async function logPairResult(supabaseAdmin: any, group: any, from: Chip, to: Chip, content: string, status: "sent" | "failed", error?: string | null) {
@@ -658,6 +699,23 @@ async function isOpen(evolution: any, instanceName: string) {
 
 function isClosedSessionError(message: string | null | undefined) {
   return /connection closed|no sessions|sessionerror|stream errored|timed out|1006/i.test(String(message ?? ""));
+}
+
+function isDeliverySyncFailure(message: string | null | undefined) {
+  return /whatsapp retornou error|sem confirma[cç][aã]o real|sem ack|pending|server_ack/i.test(String(message ?? ""));
+}
+
+function normalizeQr(payload: any): string | null {
+  const raw: string | undefined =
+    payload?.base64 ??
+    payload?.qrcode?.base64 ??
+    payload?.qrcode ??
+    payload?.qr ??
+    undefined;
+  if (!raw || typeof raw !== "string") return null;
+  if (raw.startsWith("data:")) return raw;
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(raw) || raw.length < 200) return null;
+  return `data:image/png;base64,${raw.replace(/\s+/g, "")}`;
 }
 
 async function waitForOpen(evolution: any, instanceName: string) {
