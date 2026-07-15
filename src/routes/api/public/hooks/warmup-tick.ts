@@ -9,12 +9,14 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 10_000;
-const MAX_BURST_ROUNDS = 6;
-const BURST_BUDGET_MS = 45_000;
+const DELIVERY_ACK_WAIT_MS = 7_000;
+const MAX_BURST_ROUNDS = 1;
+const BURST_BUDGET_MS = 20_000;
 const REPLY_GAP_MS = 500;
 const FAILING_PAIR_COOLDOWN_MS = 90 * 1000;
 const SENDER_REPAIR_WINDOW_MS = 20 * 60 * 1000;
+const PAIR_STREAK_WINDOW_MS = 8 * 60 * 1000;
+const PAIR_STREAK_LIMIT = 4;
 
 type Chip = {
   id: string;
@@ -55,6 +57,9 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
         const results: any[] = [];
         for (const g of groups ?? []) {
           try {
+            const claimed = await claimGroupForThisTick(supabaseAdmin, g, now);
+            if (!claimed) continue;
+
             const rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
               .filter((i: any) => i);
@@ -68,7 +73,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             // aberta no painel, mas dessincronizada para envio.
             await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
 
-            const members = rawMembers.filter((i) => i.status === "connected" && i.phone);
+            const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone));
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
               results.push({
@@ -116,8 +121,25 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
   },
 });
 
+async function claimGroupForThisTick(supabaseAdmin: any, group: any, nowIso: string) {
+  // O cron chama este endpoint a cada ~30s. Um ciclo pode levar alguns segundos
+  // esperando ACK real do WhatsApp; sem essa reserva, duas execuções pegam o
+  // mesmo grupo ao mesmo tempo e criam envios duplicados/race na Evolution.
+  const holdUntil = new Date(Date.now() + 60_000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("warmup_groups")
+    .update({ next_run_at: holdUntil })
+    .eq("id", group.id)
+    .lte("next_run_at", nowIso)
+    .select("id")
+    .maybeSingle();
+  if (error) return false;
+  return Boolean(data?.id);
+}
+
 async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, rawMembers: Chip[]) {
   const existing = new Set(rawMembers.map((m) => m.id));
+  const existingPhones = new Set(rawMembers.map((m) => normalizePhone(m.phone)).filter(Boolean));
   const { data: connected } = await supabaseAdmin
     .from("whatsapp_instances")
       .select("id, name, evolution_instance, status, phone, last_qr, warmup_started_at")
@@ -125,7 +147,13 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
     .eq("status", "connected")
     .not("phone", "is", null);
 
-  const missing = (connected ?? []).filter((chip: Chip) => !existing.has(chip.id));
+  const missing = (connected ?? []).filter((chip: Chip) => {
+    if (existing.has(chip.id)) return false;
+    const phone = normalizePhone(chip.phone);
+    if (phone && existingPhones.has(phone)) return false;
+    if (phone) existingPhones.add(phone);
+    return true;
+  });
   if (!missing.length) return;
 
   await supabaseAdmin.from("warmup_group_members").insert(
@@ -134,6 +162,30 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
   );
 
   rawMembers.push(...missing);
+}
+
+function normalizePhone(phone: string | null | undefined) {
+  return String(phone ?? "").replace(/\D/g, "");
+}
+
+function uniqueSendableMembers(members: Chip[]) {
+  const byPhone = new Map<string, Chip>();
+  for (const member of members) {
+    const phone = normalizePhone(member.phone);
+    if (!phone) continue;
+    const current = byPhone.get(phone);
+    if (!current) {
+      byPhone.set(phone, member);
+      continue;
+    }
+    const currentStarted = current.warmup_started_at ? new Date(current.warmup_started_at).getTime() : 0;
+    const memberStarted = member.warmup_started_at ? new Date(member.warmup_started_at).getTime() : 0;
+    // Se o mesmo WhatsApp foi conectado em duas instâncias, só uma pode entrar
+    // no rodízio. Mantém a conexão mais recente para não gerar conversa consigo
+    // mesmo nem quebrar o cache de contatos da Evolution/Baileys.
+    if (memberStarted > currentStarted) byPhone.set(phone, member);
+  }
+  return [...byPhone.values()];
 }
 
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
@@ -301,6 +353,17 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
   const sentLogs = recentLogs.filter((log) => log.status === "sent");
   const nowMs = Date.now();
 
+  const overheatedPairs = new Set<string>();
+  const recentPairCounts = new Map<string, number>();
+  for (const log of sentLogs) {
+    if (!log.from_instance_id || !log.to_instance_id) continue;
+    if (nowMs - new Date(log.created_at).getTime() > PAIR_STREAK_WINDOW_MS) continue;
+    const key = pairKey(log.from_instance_id, log.to_instance_id);
+    const count = (recentPairCounts.get(key) ?? 0) + 1;
+    recentPairCounts.set(key, count);
+    if (count >= PAIR_STREAK_LIMIT) overheatedPairs.add(key);
+  }
+
   const recentFailedPairs = new Set(
     recentLogs
       .filter((log) => log.status === "failed" && nowMs - new Date(log.created_at).getTime() < FAILING_PAIR_COOLDOWN_MS)
@@ -346,6 +409,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
   for (const [key, log] of lastByPair.entries()) {
     const age = nowMs - new Date(log.created_at).getTime();
     if (age > REPLY_TIMEOUT_MS) continue;
+    if (overheatedPairs.has(key)) continue;
     // Quem deve resposta é o `to` do último log (recebeu por último).
     const lastFailedAt = latestFailedAtForPair(recentLogs, log.to_instance_id, log.from_instance_id);
     debts.push({ instanceId: log.to_instance_id, peerId: log.from_instance_id, age, lastFailedAt });
@@ -369,6 +433,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     const from = chipById.get(debt.instanceId);
     const to = chipById.get(debt.peerId);
     if (!from || !to) continue;
+    if (from.id === to.id || normalizePhone(from.phone) === normalizePhone(to.phone)) continue;
     if (blockedRecipients.has(to.id)) continue;
     pairs.push({ from, to });
     selected.add(from.id);
@@ -395,6 +460,8 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
         const a = idle[i];
         const b = idle[j];
         if (selected.has(a.id) || selected.has(b.id)) continue;
+        if (normalizePhone(a.phone) === normalizePhone(b.phone)) continue;
+        if (overheatedPairs.has(pairKey(a.id, b.id))) continue;
         if (recentFailedPairs.has(pairKey(a.id, b.id))) continue;
         if (blockedRecipients.has(a.id) && blockedRecipients.has(b.id)) continue;
         const count = pairCount.get(pairKey(a.id, b.id)) ?? 0;
@@ -439,6 +506,9 @@ function pairKey(a: string, b: string) {
 
 async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }: any) {
   const { from, to } = pair as { from: Chip; to: Chip };
+  if (from.id === to.id || normalizePhone(from.phone) === normalizePhone(to.phone)) {
+    return { group: group.id, from: from.id, to: to.id, status: "skipped", reason: "números duplicados" };
+  }
 
   const fromOpen = await isOpen(evolution, from.evolution_instance);
   const toOpen = await isOpen(evolution, to.evolution_instance);
@@ -462,8 +532,8 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
   const messageContent = await generateMessage(supabaseAdmin, group.user_id, from.id, to.id, history);
   const typingMs = Math.min(900, Math.max(250, messageContent.length * 10));
-  const toNumber = String(to.phone).replace(/\D/g, "");
-  const remoteJid = `${toNumber}@s.whatsapp.net`;
+  const toNumber = normalizePhone(to.phone);
+  const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, toNumber);
 
   let status = "sent";
   let errMsg: string | null = null;
@@ -477,26 +547,23 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   });
 
   const attemptSend = async () => {
-    // Aquece o cache de contatos do Baileys. Sem isso a Evolution ocasionalmente
-    // retorna 400 "Cannot read properties of undefined (reading 'id')" porque o
-    // JID do destinatário ainda não foi resolvido internamente.
-    try {
-      const res = await evolution.whatsappNumbers(from.evolution_instance, [toNumber]);
-      const arr = Array.isArray(res) ? res : res?.result ?? res?.numbers ?? [];
-      const rec = arr.find?.((r: any) => String(r?.number ?? "").includes(toNumber) || String(r?.jid ?? "").includes(toNumber));
-      if (rec && rec.exists === false) {
-        throw new Error(`Destinatário ${toNumber} não está no WhatsApp`);
+    let lastErr: any = null;
+    for (const target of sendTargets) {
+      try {
+        await markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid);
+        await evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs);
+        await new Promise((r) => setTimeout(r, typingMs));
+        const sentAtMs = Date.now();
+        const sendResp = await evolution.sendText(from.evolution_instance, target.number, messageContent);
+        const ackJid = extractRemoteJid(sendResp) ?? target.remoteJid;
+        return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, extractMessageId(sendResp), messageContent, sentAtMs);
+      } catch (sendErr: any) {
+        lastErr = sendErr;
+        if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
+        await recoverOpenSession(evolution, from.evolution_instance, true);
       }
-    } catch (checkErr: any) {
-      if (checkErr?.message?.includes("não está no WhatsApp")) throw checkErr;
-      // Silencia falhas do check — segue a tentativa de envio.
     }
-    await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
-    await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
-    await new Promise((r) => setTimeout(r, typingMs));
-    const sentAtMs = Date.now();
-    const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
-    return await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, extractMessageId(sendResp), messageContent, sentAtMs);
+    throw lastErr ?? new Error(`Não foi possível resolver o destinatário ${toNumber}`);
   };
 
   try {
@@ -656,6 +723,64 @@ async function markLatestIncomingAsRead(evolution: any, instanceName: string, re
   } catch {}
 }
 
+async function resolveSendTargets(evolution: any, instanceName: string, phone: string) {
+  const fallback = { number: phone, remoteJid: `${phone}@s.whatsapp.net` };
+  const targets: Array<{ number: string; remoteJid: string }> = [];
+  const addTarget = (value: unknown) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return;
+    const isJid = /@(s\.whatsapp\.net|lid)$/i.test(raw);
+    const digits = normalizePhone(raw);
+    if (!isJid && digits !== phone) return;
+    const remoteJid = isJid ? raw : `${digits}@s.whatsapp.net`;
+    const number = /@lid$/i.test(remoteJid) ? remoteJid : digits;
+    if (!number || targets.some((t) => t.number === number || t.remoteJid === remoteJid)) return;
+    targets.push({ number, remoteJid });
+  };
+
+  try {
+    const resolved = await evolution.whatsappNumbers(instanceName, [phone]);
+    for (const rec of normalizeEvolutionRecords(resolved)) {
+      if (rec?.exists === false && !String(rec?.jid ?? rec?.number ?? "").includes("@lid")) {
+        throw new Error(`Destinatário ${phone} não está no WhatsApp`);
+      }
+      addTarget(rec?.jid);
+      addTarget(rec?.number);
+      addTarget(rec?.id);
+    }
+  } catch (e: any) {
+    if (String(e?.message ?? "").includes("não está no WhatsApp")) throw e;
+  }
+
+  // Em versões recentes do WhatsApp, alguns contatos aparecem como @lid. Buscar
+  // contatos locais dá uma segunda chance de achar o JID real antes do envio.
+  try {
+    const contacts = await evolution.findContacts(instanceName);
+    for (const rec of normalizeEvolutionRecords(contacts)) {
+      const blob = JSON.stringify(rec ?? {});
+      if (!blob.includes(phone)) continue;
+      addTarget(rec?.id);
+      addTarget(rec?.jid);
+      addTarget(rec?.remoteJid);
+      addTarget(rec?.number);
+    }
+  } catch {}
+
+  addTarget(fallback.remoteJid);
+  return targets.length ? targets : [fallback];
+}
+
+function normalizeEvolutionRecords(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.result)) return payload.result;
+  if (Array.isArray(payload?.numbers)) return payload.numbers;
+  if (Array.isArray(payload?.contacts)) return payload.contacts;
+  if (Array.isArray(payload?.records)) return payload.records;
+  if (Array.isArray(payload?.response?.message)) return payload.response.message;
+  if (Array.isArray(payload?.messages?.records)) return payload.messages.records;
+  return [];
+}
+
 function createBroadcast() {
   return async (event: string, payload: any) => {
     try {
@@ -776,6 +901,10 @@ async function recoverOpenSession(evolution: any, instanceName: string, forceRes
 
 function extractMessageId(sendResp: any) {
   return sendResp?.key?.id ?? sendResp?.message?.key?.id ?? sendResp?.data?.key?.id ?? sendResp?.id ?? sendResp?.messageId;
+}
+
+function extractRemoteJid(sendResp: any) {
+  return sendResp?.key?.remoteJid ?? sendResp?.message?.key?.remoteJid ?? sendResp?.data?.key?.remoteJid ?? sendResp?.remoteJid;
 }
 
 function messageText(record: any) {
