@@ -201,6 +201,15 @@ export const refreshInstance = createServerFn({ method: "POST" })
       // Não mantém "conectado" às cegas quando a sessão não confirmou open.
       // Assim o painel mostra que está tentando reconectar em vez de parecer OK.
       status = (inst as any).status === "connected" ? "connecting" : "disconnected";
+      triedSoftReconnect = true;
+      const recovered = await reconnectInstance(evolution, inst.evolution_instance);
+      if (recovered.connected) {
+        status = "connected";
+        qr = null;
+      } else if (recovered.qr) {
+        status = "qr";
+        qr = recovered.qr;
+      }
     }
 
     // Quando conectado, garante que o telefone (ownerJid) esteja salvo. A v2
@@ -752,6 +761,15 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
       status = (inst as any).status === "connected" ? "connecting" : "disconnected";
+      triedSoftReconnect = true;
+      const recovered = await reconnectInstance(evolution, (inst as any).evolution_instance);
+      if (recovered.connected) {
+        status = "connected";
+        qr = null;
+      } else if (recovered.qr) {
+        status = "qr";
+        qr = recovered.qr;
+      }
     }
     if (status === "connected" && !phone) {
       try {
