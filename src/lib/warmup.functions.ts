@@ -532,3 +532,285 @@ export const adminDeleteInstance = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+
+// ---------------- Chip health & temperature ----------------
+
+export const listInstancesWithHealth = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data: instances, error } = await supabase
+      .from("whatsapp_instances")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    if (!instances?.length) return [];
+
+    const results = await Promise.all(
+      instances.map(async (i: any) => {
+        const { data: t } = await supabase.rpc("chip_temperature", { _instance_id: i.id });
+        const row = Array.isArray(t) ? t[0] : t;
+        return {
+          ...i,
+          temperature: row?.temperature ?? "cold",
+          msgs_7d: Number(row?.msgs_7d ?? 0),
+          msgs_total: Number(row?.msgs_total ?? 0),
+          active_days_7d: Number(row?.active_days_7d ?? 0),
+          last_activity: row?.last_activity ?? null,
+        };
+      }),
+    );
+    return results;
+  });
+
+export const getChipReport = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("*")
+      .eq("id", data.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!inst) throw new Error("Chip não encontrado");
+
+    const { data: t } = await supabase.rpc("chip_temperature", { _instance_id: data.id });
+    const temp = Array.isArray(t) ? t[0] : t;
+
+    const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    const { data: logs } = await supabase
+      .from("warmup_logs")
+      .select("from_instance_id, to_instance_id, status, created_at, content")
+      .or(`from_instance_id.eq.${data.id},to_instance_id.eq.${data.id}`)
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(2000);
+
+    const dailyMap = new Map<string, number>();
+    const hourMap = new Map<number, number>();
+    const peerMap = new Map<string, number>();
+    let sent = 0;
+    let failed = 0;
+    for (const l of logs ?? []) {
+      const d = new Date(l.created_at);
+      const day = d.toISOString().slice(0, 10);
+      dailyMap.set(day, (dailyMap.get(day) ?? 0) + 1);
+      hourMap.set(d.getHours(), (hourMap.get(d.getHours()) ?? 0) + 1);
+      if (l.status === "sent") sent++;
+      else if (l.status === "failed") failed++;
+      const peer = l.from_instance_id === data.id ? l.to_instance_id : l.from_instance_id;
+      if (peer) peerMap.set(peer, (peerMap.get(peer) ?? 0) + 1);
+    }
+
+    const daily: { day: string; count: number }[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      daily.push({ day: key, count: dailyMap.get(key) ?? 0 });
+    }
+
+    const peerIds = Array.from(peerMap.keys());
+    let peers: { id: string; name: string; count: number }[] = [];
+    if (peerIds.length) {
+      const { data: names } = await supabase
+        .from("whatsapp_instances")
+        .select("id, name")
+        .in("id", peerIds);
+      peers = (names ?? [])
+        .map((n: any) => ({ id: n.id, name: n.name, count: peerMap.get(n.id) ?? 0 }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+    }
+
+    const hourly: { hour: number; count: number }[] = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      count: hourMap.get(h) ?? 0,
+    }));
+
+    const score = Math.min(
+      100,
+      Math.round(
+        Number(temp?.msgs_7d ?? 0) / 3 +
+          Number(temp?.active_days_7d ?? 0) * 8 +
+          peers.length * 4,
+      ),
+    );
+
+    return {
+      instance: inst,
+      temperature: temp?.temperature ?? "cold",
+      msgs_7d: Number(temp?.msgs_7d ?? 0),
+      msgs_total: Number(temp?.msgs_total ?? 0),
+      active_days_7d: Number(temp?.active_days_7d ?? 0),
+      last_activity: temp?.last_activity ?? null,
+      sent_30d: sent,
+      failed_30d: failed,
+      score,
+      daily,
+      hourly,
+      peers,
+    };
+  });
+
+export const getGroupEngineStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: g } = await supabase
+      .from("warmup_groups")
+      .select("id, user_id")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!g || (g as any).user_id !== userId) throw new Error("Grupo não encontrado");
+
+    const { data: s } = await supabase.rpc("group_engine_status", { _group_id: data.id });
+    const row = Array.isArray(s) ? s[0] : s;
+    return {
+      last_activity: row?.last_activity ?? null,
+      next_run_at: row?.next_run_at ?? null,
+      msgs_today: Number(row?.msgs_today ?? 0),
+      msgs_total: Number(row?.msgs_total ?? 0),
+      active: !!row?.active,
+      connected_members: Number(row?.connected_members ?? 0),
+      total_members: Number(row?.total_members ?? 0),
+    };
+  });
+
+export const getUserDailySeries = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data } = await supabase.rpc("messages_daily_series", { _user_id: userId, _days: 30 });
+    return (data ?? []).map((r: any) => ({
+      day: r.day,
+      sent: Number(r.sent),
+      failed: Number(r.failed),
+    }));
+  });
+
+// ---------------- Admin: platform-wide dashboards ----------------
+
+export const adminPlatformDashboard = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: daily } = await supabaseAdmin.rpc("messages_daily_series", {
+      _user_id: null as any,
+      _days: 30,
+    });
+
+    const { data: instances } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("id, user_id, status");
+
+    const tempResults = await Promise.all(
+      (instances ?? []).map(async (i: any) => {
+        const { data: t } = await supabaseAdmin.rpc("chip_temperature", { _instance_id: i.id });
+        const row = Array.isArray(t) ? t[0] : t;
+        return {
+          id: i.id,
+          user_id: i.user_id,
+          status: i.status,
+          temperature: (row?.temperature ?? "cold") as string,
+          msgs_7d: Number(row?.msgs_7d ?? 0),
+        };
+      }),
+    );
+
+    const tempDist = { hot: 0, warm: 0, cold: 0 };
+    for (const t of tempResults) tempDist[t.temperature as "hot" | "warm" | "cold"]++;
+
+    const perUser = new Map<string, { chips: number; msgs_7d: number }>();
+    for (const t of tempResults) {
+      const cur = perUser.get(t.user_id) ?? { chips: 0, msgs_7d: 0 };
+      cur.chips++;
+      cur.msgs_7d += t.msgs_7d;
+      perUser.set(t.user_id, cur);
+    }
+    const topIds = Array.from(perUser.entries())
+      .sort((a, b) => b[1].msgs_7d - a[1].msgs_7d)
+      .slice(0, 10)
+      .map(([id]) => id);
+    const { data: topProfiles } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email, full_name")
+      .in("id", topIds.length ? topIds : ["00000000-0000-0000-0000-000000000000"]);
+    const topClients = topIds.map((id) => {
+      const p = (topProfiles ?? []).find((x: any) => x.id === id);
+      const s = perUser.get(id)!;
+      return {
+        id,
+        name: (p as any)?.full_name || (p as any)?.email || id.slice(0, 8),
+        email: (p as any)?.email ?? "",
+        chips: s.chips,
+        msgs_7d: s.msgs_7d,
+      };
+    });
+
+    const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    const [lastLogRes, fail24Res, sent24Res] = await Promise.all([
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("created_at")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "failed")
+        .gte("created_at", dayAgo),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "sent")
+        .gte("created_at", dayAgo),
+    ]);
+    const fail24 = fail24Res.count ?? 0;
+    const sent24 = sent24Res.count ?? 0;
+
+    const [totalRes, week7Res, month30Res] = await Promise.all([
+      supabaseAdmin.from("warmup_logs").select("id", { count: "exact", head: true }).eq("status", "sent"),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "sent")
+        .gte("created_at", new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "sent")
+        .gte("created_at", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()),
+    ]);
+
+    return {
+      dailySeries: (daily ?? []).map((r: any) => ({
+        day: r.day,
+        sent: Number(r.sent),
+        failed: Number(r.failed),
+      })),
+      totals: {
+        totalChips: (instances ?? []).length,
+        connectedChips: (instances ?? []).filter((i: any) => i.status === "connected").length,
+        totalMsgs: totalRes.count ?? 0,
+        totalMsgs7d: week7Res.count ?? 0,
+        totalMsgs30d: month30Res.count ?? 0,
+      },
+      temperature: tempDist,
+      topClients,
+      engine: {
+        lastLogAt: (lastLogRes.data as any)?.created_at ?? null,
+        sent24h: sent24,
+        failed24h: fail24,
+        successRate:
+          sent24 + fail24 > 0 ? Math.round((sent24 / (sent24 + fail24)) * 100) : 100,
+      },
+    };
+  });

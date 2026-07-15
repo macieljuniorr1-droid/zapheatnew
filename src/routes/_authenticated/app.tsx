@@ -29,6 +29,11 @@ import {
   adminListInstances,
   adminRefreshInstance,
   adminDeleteInstance,
+  listInstancesWithHealth,
+  getChipReport,
+  getGroupEngineStatus,
+  getUserDailySeries,
+  adminPlatformDashboard,
 } from "@/lib/warmup.functions";
 import {
   listContactLists,
@@ -74,7 +79,27 @@ import {
   Upload,
   Play,
   Pause,
+  Flame as FlameIcon,
+  Snowflake,
+  Thermometer,
+  Activity,
+  BarChart3,
+  Zap,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as ChartTooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 
 export const Route = createFileRoute("/_authenticated/app")({
   validateSearch: (s: Record<string, unknown>) => ({ tab: (s.tab as string) || undefined }),
@@ -167,12 +192,41 @@ function AppPage() {
 
 function Dashboard() {
   const fn = useServerFn(getStats);
+  const seriesFn = useServerFn(getUserDailySeries);
   const q = useQuery({ queryKey: ["stats"], queryFn: () => fn(), refetchInterval: 15000 });
+  const series = useQuery({ queryKey: ["daily-series"], queryFn: () => seriesFn(), refetchInterval: 60000 });
+  const chartData = (series.data ?? []).map((r: any) => ({
+    day: new Date(r.day).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+    enviadas: r.sent,
+    falhas: r.failed,
+  }));
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-      <StatCard label="Números conectados" value={q.data?.instances ?? 0} icon={<Smartphone />} />
-      <StatCard label="Grupos ativos" value={q.data?.activeGroups ?? 0} icon={<Users2 />} />
-      <StatCard label="Mensagens hoje" value={q.data?.sentToday ?? 0} icon={<Flame />} />
+    <div className="mt-4 space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label="Números conectados" value={q.data?.instances ?? 0} icon={<Smartphone />} />
+        <StatCard label="Grupos ativos" value={q.data?.activeGroups ?? 0} icon={<Users2 />} />
+        <StatCard label="Mensagens hoje" value={q.data?.sentToday ?? 0} icon={<Flame />} />
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-4 w-4" />Mensagens nos últimos 30 dias</CardTitle>
+          <CardDescription>Volume enviado pela sua conta.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[220px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
+                <Line type="monotone" dataKey="enviadas" stroke="var(--primary)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="falhas" stroke="var(--destructive)" strokeWidth={1.5} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -190,47 +244,62 @@ function StatCard({ label, value, icon }: { label: string; value: number | strin
   );
 }
 
-// ---------------- Instances ----------------
+// ---------------- Instances (Números) with health & temperature ----------------
 function InstancesTab() {
   const qc = useQueryClient();
-  const listFn = useServerFn(listInstances);
+  const listFn = useServerFn(listInstancesWithHealth);
   const createFn = useServerFn(createInstance);
   const refreshFn = useServerFn(refreshInstance);
   const deleteFn = useServerFn(deleteInstance);
-  const q = useQuery({ queryKey: ["instances"], queryFn: () => listFn(), refetchInterval: 10000 });
+  const q = useQuery({ queryKey: ["instances-health"], queryFn: () => listFn(), refetchInterval: 15000 });
   const [name, setName] = useState("");
   const [qrOpen, setQrOpen] = useState<string | null>(null);
+  const [reportId, setReportId] = useState<string | null>(null);
 
   const create = useMutation({
     mutationFn: (n: string) => createFn({ data: { name: n } }),
     onSuccess: (row: any) => {
-      toast.success("Instância criada. Escaneie o QR Code.");
+      toast.success("Chip criado. Escaneie o QR Code.");
       setName("");
       setQrOpen(row.id);
+      qc.invalidateQueries({ queryKey: ["instances-health"] });
       qc.invalidateQueries({ queryKey: ["instances"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
   const refresh = useMutation({
     mutationFn: (id: string) => refreshFn({ data: { id } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["instances"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["instances-health"] });
+      qc.invalidateQueries({ queryKey: ["instances"] });
+    },
     onError: (e: any) => toast.error(e.message),
   });
   const del = useMutation({
     mutationFn: (id: string) => deleteFn({ data: { id } }),
     onSuccess: () => {
       toast.success("Removido");
+      qc.invalidateQueries({ queryKey: ["instances-health"] });
       qc.invalidateQueries({ queryKey: ["instances"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
 
   const current = q.data?.find((i: any) => i.id === qrOpen);
+  const counts = { hot: 0, warm: 0, cold: 0, connected: 0 };
+  for (const i of q.data ?? []) {
+    counts[(i as any).temperature as "hot" | "warm" | "cold"]++;
+    if (i.status === "connected") counts.connected++;
+  }
+  const total = q.data?.length ?? 0;
 
   return (
     <div className="mt-4 space-y-4">
       <Card>
-        <CardHeader><CardTitle>Conectar novo número</CardTitle><CardDescription>Após criar, escaneie o QR Code com o WhatsApp do celular.</CardDescription></CardHeader>
+        <CardHeader>
+          <CardTitle>Conectar novo número</CardTitle>
+          <CardDescription>Após criar, escaneie o QR Code com o WhatsApp do celular.</CardDescription>
+        </CardHeader>
         <CardContent className="flex gap-2 flex-wrap">
           <Input placeholder="Nome do chip (ex: Chip 1)" value={name} onChange={(e) => setName(e.target.value)} className="max-w-xs" />
           <Button onClick={() => name && create.mutate(name)} disabled={create.isPending || !name}>
@@ -239,27 +308,38 @@ function InstancesTab() {
         </CardContent>
       </Card>
 
+      {total > 0 && (
+        <Card className="border-primary/20">
+          <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="font-semibold">{total} chips</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" />{counts.connected} conectados</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
+                <FlameIcon className="h-3 w-3" />{counts.hot} quentes
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 font-medium">
+                <Thermometer className="h-3 w-3" />{counts.warm} mornos
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-sky-500/15 text-sky-600 dark:text-sky-400 font-medium">
+                <Snowflake className="h-3 w-3" />{counts.cold} frios
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {q.data?.map((i: any) => (
-          <Card key={i.id}>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-semibold">{i.name}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{i.phone ?? "—"}</div>
-                </div>
-                <StatusBadge status={i.status} />
-              </div>
-              <div className="flex gap-1 mt-3">
-                <Button size="sm" variant="secondary" onClick={() => { refresh.mutate(i.id); setQrOpen(i.id); }}>
-                  <RefreshCw className="h-3 w-3 mr-1" />QR / Status
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => del.mutate(i.id)}>
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <ChipCard
+            key={i.id}
+            chip={i}
+            onQR={() => { refresh.mutate(i.id); setQrOpen(i.id); }}
+            onReport={() => setReportId(i.id)}
+            onDelete={() => { if (confirm(`Remover ${i.name}?`)) del.mutate(i.id); }}
+          />
         ))}
         {q.data?.length === 0 && <div className="text-sm text-muted-foreground col-span-full text-center py-8">Nenhum número conectado ainda.</div>}
       </div>
@@ -288,7 +368,188 @@ function InstancesTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ChipReportDialog id={reportId} onClose={() => setReportId(null)} />
     </div>
+  );
+}
+
+function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => void; onReport: () => void; onDelete: () => void }) {
+  const temp = chip.temperature as "hot" | "warm" | "cold";
+  const tempMeta = {
+    hot: { icon: <FlameIcon className="h-3 w-3" />, label: "Quente", cls: "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30" },
+    warm: { icon: <Thermometer className="h-3 w-3" />, label: "Morno", cls: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30" },
+    cold: { icon: <Snowflake className="h-3 w-3" />, label: "Frio", cls: "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30" },
+  }[temp];
+  const lastSeen = chip.last_activity ? timeAgo(chip.last_activity) : "sem atividade";
+  const maskedPhone = chip.phone ? chip.phone.replace(/(\d{4})\d+(\d{4})/, "$1****$2") : "—";
+
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="font-semibold truncate flex items-center gap-2">
+              <span className={`relative flex h-2 w-2 shrink-0 ${chip.status === "connected" ? "" : "opacity-40"}`}>
+                {chip.status === "connected" && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-60" />}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${chip.status === "connected" ? "bg-green-500" : chip.status === "connecting" || chip.status === "qr" ? "bg-yellow-500" : "bg-muted-foreground/40"}`} />
+              </span>
+              {chip.name}
+            </div>
+            <div className="text-xs text-muted-foreground font-mono mt-0.5">{maskedPhone}</div>
+          </div>
+          <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${tempMeta.cls}`}>
+            {tempMeta.icon}{tempMeta.label}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 text-center pt-1">
+          <div>
+            <div className="text-lg font-bold leading-none">{chip.msgs_7d}</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">7 dias</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold leading-none">{chip.msgs_total}</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">total</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold leading-none">{chip.active_days_7d}/7</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">dias ativos</div>
+          </div>
+        </div>
+
+        <div className="text-xs text-muted-foreground flex items-center gap-1">
+          <Activity className="h-3 w-3" />última atividade {lastSeen}
+        </div>
+
+        <div className="flex gap-1 pt-1">
+          <Button size="sm" variant="secondary" className="flex-1" onClick={onQR}>
+            <RefreshCw className="h-3 w-3 mr-1" />QR / Status
+          </Button>
+          <Button size="sm" variant="outline" onClick={onReport} title="Relatório de aquecimento">
+            <BarChart3 className="h-3 w-3" />
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onDelete}>
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  return `há ${d}d`;
+}
+
+function ChipReportDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const fn = useServerFn(getChipReport);
+  const q = useQuery({
+    queryKey: ["chip-report", id],
+    queryFn: () => fn({ data: { id: id! } }),
+    enabled: !!id,
+  });
+  const r = q.data;
+  const tempMeta = r ? {
+    hot: { label: "🔥 Chip quente", desc: "Pronto para uso comercial. Continue mantendo o volume.", cls: "text-orange-600 dark:text-orange-400" },
+    warm: { label: "🌤️ Morno", desc: "Aquecendo bem. Continue por mais 1-2 semanas antes de usar comercialmente.", cls: "text-yellow-600 dark:text-yellow-400" },
+    cold: { label: "❄️ Frio", desc: "Ainda precisa aquecer. Deixe o motor rodando 24/7 por pelo menos 7-14 dias.", cls: "text-sky-600 dark:text-sky-400" },
+  }[r.temperature as "hot" | "warm" | "cold"] : null;
+
+  return (
+    <Dialog open={!!id} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Relatório de aquecimento — {r?.instance?.name ?? "..."}</DialogTitle>
+        </DialogHeader>
+        {!r && <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></div>}
+        {r && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-lg border p-3">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Score</div>
+                <div className="text-2xl font-bold">{r.score}<span className="text-sm text-muted-foreground">/100</span></div>
+                <div className="w-full h-1.5 bg-muted rounded-full mt-1.5 overflow-hidden">
+                  <div className="h-full gradient-ember-bg transition-all" style={{ width: `${r.score}%` }} />
+                </div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Enviadas 30d</div>
+                <div className="text-2xl font-bold">{r.sent_30d}</div>
+                <div className="text-[10px] text-muted-foreground mt-1">{r.failed_30d} falhas</div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Semana</div>
+                <div className="text-2xl font-bold">{r.msgs_7d}</div>
+                <div className="text-[10px] text-muted-foreground mt-1">{r.active_days_7d}/7 dias ativos</div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Total</div>
+                <div className="text-2xl font-bold">{r.msgs_total}</div>
+                <div className="text-[10px] text-muted-foreground mt-1">desde o início</div>
+              </div>
+            </div>
+
+            {tempMeta && (
+              <div className="rounded-lg border p-3">
+                <div className={`font-semibold ${tempMeta.cls}`}>{tempMeta.label}</div>
+                <div className="text-xs text-muted-foreground mt-1">{tempMeta.desc}</div>
+              </div>
+            )}
+
+            <div>
+              <div className="text-sm font-medium mb-2">Mensagens por dia (últimos 30d)</div>
+              <div className="h-[180px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={r.daily.map((d: any) => ({ day: new Date(d.day).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), qtd: d.count }))}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                    <XAxis dataKey="day" tick={{ fontSize: 10 }} interval={2} />
+                    <YAxis tick={{ fontSize: 10 }} />
+                    <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                    <Bar dataKey="qtd" fill="var(--primary)" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="text-sm font-medium mb-2">Horários mais ativos</div>
+                <div className="h-[140px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={r.hourly.map((h: any) => ({ h: `${h.hour}h`, qtd: h.count }))}>
+                      <XAxis dataKey="h" tick={{ fontSize: 9 }} interval={2} />
+                      <YAxis tick={{ fontSize: 9 }} />
+                      <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                      <Bar dataKey="qtd" fill="var(--primary)" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-2">Conversa mais com</div>
+                <div className="space-y-1.5">
+                  {r.peers.length === 0 && <div className="text-xs text-muted-foreground">Ainda sem conversas.</div>}
+                  {r.peers.map((p: any) => (
+                    <div key={p.id} className="flex items-center justify-between text-sm border rounded px-2.5 py-1.5">
+                      <span>{p.name}</span>
+                      <Badge variant="secondary" className="text-[10px]">{p.count} msgs</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -375,6 +636,7 @@ function GroupsTab() {
                   onAdd={(instance_id) => addMember({ data: { group_id: g.id, instance_id } }).then(invalidate)}
                 />
               </div>
+              <GroupEnginePanel groupId={g.id} />
             </CardContent>
           </Card>
         ))}
@@ -383,6 +645,49 @@ function GroupsTab() {
     </div>
   );
 }
+
+function GroupEnginePanel({ groupId }: { groupId: string }) {
+  const fn = useServerFn(getGroupEngineStatus);
+  const q = useQuery({
+    queryKey: ["engine-status", groupId],
+    queryFn: () => fn({ data: { id: groupId } }),
+    refetchInterval: 5000,
+  });
+  const s = q.data;
+  if (!s) return null;
+  const nextIn = s.next_run_at ? Math.max(0, Math.floor((new Date(s.next_run_at).getTime() - Date.now()) / 1000)) : null;
+  const nextLabel = nextIn == null ? "—" : nextIn === 0 ? "agora" : nextIn < 60 ? `${nextIn}s` : `${Math.floor(nextIn / 60)}m ${nextIn % 60}s`;
+  const running = s.active && s.connected_members >= 2;
+  return (
+    <div className="mt-3 rounded-lg border bg-muted/30 p-3">
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <div className="flex items-center gap-1.5 font-medium">
+          <span className={`relative flex h-2 w-2`}>
+            {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? "bg-primary" : "bg-muted-foreground/40"}`} />
+          </span>
+          <Zap className="h-3 w-3" />
+          {running ? "Motor rodando" : s.active ? "Aguardando chips conectados" : "Motor pausado"}
+        </div>
+        <span className="text-muted-foreground">·</span>
+        <span><span className="text-muted-foreground">Próximo tick:</span> <span className="font-mono">{nextLabel}</span></span>
+        <span className="text-muted-foreground">·</span>
+        <span><span className="text-muted-foreground">Hoje:</span> <span className="font-semibold">{s.msgs_today}</span></span>
+        <span className="text-muted-foreground">·</span>
+        <span><span className="text-muted-foreground">Total:</span> <span className="font-semibold">{s.msgs_total}</span></span>
+        <span className="text-muted-foreground">·</span>
+        <span><span className="text-muted-foreground">Chips:</span> <span className="font-semibold">{s.connected_members}/{s.total_members}</span> ativos</span>
+        {s.last_activity && (
+          <>
+            <span className="text-muted-foreground">·</span>
+            <span className="text-muted-foreground">última: {timeAgo(s.last_activity)}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 function AddMemberSelect({ groupId, used, instances, onAdd }: { groupId: string; used: Set<string>; instances: any[]; onAdd: (id: string) => void }) {
   const available = instances.filter((i) => !used.has(i.id));
@@ -516,6 +821,9 @@ function AdminTab() {
 
   return (
     <div className="mt-4 space-y-6">
+      <AdminPlatformDashboard />
+
+
       {/* KPIs de faturamento */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="MRR" value={s ? brl(s.revenue.mrrCents) as any : "—"} icon={<CreditCard />} />
@@ -610,6 +918,138 @@ function AdminTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function AdminPlatformDashboard() {
+  const fn = useServerFn(adminPlatformDashboard);
+  const q = useQuery({
+    queryKey: ["admin-platform-dashboard"],
+    queryFn: () => fn(),
+    refetchInterval: 30000,
+  });
+  const d = q.data;
+  if (!d) {
+    return (
+      <Card>
+        <CardContent className="py-10 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+  const chartData = d.dailySeries.map((r: any) => ({
+    day: new Date(r.day).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+    enviadas: r.sent,
+    falhas: r.failed,
+  }));
+  const tempData = [
+    { name: "Quentes", value: d.temperature.hot, color: "#f97316" },
+    { name: "Mornos", value: d.temperature.warm, color: "#eab308" },
+    { name: "Frios", value: d.temperature.cold, color: "#0ea5e9" },
+  ];
+  const engineHealthy = d.engine.successRate >= 90 && d.engine.lastLogAt && Date.now() - new Date(d.engine.lastLogAt).getTime() < 5 * 60 * 1000;
+  return (
+    <Card className="border-primary/20">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" />Visão geral da plataforma</CardTitle>
+        <CardDescription>Números somados de todos os clientes (atualiza a cada 30s).</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard label="Chips totais" value={`${d.totals.connectedChips}/${d.totals.totalChips}`} icon={<Smartphone />} />
+          <StatCard label="Mensagens hoje" value={d.dailySeries[d.dailySeries.length - 1]?.sent ?? 0} icon={<MessageSquare />} />
+          <StatCard label="Mensagens 7d" value={d.totals.totalMsgs7d} icon={<TrendingUp />} />
+          <StatCard label="Mensagens (total)" value={d.totals.totalMsgs} icon={<Flame />} />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <div className="text-sm font-medium mb-2">Mensagens por dia (30d, toda a plataforma)</div>
+            <div className="h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                  <XAxis dataKey="day" tick={{ fontSize: 10 }} interval={2} />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                  <Line type="monotone" dataKey="enviadas" stroke="var(--primary)" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="falhas" stroke="var(--destructive)" strokeWidth={1.5} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-2">Temperatura dos chips</div>
+            <div className="h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={tempData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={4}>
+                    {tempData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                  </Pie>
+                  <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex justify-center gap-3 text-xs mt-1">
+              {tempData.map((t) => (
+                <span key={t.name} className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full" style={{ background: t.color }} />
+                  {t.name}: <b>{t.value}</b>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg border p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium flex items-center gap-1.5"><Zap className="h-4 w-4" />Saúde do motor (24h)</div>
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${engineHealthy ? "bg-green-500/15 text-green-600 dark:text-green-400" : "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400"}`}>
+                {engineHealthy ? "Saudável" : "Atenção"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="text-lg font-bold leading-none">{d.engine.sent24h}</div>
+                <div className="text-[10px] text-muted-foreground uppercase mt-1">Enviadas</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold leading-none text-destructive">{d.engine.failed24h}</div>
+                <div className="text-[10px] text-muted-foreground uppercase mt-1">Falhas</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold leading-none">{d.engine.successRate}%</div>
+                <div className="text-[10px] text-muted-foreground uppercase mt-1">Sucesso</div>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground mt-2">
+              Última mensagem: {d.engine.lastLogAt ? timeAgo(d.engine.lastLogAt) : "nunca"}
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="text-sm font-medium mb-2">Top 10 clientes (7d)</div>
+            <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
+              {d.topClients.length === 0 && <div className="text-xs text-muted-foreground">Ainda sem atividade.</div>}
+              {d.topClients.map((c: any, idx: number) => (
+                <div key={c.id} className="flex items-center justify-between text-sm border rounded px-2.5 py-1.5">
+                  <span className="truncate">
+                    <span className="text-muted-foreground font-mono text-xs mr-2">#{idx + 1}</span>
+                    {c.name}
+                  </span>
+                  <span className="text-xs shrink-0">
+                    <Badge variant="secondary" className="mr-1 text-[10px]">{c.chips} chips</Badge>
+                    <b>{c.msgs_7d}</b> msgs
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
