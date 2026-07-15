@@ -575,10 +575,15 @@ export const listInstancesWithHealth = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     if (!instances?.length) return [];
 
+    const now = Date.now();
     const results = await Promise.all(
       instances.map(async (i: any) => {
         const { data: t } = await supabase.rpc("chip_temperature", { _instance_id: i.id });
         const row = Array.isArray(t) ? t[0] : t;
+        const started = i.warmup_started_at ? new Date(i.warmup_started_at).getTime() : null;
+        const days_warming = started ? Math.floor((now - started) / (1000 * 60 * 60 * 24)) : 0;
+        const days_remaining = started ? Math.max(0, WARMUP_DAYS_REQUIRED - days_warming) : WARMUP_DAYS_REQUIRED;
+        const is_ready = started !== null && days_warming >= WARMUP_DAYS_REQUIRED && i.status === "connected";
         return {
           ...i,
           temperature: row?.temperature ?? "cold",
@@ -586,6 +591,9 @@ export const listInstancesWithHealth = createServerFn({ method: "GET" })
           msgs_total: Number(row?.msgs_total ?? 0),
           active_days_7d: Number(row?.active_days_7d ?? 0),
           last_activity: row?.last_activity ?? null,
+          days_warming,
+          days_remaining,
+          is_ready,
         };
       }),
     );
