@@ -560,8 +560,28 @@ async function scheduleNext(supabaseAdmin: any, g: any) {
 }
 
 async function markInstance(supabaseAdmin: any, id: string, status: "connected" | "connecting" | "disconnected") {
+  // Nunca rebaixa um chip que já foi pareado (phone ou warmup_started_at).
+  // A plataforma só pode marcar como desconectado por ação explícita do usuário
+  // (deletar/logout), nunca automaticamente por oscilação de rede/celular.
+  if (status !== "connected") {
+    const { data: current } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("phone, warmup_started_at, status")
+      .eq("id", id)
+      .maybeSingle();
+    const wasPaired = Boolean(current?.phone || current?.warmup_started_at);
+    if (wasPaired) {
+      // Preserva "connected"; apenas atualiza o updated_at para heartbeat.
+      await supabaseAdmin
+        .from("whatsapp_instances")
+        .update({ status: "connected", updated_at: new Date().toISOString() })
+        .eq("id", id);
+      return;
+    }
+  }
   await supabaseAdmin.from("whatsapp_instances").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
 }
+
 
 async function isOpen(evolution: any, instanceName: string) {
   try {
