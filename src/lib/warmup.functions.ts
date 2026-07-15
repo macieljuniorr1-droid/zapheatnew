@@ -799,16 +799,49 @@ export const getGroupEngineStatus = createServerFn({ method: "GET" })
       .maybeSingle();
     if (!g || (g as any).user_id !== userId) throw new Error("Grupo não encontrado");
 
-    const { data: s } = await supabase.rpc("group_engine_status", { _group_id: data.id });
-    const row = Array.isArray(s) ? s[0] : s;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const [{ data: group }, { data: members }, { data: lastLog }, { count: todayCount }, { count: totalCount }] = await Promise.all([
+      supabaseAdmin
+        .from("warmup_groups")
+        .select("active, next_run_at")
+        .eq("id", data.id)
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("warmup_group_members")
+        .select("id, whatsapp_instances(status)")
+        .eq("group_id", data.id),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("created_at")
+        .eq("group_id", data.id)
+        .eq("status", "sent")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("group_id", data.id)
+        .eq("status", "sent")
+        .gte("created_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
+      supabaseAdmin
+        .from("warmup_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("group_id", data.id)
+        .eq("status", "sent"),
+    ]);
+
+    const totalMembers = members?.length ?? 0;
+    const connectedMembers = (members ?? []).filter((m: any) => m.whatsapp_instances?.status === "connected").length;
     return {
-      last_activity: row?.last_activity ?? null,
-      next_run_at: row?.next_run_at ?? null,
-      msgs_today: Number(row?.msgs_today ?? 0),
-      msgs_total: Number(row?.msgs_total ?? 0),
-      active: !!row?.active,
-      connected_members: Number(row?.connected_members ?? 0),
-      total_members: Number(row?.total_members ?? 0),
+      last_activity: (lastLog as any)?.created_at ?? null,
+      next_run_at: (group as any)?.next_run_at ?? null,
+      msgs_today: Number(todayCount ?? 0),
+      msgs_total: Number(totalCount ?? 0),
+      active: !!(group as any)?.active,
+      connected_members: connectedMembers,
+      total_members: totalMembers,
     };
   });
 
