@@ -12,7 +12,6 @@ const MAX_BURST_ROUNDS = 6;
 const BURST_BUDGET_MS = 45_000;
 const REPLY_GAP_MS = 500;
 const FAILING_PAIR_COOLDOWN_MS = 90 * 1000;
-const PAIR_DOMINANCE_TURNS = 2;
 
 type Chip = {
   id: string;
@@ -385,25 +384,6 @@ function pairKey(a: string, b: string) {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
-function findDominantPairs(sentLogs: any[]) {
-  const dominant = new Set<string>();
-  let currentKey: string | null = null;
-  let streak = 0;
-  for (const log of sentLogs) {
-    if (!log.from_instance_id || !log.to_instance_id) continue;
-    const key = pairKey(log.from_instance_id, log.to_instance_id);
-    if (key === currentKey) {
-      streak += 1;
-    } else {
-      if (currentKey && streak >= PAIR_DOMINANCE_TURNS) dominant.add(currentKey);
-      currentKey = key;
-      streak = 1;
-    }
-  }
-  if (currentKey && streak >= PAIR_DOMINANCE_TURNS) dominant.add(currentKey);
-  return dominant;
-}
-
 async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }: any) {
   const { from, to } = pair as { from: Chip; to: Chip };
 
@@ -471,18 +451,16 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     }
   } catch (e: any) {
     const firstError = e?.message ?? "erro";
-    if (isClosedSessionError(firstError) || true) {
-      try {
-        await recoverOpenSession(evolution, from.evolution_instance, true);
-        const ack = await attemptSend();
-        if (ack.explicitError) {
-          status = "failed";
-          errMsg = ack.error ?? firstError;
-        }
-      } catch (retryErr: any) {
+    try {
+      await recoverOpenSession(evolution, from.evolution_instance, true);
+      const ack = await attemptSend();
+      if (ack.explicitError) {
         status = "failed";
-        errMsg = retryErr?.message ?? firstError;
+        errMsg = ack.error ?? firstError;
       }
+    } catch (retryErr: any) {
+      status = "failed";
+      errMsg = retryErr?.message ?? firstError;
     }
   } finally {
     await broadcast("typing_end", { group_id: group.id, from_id: from.id, to_id: to.id });
