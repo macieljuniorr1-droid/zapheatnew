@@ -70,6 +70,7 @@ export const evolution = {
     }).catch(() => null), // presença é cosmética; não deixa a mensagem quebrar
   sendText: async (instanceName: string, number: string, text: string, delayMs = 0) => {
     const path = `/message/sendText/${encodeURIComponent(instanceName)}`;
+    let firstError: any = null;
     try {
       // Evolution v2.3+ espera `textMessage.text`. Usar o payload antigo
       // (`text`) funciona em algumas instalações, mas pode disparar erros
@@ -79,13 +80,24 @@ export const evolution = {
         body: JSON.stringify({ number, textMessage: { text }, delay: delayMs, linkPreview: false }),
       });
     } catch (e: any) {
-      const msg = String(e?.message ?? "");
-      if (/Cannot read properties of undefined|reading 'id'|reading "id"/i.test(msg)) throw e;
+      firstError = e;
       // Compatibilidade com Evolution mais antiga.
-      return await evoFetch(path, {
-        method: "POST",
-        body: JSON.stringify({ number, text, delay: delayMs }),
-      });
+      try {
+        return await evoFetch(path, {
+          method: "POST",
+          body: JSON.stringify({ number, text, delay: delayMs, linkPreview: false }),
+        });
+      } catch (fallbackError: any) {
+        const firstMsg = String(firstError?.message ?? "");
+        const fallbackMsg = String(fallbackError?.message ?? "");
+        // Mantém a mensagem mais específica do Baileys/Evolution quando ela foi
+        // a causa real, mas não bloqueia o fallback para instalações que só
+        // aceitam o payload antigo.
+        if (/Cannot read properties of undefined|reading 'id'|reading "id"/i.test(firstMsg) && !/Cannot read properties of undefined|reading 'id'|reading "id"/i.test(fallbackMsg)) {
+          throw fallbackError;
+        }
+        throw fallbackError ?? firstError;
+      }
     }
   },
   whatsappNumbers: (instanceName: string, numbers: string[]) =>
