@@ -192,12 +192,41 @@ function AppPage() {
 
 function Dashboard() {
   const fn = useServerFn(getStats);
+  const seriesFn = useServerFn(getUserDailySeries);
   const q = useQuery({ queryKey: ["stats"], queryFn: () => fn(), refetchInterval: 15000 });
+  const series = useQuery({ queryKey: ["daily-series"], queryFn: () => seriesFn(), refetchInterval: 60000 });
+  const chartData = (series.data ?? []).map((r: any) => ({
+    day: new Date(r.day).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+    enviadas: r.sent,
+    falhas: r.failed,
+  }));
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-      <StatCard label="Números conectados" value={q.data?.instances ?? 0} icon={<Smartphone />} />
-      <StatCard label="Grupos ativos" value={q.data?.activeGroups ?? 0} icon={<Users2 />} />
-      <StatCard label="Mensagens hoje" value={q.data?.sentToday ?? 0} icon={<Flame />} />
+    <div className="mt-4 space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label="Números conectados" value={q.data?.instances ?? 0} icon={<Smartphone />} />
+        <StatCard label="Grupos ativos" value={q.data?.activeGroups ?? 0} icon={<Users2 />} />
+        <StatCard label="Mensagens hoje" value={q.data?.sentToday ?? 0} icon={<Flame />} />
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-4 w-4" />Mensagens nos últimos 30 dias</CardTitle>
+          <CardDescription>Volume enviado pela sua conta.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[220px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <ChartTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <Line type="monotone" dataKey="enviadas" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="falhas" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
