@@ -41,6 +41,17 @@ function normalizeQr(payload: any): string | null {
   return `data:image/png;base64,${raw.replace(/\s+/g, "")}`;
 }
 
+// Normaliza JID/owner do Evolution ("5511...@s.whatsapp.net") em número puro.
+function extractPhone(...candidates: any[]): string | null {
+  for (const c of candidates) {
+    if (!c) continue;
+    const s = String(c);
+    const m = s.match(/(\d{8,20})/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 export const listInstances = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -148,9 +159,20 @@ export const refreshInstance = createServerFn({ method: "POST" })
       if (s === "open") status = "connected";
       else if (s === "connecting") status = "connecting";
       else status = "disconnected";
-      phone = state?.instance?.owner ?? phone;
+      phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
       status = "disconnected";
+    }
+
+    // Quando conectado, garante que o telefone (ownerJid) esteja salvo. A v2
+    // do Evolution costuma NÃO devolver owner em /connectionState, então
+    // buscamos via /instance/fetchInstances.
+    if (status === "connected" && !phone) {
+      try {
+        const fetched = await evolution.fetchInstance(inst.evolution_instance);
+        const rec = Array.isArray(fetched) ? fetched[0] : fetched?.instance ?? fetched;
+        phone = extractPhone(rec?.ownerJid, rec?.owner, rec?.wuid, rec?.number);
+      } catch {}
     }
 
     if (status !== "connected") {
@@ -566,8 +588,15 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else if (s === "connecting") status = "connecting";
-      phone = state?.instance?.owner ?? phone;
+      phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {}
+    if (status === "connected" && !phone) {
+      try {
+        const fetched = await evolution.fetchInstance((inst as any).evolution_instance);
+        const rec = Array.isArray(fetched) ? fetched[0] : fetched?.instance ?? fetched;
+        phone = extractPhone(rec?.ownerJid, rec?.owner, rec?.wuid, rec?.number);
+      } catch {}
+    }
     if (status !== "connected") {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
