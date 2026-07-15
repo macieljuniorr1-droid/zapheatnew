@@ -106,6 +106,8 @@ import {
   Activity,
   BarChart3,
   Zap,
+  UsersRound,
+  Circle,
 } from "lucide-react";
 import {
   LineChart,
