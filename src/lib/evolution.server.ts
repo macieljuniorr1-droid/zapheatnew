@@ -63,13 +63,13 @@ export const evolution = {
       }),
     }),
   connect: (instanceName: string) =>
-    evoFetch(`/instance/connect/${encodeURIComponent(instanceName)}`, { method: "GET" }, 3_500),
+    evoFetch(`/instance/connect/${encodeURIComponent(instanceName)}`, { method: "GET" }, 2_000),
   connectionState: (instanceName: string) =>
-    evoFetch(`/instance/connectionState/${encodeURIComponent(instanceName)}`, { method: "GET" }, 3_500),
+    evoFetch(`/instance/connectionState/${encodeURIComponent(instanceName)}`, { method: "GET" }, 1_500),
   fetchInstance: (instanceName: string) =>
-    evoFetch(`/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`, { method: "GET" }, 3_500),
+    evoFetch(`/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`, { method: "GET" }, 2_000),
   restart: (instanceName: string) =>
-    evoFetch(`/instance/restart/${encodeURIComponent(instanceName)}`, { method: "POST", body: JSON.stringify({}) }, 3_500),
+    evoFetch(`/instance/restart/${encodeURIComponent(instanceName)}`, { method: "POST", body: JSON.stringify({}) }, 2_000),
   deleteInstance: (instanceName: string) =>
     evoFetch(`/instance/delete/${encodeURIComponent(instanceName)}`, { method: "DELETE" }),
   logout: (instanceName: string) =>
