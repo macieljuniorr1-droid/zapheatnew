@@ -417,16 +417,16 @@ export const listWhatsappMessages = createServerFn({ method: "POST" })
       .map((r: any) => {
         const msg = r?.message ?? {};
         const text: string =
-          msg?.conversation ??
-          msg?.extendedTextMessage?.text ??
-          msg?.imageMessage?.caption ??
-          msg?.videoMessage?.caption ??
-          msg?.documentMessage?.caption ??
-          (msg?.imageMessage ? "[imagem]" : "") ??
-          (msg?.videoMessage ? "[vídeo]" : "") ??
-          (msg?.audioMessage ? "[áudio]" : "") ??
-          (msg?.stickerMessage ? "[figurinha]" : "") ??
-          (msg?.documentMessage ? "[documento]" : "") ??
+          msg?.conversation ||
+          msg?.extendedTextMessage?.text ||
+          msg?.imageMessage?.caption ||
+          msg?.videoMessage?.caption ||
+          msg?.documentMessage?.caption ||
+          (msg?.imageMessage ? "[imagem]" : "") ||
+          (msg?.videoMessage ? "[vídeo]" : "") ||
+          (msg?.audioMessage ? "[áudio]" : "") ||
+          (msg?.stickerMessage ? "[figurinha]" : "") ||
+          (msg?.documentMessage ? "[documento]" : "") ||
           "";
         const ts = Number(r?.messageTimestamp?.low ?? r?.messageTimestamp ?? 0);
         return {
