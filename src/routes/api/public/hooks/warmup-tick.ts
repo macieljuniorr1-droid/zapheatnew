@@ -566,11 +566,11 @@ async function waitForOpen(evolution: any, instanceName: string) {
 }
 
 async function recoverOpenSession(evolution: any, instanceName: string, forceRestart = false) {
-  if (await isOpen(evolution, instanceName)) return true;
+  if (!forceRestart && (await isOpen(evolution, instanceName))) return true;
   try {
     await evolution.connect(instanceName);
   } catch {}
-  if (await waitForOpen(evolution, instanceName)) return true;
+  if (!forceRestart && (await waitForOpen(evolution, instanceName))) return true;
 
   // Fonte do erro vista nos logs: a sessão aparece conectada no painel, mas o
   // envio retorna ERROR continuamente. O restart da Evolution preserva o
