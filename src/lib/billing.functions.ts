@@ -46,6 +46,24 @@ export const getMyBilling = createServerFn({ method: "GET" })
 
 // ---------------- Cliente: compra 1 número extra ----------------
 
+const addressSchema = z.object({
+  street: z.string().min(2).max(120),
+  number: z.string().min(1).max(20),
+  complement: z.string().max(80).optional(),
+  neighborhood: z.string().min(2).max(80),
+  city: z.string().min(2).max(80),
+  state: z.string().min(2).max(2),
+  zip_code: z.string().min(8).max(9),
+});
+
+export const getPagarmePublicKey = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const key = process.env.PAGARME_PUBLIC_KEY;
+    if (!key) throw new Error("PAGARME_PUBLIC_KEY não configurada");
+    return { public_key: key };
+  });
+
 export const purchaseNumber = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i) =>
@@ -53,8 +71,11 @@ export const purchaseNumber = createServerFn({ method: "POST" })
       .object({
         full_name: z.string().min(3).max(120),
         document: z.string().min(11).max(14), // CPF
-        phone: z.string().min(10).max(15), // telefone com DDD
+        phone: z.string().min(10).max(15),
+        address: addressSchema,
         payment_method: z.enum(["pix", "credit_card"]),
+        card_token: z.string().optional(), // requerido para credit_card
+        installments: z.number().int().min(1).max(12).optional(),
       })
       .parse(i),
   )
@@ -62,7 +83,11 @@ export const purchaseNumber = createServerFn({ method: "POST" })
     const { supabase, userId, claims } = context;
     const { pagarme } = await import("@/lib/pagarme.server");
 
-    // 1. Pega/cria/atualiza customer no Pagar.me
+    if (data.payment_method === "credit_card" && !data.card_token) {
+      throw new Error("Token do cartão ausente. Preencha os dados do cartão.");
+    }
+
+    // 1. Pega/cria/atualiza customer no Pagar.me (com telefone + endereço)
     const { data: sub } = await supabase
       .from("subscriptions")
       .select("pagarme_customer_id")
@@ -79,6 +104,7 @@ export const purchaseNumber = createServerFn({ method: "POST" })
         email,
         document: data.document,
         phone: data.phone,
+        address: data.address,
         code: `zh_user_${userId}`,
       });
       customer_id = customer.id;
@@ -87,12 +113,12 @@ export const purchaseNumber = createServerFn({ method: "POST" })
         .update({ pagarme_customer_id: customer_id })
         .eq("user_id", userId);
     } else {
-      // Garante que o customer tem telefone (Pagar.me exige para PIX)
       await pagarme.updateCustomer(customer_id, {
         name: data.full_name,
         email,
         document: data.document,
         phone: data.phone,
+        address: data.address,
       });
     }
 
@@ -115,16 +141,20 @@ export const purchaseNumber = createServerFn({ method: "POST" })
       customer_id: customer_id!,
       amount_cents: PRICE_CENTS,
       description: "Número WhatsApp extra ZapHeat (30 dias)",
-      method: data.payment_method === "pix" ? "pix" : "credit_card_checkout",
+      method: data.payment_method === "pix" ? "pix" : "credit_card_native",
+      card_token: data.card_token,
+      installments: data.installments,
+      billing_address: data.address,
       metadata: {
         number_subscription_id: nsRow.id,
         user_id: userId,
       },
     });
 
-    // 3.1 Se a order/charge veio falhada, propaga o erro do gateway pro cliente
     const chargeFailed = order?.charges?.[0];
-    const gwErr = chargeFailed?.last_transaction?.gateway_response?.errors?.[0]?.message;
+    const gwErr =
+      chargeFailed?.last_transaction?.gateway_response?.errors?.[0]?.message ??
+      chargeFailed?.last_transaction?.acquirer_message;
     if (order?.status === "failed" || chargeFailed?.status === "failed") {
       await supabase
         .from("number_subscriptions")
@@ -132,6 +162,17 @@ export const purchaseNumber = createServerFn({ method: "POST" })
         .eq("id", nsRow.id);
       throw new Error(gwErr ?? "Pagar.me recusou a cobrança. Verifique seus dados.");
     }
+
+    // Cartão aprovado direto → já ativa a assinatura
+    if (data.payment_method === "credit_card" && chargeFailed?.status === "paid") {
+      const in30d = new Date(Date.now() + 30 * 86400_000).toISOString();
+      await supabase
+        .from("number_subscriptions")
+        .update({ status: "active", current_period_end: in30d })
+        .eq("id", nsRow.id);
+    }
+
+
 
 
 
