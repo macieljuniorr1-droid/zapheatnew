@@ -25,22 +25,30 @@ export const WARMUP_DAYS_REQUIRED = 3;
 type RefreshInstanceInput = { id: string; force?: boolean };
 
 // Normaliza o QR retornado pela Evolution para uma data URL PNG que o <img>
-// consegue renderizar. A API v2 devolve o base64 em campos variados
-// (qrcode.base64, base64, qrcode.code) e frequentemente SEM o prefixo
-// "data:image/png;base64,". Sem o prefixo o celular tenta decodificar como
-// texto e mostra "não foi possível conectar".
-function normalizeQr(payload: any): string | null {
-  const raw: string | undefined =
-    payload?.base64 ??
-    payload?.qrcode?.base64 ??
-    payload?.qrcode ??
-    payload?.qr ??
-    undefined;
-  if (!raw || typeof raw !== "string") return null;
-  if (raw.startsWith("data:")) return raw;
-  // Se veio um EMV/pairing code puro (não é base64 de imagem), descarta.
-  if (!/^[A-Za-z0-9+/=\s]+$/.test(raw) || raw.length < 200) return null;
-  return `data:image/png;base64,${raw.replace(/\s+/g, "")}`;
+// consegue renderizar. A API v2 pode devolver tanto uma imagem base64 quanto
+// o texto cru do QR em `code`. Renderizar `code` como imagem base64 gera um QR
+// inválido/velho e o WhatsApp mostra "não foi possível conectar o dispositivo".
+async function normalizeQr(payload: any): Promise<string | null> {
+  const firstString = (...values: any[]) => values.find((v) => typeof v === "string" && v.trim().length > 0)?.trim();
+  const asImage = (raw?: string | null) => {
+    if (!raw) return null;
+    if (raw.startsWith("data:image/")) return raw;
+    if (/^[A-Za-z0-9+/=\s]+$/.test(raw) && raw.replace(/\s+/g, "").length > 200) {
+      return `data:image/png;base64,${raw.replace(/\s+/g, "")}`;
+    }
+    return null;
+  };
+
+  const image = asImage(firstString(payload?.base64, payload?.qrcode?.base64, payload?.qrBase64));
+  if (image) return image;
+
+  const code = firstString(payload?.code, payload?.qrcode?.code, payload?.qrcode, payload?.qr);
+  const imageFromCode = asImage(code);
+  if (imageFromCode) return imageFromCode;
+  if (!code || code.length < 20) return null;
+
+  const QR = await import("qrcode");
+  return QR.toDataURL(code, { width: 320, margin: 1, errorCorrectionLevel: "M" });
 }
 
 // Normaliza JID/owner do Evolution ("5511...@s.whatsapp.net") em número puro.
@@ -63,7 +71,7 @@ async function reconnectInstance(evolution: any, instanceName: string): Promise<
   // precisa parear novamente.
   try {
     const conn = await evolution.connect(instanceName);
-    qr = normalizeQr(conn);
+    qr = await normalizeQr(conn);
   } catch {}
 
   for (let i = 0; i < 6; i++) {
@@ -148,11 +156,11 @@ export const createInstance = createServerFn({ method: "POST" })
     // /instance/connect quando o create não entregou um QR utilizável — porque
     // um connect após um create com QR válido invalida o primeiro código e é a
     // causa do "não foi possível conectar" no celular a partir do 2º número.
-    let qr: string | null = normalizeQr(resp);
+    let qr: string | null = await normalizeQr(resp);
     if (!qr) {
       try {
         const conn = await evolution.connect(evolutionInstance);
-        qr = normalizeQr(conn);
+        qr = await normalizeQr(conn);
       } catch {
         // mantém null; usuário pode clicar em Atualizar
       }
@@ -198,7 +206,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
 
     const refreshQr = async () => {
       const conn = await evolution.connect(inst.evolution_instance);
-      const nextQr = normalizeQr(conn);
+      const nextQr = await normalizeQr(conn);
       if (nextQr) {
         qr = nextQr;
         status = "qr";
@@ -858,7 +866,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
-        const nextQr = normalizeQr(conn);
+        const nextQr = await normalizeQr(conn);
         if (nextQr) {
           qr = nextQr;
           status = "qr";

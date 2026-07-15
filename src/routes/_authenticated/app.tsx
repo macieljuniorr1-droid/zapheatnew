@@ -446,7 +446,7 @@ function InstancesTab() {
           <ChipCard
             key={i.id}
             chip={i}
-            onQR={() => { refresh.mutate({ id: i.id }); setQrOpen(i.id); }}
+            onQR={() => { refresh.mutate({ id: i.id, force: true }); setQrOpen(i.id); }}
             onReport={() => setReportId(i.id)}
             onDelete={() => { if (confirm(`Remover ${i.name}?`)) del.mutate(i.id); }}
           />
@@ -467,6 +467,7 @@ function InstancesTab() {
                 className="mx-auto max-w-[280px]"
               />
               <p className="text-sm text-muted-foreground mt-3">Abra o WhatsApp → Aparelhos conectados → Conectar aparelho</p>
+              <p className="text-xs text-muted-foreground mt-1">Se demorar mais de 1 minuto, toque em Atualizar e escaneie o novo QR.</p>
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">Gerando QR...</div>

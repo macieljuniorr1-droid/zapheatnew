@@ -210,7 +210,7 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
 async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
   try {
     const conn = await evolution.connect(m.evolution_instance);
-    const qr = normalizeQr(conn);
+    const qr = await normalizeQr(conn);
     if (qr) {
       m.last_qr = qr;
       await supabaseAdmin
@@ -568,7 +568,7 @@ async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, gro
     await evolution.logout(from.evolution_instance);
   } catch {}
   try {
-    qr = normalizeQr(await evolution.connect(from.evolution_instance));
+    qr = await normalizeQr(await evolution.connect(from.evolution_instance));
   } catch {}
   await supabaseAdmin
     .from("whatsapp_instances")
@@ -709,17 +709,27 @@ function isDeliverySyncFailure(message: string | null | undefined) {
   return /whatsapp retornou error|sem confirma[cç][aã]o real|sem ack|pending|server_ack/i.test(String(message ?? ""));
 }
 
-function normalizeQr(payload: any): string | null {
-  const raw: string | undefined =
-    payload?.base64 ??
-    payload?.qrcode?.base64 ??
-    payload?.qrcode ??
-    payload?.qr ??
-    undefined;
-  if (!raw || typeof raw !== "string") return null;
-  if (raw.startsWith("data:")) return raw;
-  if (!/^[A-Za-z0-9+/=\s]+$/.test(raw) || raw.length < 200) return null;
-  return `data:image/png;base64,${raw.replace(/\s+/g, "")}`;
+async function normalizeQr(payload: any): Promise<string | null> {
+  const firstString = (...values: any[]) => values.find((v) => typeof v === "string" && v.trim().length > 0)?.trim();
+  const asImage = (raw?: string | null) => {
+    if (!raw) return null;
+    if (raw.startsWith("data:image/")) return raw;
+    if (/^[A-Za-z0-9+/=\s]+$/.test(raw) && raw.replace(/\s+/g, "").length > 200) {
+      return `data:image/png;base64,${raw.replace(/\s+/g, "")}`;
+    }
+    return null;
+  };
+
+  const image = asImage(firstString(payload?.base64, payload?.qrcode?.base64, payload?.qrBase64));
+  if (image) return image;
+
+  const code = firstString(payload?.code, payload?.qrcode?.code, payload?.qrcode, payload?.qr);
+  const imageFromCode = asImage(code);
+  if (imageFromCode) return imageFromCode;
+  if (!code || code.length < 20) return null;
+
+  const QR = await import("qrcode");
+  return QR.toDataURL(code, { width: 320, margin: 1, errorCorrectionLevel: "M" });
 }
 
 async function waitForOpen(evolution: any, instanceName: string) {
