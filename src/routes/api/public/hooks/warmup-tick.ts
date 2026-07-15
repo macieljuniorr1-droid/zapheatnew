@@ -685,7 +685,12 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  // Sem ACK explícito dentro da janela: consideramos entregue (a Evolution
-  // aceitou o envio) e apenas registramos o status observado.
-  return { delivered: true, explicitError: false, ack: lastStatus ?? "PENDING" };
+  // Sem ACK explícito do servidor dentro da janela: a sessão Baileys provavelmente
+  // está dessincronizada (Evolution aceitou o sendText mas WhatsApp real não confirmou).
+  // Nunca marcar como entregue nesse caso — força retry/recover e, se persistir, falha.
+  return {
+    delivered: false,
+    explicitError: true,
+    error: `Sem ACK de entrega em ${DELIVERY_ACK_WAIT_MS}ms (status=${lastStatus ?? "PENDING"})`,
+  };
 }
