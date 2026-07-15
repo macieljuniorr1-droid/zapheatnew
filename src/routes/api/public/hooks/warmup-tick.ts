@@ -400,6 +400,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     const from = chipById.get(debt.instanceId);
     const to = chipById.get(debt.peerId);
     if (!from || !to) continue;
+    if (from.id === to.id || normalizePhone(from.phone) === normalizePhone(to.phone)) continue;
     if (blockedRecipients.has(to.id)) continue;
     pairs.push({ from, to });
     selected.add(from.id);
@@ -471,6 +472,9 @@ function pairKey(a: string, b: string) {
 
 async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }: any) {
   const { from, to } = pair as { from: Chip; to: Chip };
+  if (from.id === to.id || normalizePhone(from.phone) === normalizePhone(to.phone)) {
+    return { group: group.id, from: from.id, to: to.id, status: "skipped", reason: "números duplicados" };
+  }
 
   const fromOpen = await isOpen(evolution, from.evolution_instance);
   const toOpen = await isOpen(evolution, to.evolution_instance);
