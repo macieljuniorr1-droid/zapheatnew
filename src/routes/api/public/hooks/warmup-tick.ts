@@ -276,8 +276,21 @@ async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, member
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
       const records = Array.isArray(fetched) ? fetched : Array.isArray(fetched?.instances) ? fetched.instances : [fetched?.instance ?? fetched];
-      const rec = records.find((item: any) => item?.name === m.evolution_instance || item?.instanceName === m.evolution_instance || item?.instance?.instanceName === m.evolution_instance) ?? records[0];
-      const values = [rec?.ownerJid, rec?.profile?.id, rec?.owner, rec?.wuid, rec?.number, rec?.phone];
+      const rec = records.find((item: any) => item?.name === m.evolution_instance || item?.instanceName === m.evolution_instance || item?.instance?.instanceName === m.evolution_instance || item?.instance?.name === m.evolution_instance) ?? records[0];
+      const values = [
+        rec?.ownerJid,
+        rec?.instance?.ownerJid,
+        rec?.profile?.id,
+        rec?.instance?.profile?.id,
+        rec?.owner,
+        rec?.instance?.owner,
+        rec?.wuid,
+        rec?.instance?.wuid,
+        rec?.number,
+        rec?.instance?.number,
+        rec?.phone,
+        rec?.instance?.phone,
+      ];
       const phoneMatch = values.map((v) => String(v ?? "").match(/(\d{8,20})/)?.[1]).find(Boolean);
       if (phoneMatch && phoneMatch !== normalizePhone(m.phone)) {
         m.phone = phoneMatch;
