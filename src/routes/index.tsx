@@ -1,6 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import {
   Flame,
@@ -23,7 +21,7 @@ export const Route = createFileRoute("/")({
       { title: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
       { name: "description", content: "Aqueça seus chips de WhatsApp com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
       { property: "og:title", content: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
-      { property: "og:description", content: "Conversas orgânicas geradas por IA entre seus chips, 24 horas por dia." },
+      { property: "og:description", content: "Aqueça seus chips de WhatsApp com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
       { property: "og:type", content: "website" },
     ],
   }),
@@ -36,10 +34,10 @@ function Landing() {
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[700px] forge-halo" aria-hidden />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,transparent_60%,var(--background)_100%)]" aria-hidden />
 
-      <header className="fixed top-4 inset-x-0 z-50 px-4">
-        <div className="max-w-6xl mx-auto rounded-2xl border border-border/50 bg-background/70 backdrop-blur-xl shadow-lg shadow-black/20 px-4 md:px-6 py-2.5 flex items-center justify-between gap-4">
+      <header className="relative z-20 border-b border-border/40 backdrop-blur-md bg-background/40 sticky top-0">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
           <Link to="/" className="flex items-center">
-            <img src={zapheatLogo.url} alt="ZapHeat" className="h-8 md:h-9 w-auto" />
+            <img src={zapheatLogo.url} alt="ZapHeat" className="h-9 md:h-10 w-auto" />
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#how" className="hover:text-foreground transition">Como funciona</a>
@@ -53,28 +51,27 @@ function Landing() {
               </Button>
             </Link>
             <Link to="/auth">
-              <Button size="sm" className="gradient-ember-bg glow-ember hover:opacity-90 rounded-full">
+              <Button size="sm" className="gradient-ember-bg glow-ember hover:opacity-90">
                 Cadastrar
               </Button>
             </Link>
           </div>
         </div>
       </header>
-      <div aria-hidden className="h-20" />
 
       <main className="relative z-10">
         {/* HERO */}
         <section className="max-w-5xl mx-auto px-6 pt-20 pb-20 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-ember/30 bg-ember/5 px-3 py-1 text-xs text-ember backdrop-blur-sm">
             <Sparkles className="h-3 w-3" />
-            <span className="font-mono uppercase tracking-widest">IA · 24h por dia · Sem limites</span>
+            <span className="font-mono uppercase tracking-widest">IA Generativa · Gemini 3</span>
           </div>
           <h1 className="mt-6 font-display text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight leading-[1.02]">
-            A IA aquece seus chips<br />
-            <span className="gradient-ember-text">conversando entre si 24h/dia.</span>
+            Aqueça seus WhatsApps<br />
+            <span className="gradient-ember-text">com conversas de verdade.</span>
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Seus próprios números trocam mensagens naturais uns com os outros, sem parar, com <b className="text-foreground">mensagens ilimitadas</b> e diálogos gerados por IA. Cada chip aguarda a resposta antes de iniciar outra conversa — igual a um humano.
+            Uma IA gera diálogos naturais entre seus próprios chips — bate-papo do dia a dia, gírias, tempo de resposta humano. Seus números aquecem 24/7 sem parecer robôs.
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
             <Link to="/auth">
@@ -82,30 +79,36 @@ function Landing() {
                 Começar grátis · 2 números
               </Button>
             </Link>
-            <a href="#live">
+            <a href="#how">
               <Button size="lg" variant="ghost" className="h-12 px-8 text-base">
-                Ver ao vivo
+                Ver demonstração
               </Button>
             </a>
           </div>
           <div className="mt-6 text-xs text-muted-foreground font-mono">
-            sem cartão · 24h ativo · turnos 1-a-1
+            sem cartão · configuração em 5 minutos
+          </div>
+
+          {/* Console preview */}
+          <div id="how" className="mt-20 panel rounded-2xl p-6 text-left mx-auto max-w-3xl relative">
+            <div className="absolute -top-3 left-6 px-2 py-0.5 rounded-md bg-background border border-ember/30 text-[10px] font-mono uppercase tracking-widest text-ember">
+              ao vivo
+            </div>
+            <div className="flex items-center gap-2 pb-4 border-b border-border/50">
+              <span className="h-2.5 w-2.5 rounded-full bg-ember animate-ember" />
+              <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">
+                console · warmup live
+              </span>
+              <Activity className="h-3.5 w-3.5 text-ember/70 ml-auto" />
+            </div>
+            <div className="mt-4 space-y-3 font-mono text-sm">
+              <ConsoleLine time="10:42" from="Chip 01" to="Chip 02" text="oi tudo bem?" />
+              <ConsoleLine time="10:44" from="Chip 02" to="Chip 01" text="tudo tranquilo e vc?" />
+              <ConsoleLine time="10:47" from="Chip 03" to="Chip 01" text="bora almoçar amanhã?" />
+              <ConsoleLine time="10:49" from="Chip 01" to="Chip 03" text="bora sim, que horas" fresh />
+            </div>
           </div>
         </section>
-
-        {/* LIVE ANIMATED SIMULATION */}
-        <LiveSimulation />
-
-        {/* STATS */}
-        <section id="how" className="max-w-5xl mx-auto px-6 py-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Stat value="24/7" label="operação automática" />
-            <Stat value="∞" label="mensagens por dia" />
-            <Stat value="1-a-1" label="turnos naturais" />
-            <Stat value="< 5min" label="para configurar" />
-          </div>
-        </section>
-
 
         {/* STATS */}
         <section className="max-w-5xl mx-auto px-6 py-8">
@@ -226,312 +229,6 @@ function Landing() {
     </div>
   );
 }
-
-// ---------- Live animated simulation ----------
-const CHIPS = [
-  { id: 1, label: "Chip 01", phone: "+55 11 9•••• 4821" },
-  { id: 2, label: "Chip 02", phone: "+55 21 9•••• 7733" },
-  { id: 3, label: "Chip 03", phone: "+55 31 9•••• 2109" },
-  { id: 4, label: "Chip 04", phone: "+55 47 9•••• 5588" },
-  { id: 5, label: "Chip 05", phone: "+55 51 9•••• 3312" },
-  { id: 6, label: "Chip 06", phone: "+55 61 9•••• 9004" },
-  { id: 7, label: "Chip 07", phone: "+55 71 9•••• 6620" },
-  { id: 8, label: "Chip 08", phone: "+55 85 9•••• 1147" },
-];
-
-const CONVO_SCRIPT: Array<{ from: number; to: number; text: string }> = [
-  { from: 1, to: 5, text: "oi, bom dia 👋" },
-  { from: 3, to: 7, text: "e aí, como foi ontem?" },
-  { from: 2, to: 6, text: "opa, tudo tranquilo" },
-  { from: 4, to: 8, text: "bora marcar de novo" },
-  { from: 5, to: 1, text: "bom dia! td certo?" },
-  { from: 7, to: 3, text: "foi bom demais kkk" },
-  { from: 6, to: 2, text: "beleza demais 🙌" },
-  { from: 8, to: 4, text: "sexta tá bom" },
-  { from: 1, to: 3, text: "tamo junto" },
-  { from: 5, to: 8, text: "aí sim!" },
-];
-
-function useLiveConvo() {
-  const [messages, setMessages] = useState<Array<{ id: number; from: number; to: number; text: string; time: string }>>([]);
-  const [typing, setTyping] = useState<Set<number>>(new Set());
-
-  useEffect(() => {
-    let idx = 0;
-    let alive = true;
-    const tick = () => {
-      if (!alive) return;
-      const step = CONVO_SCRIPT[idx % CONVO_SCRIPT.length];
-      idx++;
-      // typing indicator
-      setTyping((prev) => new Set(prev).add(step.from));
-      const typingTimeout = setTimeout(() => {
-        if (!alive) return;
-        setTyping((prev) => {
-          const n = new Set(prev);
-          n.delete(step.from);
-          return n;
-        });
-        const now = new Date();
-        const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-        setMessages((prev) => [
-          ...prev.slice(-7),
-          { id: Date.now() + Math.random(), from: step.from, to: step.to, text: step.text, time },
-        ]);
-      }, 900);
-      const nextTimeout = setTimeout(tick, 2200 + Math.random() * 1200);
-      return () => {
-        clearTimeout(typingTimeout);
-        clearTimeout(nextTimeout);
-      };
-    };
-    const timer = setTimeout(tick, 400);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
-  }, []);
-
-  return { messages, typing };
-}
-
-function LiveSimulation() {
-  const { messages, typing } = useLiveConvo();
-
-  return (
-    <section id="live" className="max-w-6xl mx-auto px-6 py-16">
-      <div className="text-center max-w-2xl mx-auto mb-10">
-        <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">ao vivo · simulação</div>
-        <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
-          Veja seus chips conversando entre si
-        </h2>
-        <p className="mt-3 text-muted-foreground">
-          Vários números trocam mensagens simultaneamente. Cada um aguarda a resposta antes de iniciar outra conversa — humano, natural, 24h por dia.
-        </p>
-      </div>
-
-      <NetworkGraph typing={typing} messages={messages} />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8 mb-6">
-        {CHIPS.map((c) => {
-          const isTyping = typing.has(c.id);
-          return (
-            <div
-              key={c.id}
-              className={`panel rounded-xl p-4 transition-all duration-300 ${
-                isTyping ? "border-ember/60 glow-ember scale-[1.02]" : ""
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <div className="h-8 w-8 rounded-full gradient-ember-bg grid place-items-center text-primary-foreground text-xs font-bold">
-                    {c.id}
-                  </div>
-                  <span
-                    className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${
-                      isTyping ? "bg-ember animate-ember" : "bg-emerald-500"
-                    }`}
-                  />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{c.label}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono truncate">{c.phone}</div>
-                </div>
-              </div>
-              <div className="mt-3 text-[11px] font-mono h-4">
-                {isTyping ? (
-                  <span className="text-ember inline-flex items-center gap-1">
-                    <TypingDots /> digitando…
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">online</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="panel rounded-2xl p-6 relative overflow-hidden">
-        <div className="absolute -top-3 left-6 px-2 py-0.5 rounded-md bg-background border border-ember/30 text-[10px] font-mono uppercase tracking-widest text-ember">
-          fluxo ao vivo
-        </div>
-        <div className="flex items-center gap-2 pb-4 border-b border-border/50">
-          <span className="h-2.5 w-2.5 rounded-full bg-ember animate-ember" />
-          <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">
-            conversas simultâneas · sem limite diário
-          </span>
-          <Activity className="h-3.5 w-3.5 text-ember/70 ml-auto" />
-        </div>
-        <div className="mt-4 space-y-2 font-mono text-sm min-h-[240px]">
-          {messages.length === 0 && (
-            <div className="text-muted-foreground text-center py-8">iniciando conversas…</div>
-          )}
-          {messages.map((m, idx) => {
-            const from = CHIPS.find((c) => c.id === m.from)!;
-            const to = CHIPS.find((c) => c.id === m.to)!;
-            const isLast = idx === messages.length - 1;
-            return (
-              <div
-                key={m.id}
-                className="flex items-center gap-3 flex-wrap sm:flex-nowrap animate-fade-in"
-              >
-                <span className="text-muted-foreground/60 shrink-0 text-xs">{m.time}</span>
-                <span className="text-gold shrink-0">{from.label}</span>
-                <span className="text-muted-foreground/40 shrink-0">→</span>
-                <span className="text-ember shrink-0">{to.label}</span>
-                <span
-                  className={`text-foreground/90 min-w-0 ${
-                    isLast ? "border-b border-dashed border-ember/40" : ""
-                  }`}
-                >
-                  {m.text}
-                </span>
-                {isLast && (
-                  <span className="ml-auto h-1.5 w-1.5 rounded-full bg-ember animate-ember shrink-0" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function TypingDots() {
-  return (
-    <span className="inline-flex gap-0.5">
-      <span className="h-1 w-1 rounded-full bg-ember animate-bounce [animation-delay:-0.3s]" />
-      <span className="h-1 w-1 rounded-full bg-ember animate-bounce [animation-delay:-0.15s]" />
-      <span className="h-1 w-1 rounded-full bg-ember animate-bounce" />
-    </span>
-  );
-}
-
-function NetworkGraph({
-  typing,
-  messages,
-}: {
-  typing: Set<number>;
-  messages: Array<{ id: number; from: number; to: number; text: string; time: string }>;
-}) {
-  const size = 420;
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = 160;
-  const nodes = CHIPS.map((c, i) => {
-    const angle = (i / CHIPS.length) * Math.PI * 2 - Math.PI / 2;
-    return { ...c, x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
-  });
-  const last = messages[messages.length - 1];
-  const activePair = last ? { from: last.from, to: last.to } : null;
-
-  return (
-    <div className="panel rounded-2xl p-6 relative overflow-hidden">
-      <div className="absolute -top-3 left-6 px-2 py-0.5 rounded-md bg-background border border-ember/30 text-[10px] font-mono uppercase tracking-widest text-ember">
-        rede · 8 chips ativos
-      </div>
-      <div className="flex items-center justify-center">
-        <svg viewBox={`0 0 ${size} ${size}`} className="w-full max-w-md h-auto">
-          <defs>
-            <radialGradient id="ringGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="hsl(var(--ember, 22 95% 55%))" stopOpacity="0.15" />
-              <stop offset="100%" stopColor="transparent" />
-            </radialGradient>
-          </defs>
-          <circle cx={cx} cy={cy} r={r + 40} fill="url(#ringGlow)" />
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke="currentColor" className="text-border/40" strokeDasharray="4 6" />
-          {/* all mesh lines */}
-          {nodes.map((n, i) =>
-            nodes.slice(i + 1).map((m) => (
-              <line
-                key={`${n.id}-${m.id}`}
-                x1={n.x}
-                y1={n.y}
-                x2={m.x}
-                y2={m.y}
-                stroke="currentColor"
-                className="text-border/25"
-                strokeWidth={0.6}
-              />
-            )),
-          )}
-          {/* active line */}
-          {activePair && (() => {
-            const a = nodes.find((n) => n.id === activePair.from)!;
-            const b = nodes.find((n) => n.id === activePair.to)!;
-            return (
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke="currentColor"
-                className="text-ember"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeDasharray="6 6"
-              >
-                <animate attributeName="stroke-dashoffset" from="0" to="-24" dur="0.8s" repeatCount="indefinite" />
-              </line>
-            );
-          })()}
-          {/* nodes */}
-          {nodes.map((n) => {
-            const isActive = typing.has(n.id) || activePair?.from === n.id || activePair?.to === n.id;
-            return (
-              <g key={n.id}>
-                {isActive && (
-                  <circle cx={n.x} cy={n.y} r={26} fill="currentColor" className="text-ember" opacity={0.15}>
-                    <animate attributeName="r" from="20" to="34" dur="1.2s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" from="0.3" to="0" dur="1.2s" repeatCount="indefinite" />
-                  </circle>
-                )}
-                <circle
-                  cx={n.x}
-                  cy={n.y}
-                  r={20}
-                  fill="currentColor"
-                  className={isActive ? "text-ember" : "text-background"}
-                  stroke="currentColor"
-                  strokeWidth={2}
-                />
-                <text
-                  x={n.x}
-                  y={n.y + 4}
-                  textAnchor="middle"
-                  fontSize="12"
-                  fontWeight="700"
-                  fill="currentColor"
-                  className={isActive ? "text-background" : "text-foreground"}
-                >
-                  {n.id}
-                </text>
-                <text
-                  x={n.x}
-                  y={n.y + 38}
-                  textAnchor="middle"
-                  fontSize="9"
-                  fill="currentColor"
-                  className="text-muted-foreground font-mono"
-                >
-                  Chip 0{n.id}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-      <div className="mt-2 text-center text-xs text-muted-foreground font-mono">
-        malha completa · qualquer chip conversa com qualquer outro · 24h/dia
-      </div>
-    </div>
-  );
-}
-
-
-
 
 function Logo({ small }: { small?: boolean }) {
   const size = small ? "h-6 w-6" : "h-8 w-8";
