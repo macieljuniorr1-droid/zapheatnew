@@ -57,6 +57,8 @@ export const evolution = {
     evoFetch(`/instance/connectionState/${encodeURIComponent(instanceName)}`, { method: "GET" }),
   fetchInstance: (instanceName: string) =>
     evoFetch(`/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`, { method: "GET" }),
+  restart: (instanceName: string) =>
+    evoFetch(`/instance/restart/${encodeURIComponent(instanceName)}`, { method: "POST", body: JSON.stringify({}) }),
   deleteInstance: (instanceName: string) =>
     evoFetch(`/instance/delete/${encodeURIComponent(instanceName)}`, { method: "DELETE" }),
   logout: (instanceName: string) =>
