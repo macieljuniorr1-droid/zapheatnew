@@ -1095,11 +1095,29 @@ function PlanTab() {
   const cancelFn = useServerFn(cancelNumberSubscription);
 
   const b = useQuery({ queryKey: ["my-billing"], queryFn: () => billingFn(), refetchInterval: 20000 });
+  const publicKeyFn = useServerFn(getPagarmePublicKey);
   const [open, setOpen] = useState(false);
   const [fullName, setFullName] = useState("");
   const [doc, setDoc] = useState("");
   const [phone, setPhone] = useState("");
   const [method, setMethod] = useState<"pix" | "credit_card">("pix");
+
+  // Endereço
+  const [zip, setZip] = useState("");
+  const [street, setStreet] = useState("");
+  const [number, setNumber] = useState("");
+  const [complement, setComplement] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [city, setCity] = useState("");
+  const [uf, setUf] = useState("");
+
+  // Cartão (nunca trafega pelo nosso servidor — só o token)
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardHolder, setCardHolder] = useState("");
+  const [cardExp, setCardExp] = useState(""); // MM/AA
+  const [cardCvv, setCardCvv] = useState("");
+  const [installments, setInstallments] = useState<number>(1);
+
   const [checkoutData, setCheckoutData] = useState<null | {
     number_subscription_id: string;
     pix_qr_code: string | null;
@@ -1107,8 +1125,78 @@ function PlanTab() {
     payment_url: string | null;
   }>(null);
 
+  // Auto-preenche via ViaCEP quando o CEP tem 8 dígitos
+  useEffect(() => {
+    const clean = zip.replace(/\D/g, "");
+    if (clean.length !== 8) return;
+    let cancelled = false;
+    fetch(`https://viacep.com.br/ws/${clean}/json/`)
+      .then((r) => r.json())
+      .then((d: any) => {
+        if (cancelled || d?.erro) return;
+        setStreet(d.logradouro ?? "");
+        setNeighborhood(d.bairro ?? "");
+        setCity(d.localidade ?? "");
+        setUf(d.uf ?? "");
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [zip]);
+
+  async function tokenizeCard(publicKey: string) {
+    const [mm, yy] = cardExp.split("/").map((s) => s.trim());
+    const res = await fetch(
+      `https://api.pagar.me/core/v5/tokens?appId=${encodeURIComponent(publicKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "card",
+          card: {
+            number: cardNumber.replace(/\s/g, ""),
+            holder_name: cardHolder.toUpperCase(),
+            exp_month: Number(mm),
+            exp_year: Number(yy?.length === 2 ? `20${yy}` : yy),
+            cvv: cardCvv,
+          },
+        }),
+      },
+    );
+    const json = await res.json();
+    if (!res.ok || !json.id) {
+      throw new Error(json?.errors?.[0]?.message ?? "Cartão inválido");
+    }
+    return json.id as string;
+  }
+
   const purchase = useMutation({
-    mutationFn: () => purchaseFn({ data: { full_name: fullName, document: doc, phone, payment_method: method } }),
+    mutationFn: async () => {
+      const address = {
+        street: street.trim(),
+        number: number.trim(),
+        complement: complement.trim() || undefined,
+        neighborhood: neighborhood.trim(),
+        city: city.trim(),
+        state: uf.trim().toUpperCase(),
+        zip_code: zip.replace(/\D/g, ""),
+      };
+      let card_token: string | undefined;
+      if (method === "credit_card") {
+        const { public_key } = await publicKeyFn();
+        card_token = await tokenizeCard(public_key);
+      }
+      return purchaseFn({
+        data: {
+          full_name: fullName,
+          document: doc,
+          phone,
+          address,
+          payment_method: method,
+          card_token,
+          installments: method === "credit_card" ? installments : undefined,
+        },
+      });
+    },
     onSuccess: (res: any) => {
       setCheckoutData({
         number_subscription_id: res.number_subscription_id,
@@ -1117,11 +1205,7 @@ function PlanTab() {
         payment_url: res.payment_url,
       });
       qc.invalidateQueries({ queryKey: ["my-billing"] });
-      // Se cartão: já redireciona pro checkout hospedado do Pagar.me numa nova aba
-      if (method === "credit_card" && res.payment_url) {
-        window.open(res.payment_url, "_blank", "noopener");
-      }
-      toast.success("Cobrança gerada! Complete o pagamento.");
+      toast.success(method === "credit_card" ? "Cartão aprovado!" : "PIX gerado! Escaneie ou copie.");
     },
     onError: (e: any) => toast.error(e.message),
   });
