@@ -44,6 +44,17 @@ import {
   setCampaignStatus,
   deleteCampaign,
 } from "@/lib/dispatch.functions";
+import {
+  getMyBilling,
+  purchaseNumber,
+  cancelNumberSubscription,
+  adminFinancialSummary,
+  adminAddFreeNumbers,
+  adminSetUserSuspended,
+  adminForceRemoveNumberSubscription,
+  adminListBillingUsers,
+} from "@/lib/billing.functions";
+
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
