@@ -588,6 +588,17 @@ function timeAgo(iso: string): string {
   return `há ${d}d`;
 }
 
+function deliveryBadge(status: string) {
+  if (status === "sent") {
+    return (
+      <Badge className="text-xs bg-green-500/20 text-green-700 dark:text-green-400 border border-green-500/40 shadow-sm">
+        <CheckCircle2 className="h-3 w-3 mr-1" /> Entregue
+      </Badge>
+    );
+  }
+  return <Badge variant="destructive" className="text-xs">Falhou</Badge>;
+}
+
 function ChipReportDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
   const fn = useServerFn(getChipReport);
   const q = useQuery({
@@ -798,16 +809,17 @@ function GroupEnginePanel({ groupId }: { groupId: string }) {
   const nextIn = s.next_run_at ? Math.max(0, Math.floor((new Date(s.next_run_at).getTime() - Date.now()) / 1000)) : null;
   const nextLabel = nextIn == null ? "—" : nextIn === 0 ? "agora" : nextIn < 60 ? `${nextIn}s` : `${Math.floor(nextIn / 60)}m ${nextIn % 60}s`;
   const running = s.active && s.connected_members >= 2;
+  const activeNow = running && (nextIn === 0 || !!s.last_activity);
   return (
-    <div className="mt-3 rounded-lg border bg-muted/30 p-3">
+    <div className={`mt-3 rounded-lg border p-3 ${running ? "border-green-500/40 bg-green-500/10" : "bg-muted/30"}`}>
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
           <span className={`relative flex h-2 w-2`}>
-            {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />}
-            <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? "bg-primary" : "bg-muted-foreground/40"}`} />
+            {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-70" />}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? "bg-green-500" : "bg-muted-foreground/40"}`} />
           </span>
           <Zap className="h-3 w-3" />
-          {running ? "Motor rodando" : s.active ? "Aguardando chips conectados" : "Motor pausado"}
+          {running ? (activeNow ? "Motor ativo em tempo real" : "Motor pronto") : s.active ? "Aguardando 2 chips conectados" : "Motor pausado"}
         </div>
         <span className="text-muted-foreground">·</span>
         <span><span className="text-muted-foreground">Próximo tick:</span> <span className="font-mono">{nextLabel}</span></span>
@@ -816,7 +828,12 @@ function GroupEnginePanel({ groupId }: { groupId: string }) {
         <span className="text-muted-foreground">·</span>
         <span><span className="text-muted-foreground">Total:</span> <span className="font-semibold">{s.msgs_total}</span></span>
         <span className="text-muted-foreground">·</span>
-        <span><span className="text-muted-foreground">Chips:</span> <span className="font-semibold">{s.connected_members}/{s.total_members}</span> ativos</span>
+        <span><span className="text-muted-foreground">Chips:</span> <span className={running ? "font-semibold text-green-600 dark:text-green-400" : "font-semibold"}>{s.connected_members}/{s.total_members}</span> ativos</span>
+        {running && (
+          <Badge className="bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30 text-[10px]">
+            <CheckCircle2 className="h-3 w-3 mr-1" /> Troca funcionando
+          </Badge>
+        )}
         {s.last_activity && (
           <>
             <span className="text-muted-foreground">·</span>
@@ -1053,19 +1070,29 @@ function TemplatesTab() {
 // ---------------- Logs ----------------
 function LogsTab() {
   const fn = useServerFn(listLogs);
-  const q = useQuery({ queryKey: ["logs"], queryFn: () => fn(), refetchInterval: 10000 });
+  const q = useQuery({ queryKey: ["logs"], queryFn: () => fn(), refetchInterval: 3000 });
   return (
     <div className="mt-4">
       <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CheckCircle2 className="h-4 w-4 text-green-500" /> Entregas confirmadas
+          </CardTitle>
+          <CardDescription>Logs atualizados em tempo real; verde significa que o WhatsApp confirmou o envio.</CardDescription>
+        </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y max-h-[600px] overflow-y-auto">
             {q.data?.map((l: any) => (
-              <div key={l.id} className="p-3 text-sm flex items-center justify-between">
+              <div key={l.id} className={`p-3 text-sm flex items-center justify-between gap-3 ${l.status === "sent" ? "bg-green-500/5" : ""}`}>
                 <div>
                   <div><span className="font-medium">{l.from_instance?.name ?? "?"}</span> → <span className="font-medium">{l.to_instance?.name ?? "?"}</span>: <span className="text-muted-foreground">{l.content}</span></div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{new Date(l.created_at).toLocaleString("pt-BR")}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                    {new Date(l.created_at).toLocaleString("pt-BR")}
+                    {l.status === "sent" && <span className="text-green-600 dark:text-green-400 font-medium">✓ enviado e recebido</span>}
+                    {l.error && <span className="text-destructive">{l.error}</span>}
+                  </div>
                 </div>
-                <Badge variant={l.status === "sent" ? "secondary" : "destructive"} className="text-xs">{l.status}</Badge>
+                {deliveryBadge(l.status)}
               </div>
             ))}
             {q.data?.length === 0 && <div className="p-8 text-center text-muted-foreground text-sm">Nenhuma mensagem enviada ainda.</div>}
