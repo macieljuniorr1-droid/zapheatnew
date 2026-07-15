@@ -72,17 +72,34 @@ export const Route = createFileRoute("/api/public/hooks/pagarme-webhook")({
 
         // Processa por tipo de evento
         const now = new Date();
-        const in30d = new Date(now.getTime() + 30 * 86400_000).toISOString();
 
         if (eventType === "order.paid" || eventType === "charge.paid") {
           if (ns) {
-            await supabaseAdmin
-              .from("number_subscriptions")
-              .update({
-                status: "active",
-                current_period_end: in30d,
-              })
-              .eq("id", ns.id);
+            // Estende current_period_end em 30 dias a partir do fim atual (se ainda no futuro)
+            // ou a partir de agora (se já vencido). Assim o usuário nunca perde dias.
+            const cur = ns.current_period_end ? new Date(ns.current_period_end) : now;
+            const base = cur.getTime() > now.getTime() ? cur : now;
+            const nextEnd = new Date(base.getTime() + 30 * 86400_000).toISOString();
+
+            // Salva card_id da transação para renovação recorrente futura
+            const charges = data?.charges ?? data?.order?.charges ?? [];
+            const cardId: string | null =
+              charges?.[0]?.last_transaction?.card?.id ??
+              data?.last_transaction?.card?.id ??
+              null;
+
+            const patch: any = {
+              status: "active",
+              current_period_end: nextEnd,
+              renewal_order_id: null,
+              last_pix_qr_code: null,
+              last_charge_url: null,
+              last_order_id:
+                data?.id ?? data?.order?.id ?? charges?.[0]?.order_id ?? ns.last_order_id ?? null,
+            };
+            if (cardId && !ns.pagarme_card_id) patch.pagarme_card_id = cardId;
+
+            await supabaseAdmin.from("number_subscriptions").update(patch).eq("id", ns.id);
           }
         } else if (
           eventType === "charge.payment_failed" ||

@@ -18,6 +18,7 @@ import { Route as ApiPublicHooksWarmupTickRouteImport } from './routes/api/publi
 import { Route as ApiPublicHooksPagarmeWebhookRouteImport } from './routes/api/public/hooks/pagarme-webhook'
 import { Route as ApiPublicHooksCampaignTickRouteImport } from './routes/api/public/hooks/campaign-tick'
 import { Route as ApiPublicHooksBootstrapAdminRouteImport } from './routes/api/public/hooks/bootstrap-admin'
+import { Route as ApiPublicHooksBillingTickRouteImport } from './routes/api/public/hooks/billing-tick'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -67,12 +68,19 @@ const ApiPublicHooksBootstrapAdminRoute =
     path: '/api/public/hooks/bootstrap-admin',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksBillingTickRoute =
+  ApiPublicHooksBillingTickRouteImport.update({
+    id: '/api/public/hooks/billing-tick',
+    path: '/api/public/hooks/billing-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/app': typeof AuthenticatedAppRoute
+  '/api/public/hooks/billing-tick': typeof ApiPublicHooksBillingTickRoute
   '/api/public/hooks/bootstrap-admin': typeof ApiPublicHooksBootstrapAdminRoute
   '/api/public/hooks/campaign-tick': typeof ApiPublicHooksCampaignTickRoute
   '/api/public/hooks/pagarme-webhook': typeof ApiPublicHooksPagarmeWebhookRoute
@@ -83,6 +91,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/app': typeof AuthenticatedAppRoute
+  '/api/public/hooks/billing-tick': typeof ApiPublicHooksBillingTickRoute
   '/api/public/hooks/bootstrap-admin': typeof ApiPublicHooksBootstrapAdminRoute
   '/api/public/hooks/campaign-tick': typeof ApiPublicHooksCampaignTickRoute
   '/api/public/hooks/pagarme-webhook': typeof ApiPublicHooksPagarmeWebhookRoute
@@ -95,6 +104,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/app': typeof AuthenticatedAppRoute
+  '/api/public/hooks/billing-tick': typeof ApiPublicHooksBillingTickRoute
   '/api/public/hooks/bootstrap-admin': typeof ApiPublicHooksBootstrapAdminRoute
   '/api/public/hooks/campaign-tick': typeof ApiPublicHooksCampaignTickRoute
   '/api/public/hooks/pagarme-webhook': typeof ApiPublicHooksPagarmeWebhookRoute
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/admin'
     | '/app'
+    | '/api/public/hooks/billing-tick'
     | '/api/public/hooks/bootstrap-admin'
     | '/api/public/hooks/campaign-tick'
     | '/api/public/hooks/pagarme-webhook'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/admin'
     | '/app'
+    | '/api/public/hooks/billing-tick'
     | '/api/public/hooks/bootstrap-admin'
     | '/api/public/hooks/campaign-tick'
     | '/api/public/hooks/pagarme-webhook'
@@ -128,6 +140,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/admin'
     | '/_authenticated/app'
+    | '/api/public/hooks/billing-tick'
     | '/api/public/hooks/bootstrap-admin'
     | '/api/public/hooks/campaign-tick'
     | '/api/public/hooks/pagarme-webhook'
@@ -138,6 +151,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ApiPublicHooksBillingTickRoute: typeof ApiPublicHooksBillingTickRoute
   ApiPublicHooksBootstrapAdminRoute: typeof ApiPublicHooksBootstrapAdminRoute
   ApiPublicHooksCampaignTickRoute: typeof ApiPublicHooksCampaignTickRoute
   ApiPublicHooksPagarmeWebhookRoute: typeof ApiPublicHooksPagarmeWebhookRoute
@@ -209,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksBootstrapAdminRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/billing-tick': {
+      id: '/api/public/hooks/billing-tick'
+      path: '/api/public/hooks/billing-tick'
+      fullPath: '/api/public/hooks/billing-tick'
+      preLoaderRoute: typeof ApiPublicHooksBillingTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -229,6 +250,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ApiPublicHooksBillingTickRoute: ApiPublicHooksBillingTickRoute,
   ApiPublicHooksBootstrapAdminRoute: ApiPublicHooksBootstrapAdminRoute,
   ApiPublicHooksCampaignTickRoute: ApiPublicHooksCampaignTickRoute,
   ApiPublicHooksPagarmeWebhookRoute: ApiPublicHooksPagarmeWebhookRoute,
