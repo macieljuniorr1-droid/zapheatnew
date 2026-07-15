@@ -233,17 +233,23 @@ const CHIPS = [
   { id: 2, label: "Chip 02", phone: "+55 21 9•••• 7733" },
   { id: 3, label: "Chip 03", phone: "+55 31 9•••• 2109" },
   { id: 4, label: "Chip 04", phone: "+55 47 9•••• 5588" },
+  { id: 5, label: "Chip 05", phone: "+55 51 9•••• 3312" },
+  { id: 6, label: "Chip 06", phone: "+55 61 9•••• 9004" },
+  { id: 7, label: "Chip 07", phone: "+55 71 9•••• 6620" },
+  { id: 8, label: "Chip 08", phone: "+55 85 9•••• 1147" },
 ];
 
 const CONVO_SCRIPT: Array<{ from: number; to: number; text: string }> = [
-  { from: 1, to: 2, text: "oi, bom dia 👋" },
-  { from: 3, to: 4, text: "e aí, como foi ontem?" },
-  { from: 2, to: 1, text: "opa, bom dia! tudo tranquilo" },
-  { from: 4, to: 3, text: "foi bom demais kkk" },
-  { from: 1, to: 2, text: "beleza demais 🙌" },
-  { from: 3, to: 4, text: "bora marcar de novo" },
-  { from: 2, to: 1, text: "combinado, depois te chamo" },
-  { from: 4, to: 3, text: "bora sim, sexta?" },
+  { from: 1, to: 5, text: "oi, bom dia 👋" },
+  { from: 3, to: 7, text: "e aí, como foi ontem?" },
+  { from: 2, to: 6, text: "opa, tudo tranquilo" },
+  { from: 4, to: 8, text: "bora marcar de novo" },
+  { from: 5, to: 1, text: "bom dia! td certo?" },
+  { from: 7, to: 3, text: "foi bom demais kkk" },
+  { from: 6, to: 2, text: "beleza demais 🙌" },
+  { from: 8, to: 4, text: "sexta tá bom" },
+  { from: 1, to: 3, text: "tamo junto" },
+  { from: 5, to: 8, text: "aí sim!" },
 ];
 
 function useLiveConvo() {
@@ -304,7 +310,9 @@ function LiveSimulation() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <NetworkGraph typing={typing} messages={messages} />
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8 mb-6">
         {CHIPS.map((c) => {
           const isTyping = typing.has(c.id);
           return (
@@ -400,6 +408,128 @@ function TypingDots() {
     </span>
   );
 }
+
+function NetworkGraph({
+  typing,
+  messages,
+}: {
+  typing: Set<number>;
+  messages: Array<{ id: number; from: number; to: number; text: string; time: string }>;
+}) {
+  const size = 420;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = 160;
+  const nodes = CHIPS.map((c, i) => {
+    const angle = (i / CHIPS.length) * Math.PI * 2 - Math.PI / 2;
+    return { ...c, x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+  });
+  const last = messages[messages.length - 1];
+  const activePair = last ? { from: last.from, to: last.to } : null;
+
+  return (
+    <div className="panel rounded-2xl p-6 relative overflow-hidden">
+      <div className="absolute -top-3 left-6 px-2 py-0.5 rounded-md bg-background border border-ember/30 text-[10px] font-mono uppercase tracking-widest text-ember">
+        rede · 8 chips ativos
+      </div>
+      <div className="flex items-center justify-center">
+        <svg viewBox={`0 0 ${size} ${size}`} className="w-full max-w-md h-auto">
+          <defs>
+            <radialGradient id="ringGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="hsl(var(--ember, 22 95% 55%))" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="transparent" />
+            </radialGradient>
+          </defs>
+          <circle cx={cx} cy={cy} r={r + 40} fill="url(#ringGlow)" />
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="currentColor" className="text-border/40" strokeDasharray="4 6" />
+          {/* all mesh lines */}
+          {nodes.map((n, i) =>
+            nodes.slice(i + 1).map((m) => (
+              <line
+                key={`${n.id}-${m.id}`}
+                x1={n.x}
+                y1={n.y}
+                x2={m.x}
+                y2={m.y}
+                stroke="currentColor"
+                className="text-border/25"
+                strokeWidth={0.6}
+              />
+            )),
+          )}
+          {/* active line */}
+          {activePair && (() => {
+            const a = nodes.find((n) => n.id === activePair.from)!;
+            const b = nodes.find((n) => n.id === activePair.to)!;
+            return (
+              <line
+                x1={a.x}
+                y1={a.y}
+                x2={b.x}
+                y2={b.y}
+                stroke="currentColor"
+                className="text-ember"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeDasharray="6 6"
+              >
+                <animate attributeName="stroke-dashoffset" from="0" to="-24" dur="0.8s" repeatCount="indefinite" />
+              </line>
+            );
+          })()}
+          {/* nodes */}
+          {nodes.map((n) => {
+            const isActive = typing.has(n.id) || activePair?.from === n.id || activePair?.to === n.id;
+            return (
+              <g key={n.id}>
+                {isActive && (
+                  <circle cx={n.x} cy={n.y} r={26} fill="currentColor" className="text-ember" opacity={0.15}>
+                    <animate attributeName="r" from="20" to="34" dur="1.2s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" from="0.3" to="0" dur="1.2s" repeatCount="indefinite" />
+                  </circle>
+                )}
+                <circle
+                  cx={n.x}
+                  cy={n.y}
+                  r={20}
+                  fill="currentColor"
+                  className={isActive ? "text-ember" : "text-background"}
+                  stroke="currentColor"
+                  strokeWidth={2}
+                />
+                <text
+                  x={n.x}
+                  y={n.y + 4}
+                  textAnchor="middle"
+                  fontSize="12"
+                  fontWeight="700"
+                  fill="currentColor"
+                  className={isActive ? "text-background" : "text-foreground"}
+                >
+                  {n.id}
+                </text>
+                <text
+                  x={n.x}
+                  y={n.y + 38}
+                  textAnchor="middle"
+                  fontSize="9"
+                  fill="currentColor"
+                  className="text-muted-foreground font-mono"
+                >
+                  Chip 0{n.id}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <div className="mt-2 text-center text-xs text-muted-foreground font-mono">
+        malha completa · qualquer chip conversa com qualquer outro · 24h/dia
+      </div>
+    </div>
+  );
+}
+
 
 
 
