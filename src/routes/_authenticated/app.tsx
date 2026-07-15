@@ -737,12 +737,17 @@ function GroupEnginePanel({ groupId }: { groupId: string }) {
 
 function AddMemberSelect({ groupId, used, instances, onAdd }: { groupId: string; used: Set<string>; instances: any[]; onAdd: (id: string) => void }) {
   const available = instances.filter((i) => !used.has(i.id));
-  if (!available.length) return null;
+  if (!instances.length) {
+    return <span className="text-xs text-muted-foreground">Nenhum número criado. Vá em <b>Números</b> e conecte pelo menos 2 chips.</span>;
+  }
+  if (!available.length) {
+    return <span className="text-xs text-muted-foreground">Todos os seus números já estão neste grupo.</span>;
+  }
   return (
     <Select onValueChange={(v) => onAdd(v)}>
       <SelectTrigger className="w-auto h-7 text-xs"><SelectValue placeholder="+ Adicionar número" /></SelectTrigger>
       <SelectContent>
-        {available.map((i) => (<SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>))}
+        {available.map((i) => (<SelectItem key={i.id} value={i.id}>{i.name} {i.phone ? `(${i.phone})` : ""}</SelectItem>))}
       </SelectContent>
     </Select>
   );
