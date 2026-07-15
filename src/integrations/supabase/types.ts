@@ -89,14 +89,17 @@ export type Database = {
         Row: {
           campaign_id: string
           instance_id: string
+          user_id: string
         }
         Insert: {
           campaign_id: string
           instance_id: string
+          user_id: string
         }
         Update: {
           campaign_id?: string
           instance_id?: string
+          user_id?: string
         }
         Relationships: [
           {
