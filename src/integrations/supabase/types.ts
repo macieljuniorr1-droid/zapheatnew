@@ -116,6 +116,9 @@ export type Database = {
           id: string
           list_id: string | null
           max_delay_seconds: number
+          media_filename: string | null
+          media_type: string | null
+          media_url: string | null
           message: string
           min_delay_seconds: number
           name: string
@@ -131,6 +134,9 @@ export type Database = {
           id?: string
           list_id?: string | null
           max_delay_seconds?: number
+          media_filename?: string | null
+          media_type?: string | null
+          media_url?: string | null
           message: string
           min_delay_seconds?: number
           name: string
@@ -146,6 +152,9 @@ export type Database = {
           id?: string
           list_id?: string | null
           max_delay_seconds?: number
+          media_filename?: string | null
+          media_type?: string | null
+          media_url?: string | null
           message?: string
           min_delay_seconds?: number
           name?: string
@@ -522,6 +531,7 @@ export type Database = {
           status: string
           updated_at: string
           user_id: string
+          warmup_started_at: string | null
         }
         Insert: {
           created_at?: string
@@ -533,6 +543,7 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id: string
+          warmup_started_at?: string | null
         }
         Update: {
           created_at?: string
@@ -544,6 +555,7 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id?: string
+          warmup_started_at?: string | null
         }
         Relationships: []
       }
