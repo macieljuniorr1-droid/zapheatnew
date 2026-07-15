@@ -15,7 +15,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
         const { data: groups, error: gErr } = await supabaseAdmin
           .from("warmup_groups")
           .select(
-            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, warmup_group_members(instance_id, whatsapp_instances(id, evolution_instance, status, phone, warmup_started_at))",
+            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, warmup_group_members(instance_id, whatsapp_instances(id, name, evolution_instance, status, phone, warmup_started_at))",
           )
           .eq("active", true)
           .lte("next_run_at", now)
@@ -126,6 +126,30 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               content: r.content as string,
             }));
 
+            // Broadcast "typing" event so the UI shows a real typing indicator BEFORE we generate/send.
+            const broadcast = async (event: string, payload: any) => {
+              try {
+                await fetch(`${process.env.SUPABASE_URL}/realtime/v1/api/broadcast`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+                    Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+                  },
+                  body: JSON.stringify({
+                    messages: [{ topic: "ai-engine-live", event, payload }],
+                  }),
+                });
+              } catch {}
+            };
+            await broadcast("typing_start", {
+              group_id: (g as any).id,
+              from_id: from.id,
+              to_id: to.id,
+              from_name: from.name ?? "Chip",
+              to_name: to.name ?? "Chip",
+            });
+
             // Generate reply via AI, fallback to template pool if AI fails
             let messageContent = "";
             try {
@@ -145,14 +169,23 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               }
             }
 
+            // Tempo realista de digitação: ~55ms por caractere, entre 1.4s e 9s.
+            const typingMs = Math.min(9000, Math.max(1400, messageContent.length * 55));
+
             const toNumber = String(to.phone).replace(/\D/g, "");
             let status = "sent";
             let errMsg: string | null = null;
             try {
+              // Mostra "digitando..." no WhatsApp do destinatário (cosmético, real)
+              await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
+              // Aguarda o tempo de digitação antes de enviar de fato
+              await new Promise((r) => setTimeout(r, typingMs));
               await evolution.sendText(from.evolution_instance, toNumber, messageContent);
             } catch (e: any) {
               status = "failed";
               errMsg = e?.message ?? "erro";
+            } finally {
+              await broadcast("typing_end", { group_id: (g as any).id, from_id: from.id, to_id: to.id });
             }
 
             await supabaseAdmin.from("warmup_logs").insert({
