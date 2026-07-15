@@ -129,6 +129,7 @@ export const createInstance = createServerFn({ method: "POST" })
         evolution_instance: evolutionInstance,
         status: "qr",
         last_qr: qr,
+        updated_at: new Date().toISOString(),
       })
       .select()
       .single();
@@ -151,7 +152,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
 
     const { evolution } = await import("@/lib/evolution.server");
     let status = "disconnected";
-    let qr: string | null = null;
+    let qr: string | null = (inst as any).last_qr ?? null;
     let phone: string | null = (inst as any).phone ?? null;
     try {
       const state = await evolution.connectionState(inst.evolution_instance);
@@ -175,19 +176,26 @@ export const refreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
 
-    if (status !== "connected") {
+    const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
+    const canRegenerateQr = !(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected";
+    if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect(inst.evolution_instance);
-        qr = normalizeQr(conn);
-        if (qr) status = "qr";
+        const nextQr = normalizeQr(conn);
+        if (nextQr) {
+          qr = nextQr;
+          status = "qr";
+        }
       } catch {}
+    } else if (status !== "connected" && qr) {
+      status = "qr";
     }
 
     const { data: updated, error } = await context.supabase
       .from("whatsapp_instances")
       .update({
         status,
-        last_qr: qr,
+        last_qr: status === "connected" ? null : qr,
         phone,
         updated_at: new Date().toISOString(),
         // Marca início do aquecimento na primeira vez que conecta
@@ -602,16 +610,24 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
         phone = extractPhone(rec?.ownerJid, rec?.owner, rec?.wuid, rec?.number);
       } catch {}
     }
-    if (status !== "connected") {
+    const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
+    const canRegenerateQr = !(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected";
+    if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
-        qr = normalizeQr(conn);
-        if (qr) status = "qr";
+        const nextQr = normalizeQr(conn);
+        if (nextQr) {
+          qr = nextQr;
+          status = "qr";
+        }
       } catch {}
+    } else if (status !== "connected" && (inst as any).last_qr) {
+      qr = (inst as any).last_qr;
+      status = "qr";
     }
     const { error } = await supabaseAdmin
       .from("whatsapp_instances")
-      .update({ status, last_qr: qr, phone, updated_at: new Date().toISOString() })
+      .update({ status, last_qr: status === "connected" ? null : qr, phone, updated_at: new Date().toISOString() })
       .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true, status, phone };
