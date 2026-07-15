@@ -274,7 +274,8 @@ export const adminFinancialSummary = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await requireAdmin(context);
-    const { data, error } = await context.supabase.rpc("admin_financial_summary");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin.rpc("admin_financial_summary");
     if (error) throw new Error(error.message);
     const row = Array.isArray(data) ? data[0] : data;
     return {
