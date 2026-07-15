@@ -62,6 +62,7 @@ import {
   listTeamMembers,
   createTeamMember,
   removeTeamMember,
+  resetTeamMemberPassword,
   updateTeamMember,
   assignInstanceToMember,
   getTeamActivity,
@@ -2935,6 +2936,7 @@ function TeamTab() {
   const listFn = useServerFn(listTeamMembers);
   const createFn = useServerFn(createTeamMember);
   const removeFn = useServerFn(removeTeamMember);
+  const resetPwdFn = useServerFn(resetTeamMemberPassword);
   const updateFn = useServerFn(updateTeamMember);
   const assignFn = useServerFn(assignInstanceToMember);
   const activityFn = useServerFn(getTeamActivity);
@@ -3182,6 +3184,28 @@ function TeamTab() {
                         <SelectItem value="manager">Gerente</SelectItem>
                       </SelectContent>
                     </Select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const pwd = prompt(
+                          `Definir nova senha para ${m.full_name || m.email}\n(mínimo 8 caracteres):`,
+                        );
+                        if (pwd == null) return;
+                        if (pwd.length < 8) {
+                          toast.error("Senha deve ter no mínimo 8 caracteres.");
+                          return;
+                        }
+                        resetPwdFn({ data: { member_id: m.id, new_password: pwd } })
+                          .then(() => {
+                            toast.success("Senha redefinida. Informe a nova senha ao funcionário.");
+                            qc.invalidateQueries({ queryKey: ["team-activity"] });
+                          })
+                          .catch((e: any) => toast.error(e.message));
+                      }}
+                    >
+                      Redefinir senha
+                    </Button>
                     <Button
                       size="icon"
                       variant="ghost"
