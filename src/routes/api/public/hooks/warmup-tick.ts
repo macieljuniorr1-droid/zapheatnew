@@ -266,56 +266,67 @@ async function fetchRecentLogs(supabaseAdmin: any, groupId: string) {
 function pickPairs(members: Chip[], recentLogs: any[]) {
   const memberIds = new Set(members.map((i) => i.id));
   const sentLogs = recentLogs.filter((log) => log.status === "sent");
+  const nowMs = Date.now();
+
   const recentFailedPairs = new Set(
     recentLogs
-      .filter((log) => log.status === "failed" && Date.now() - new Date(log.created_at).getTime() < FAILING_PAIR_COOLDOWN_MS)
+      .filter((log) => log.status === "failed" && nowMs - new Date(log.created_at).getTime() < FAILING_PAIR_COOLDOWN_MS)
       .map((log) => pairKey(log.from_instance_id, log.to_instance_id)),
   );
   const senderFailures = new Map<string, number>();
   for (const log of recentLogs) {
     if (log.status !== "failed" || !log.from_instance_id) continue;
-    if (Date.now() - new Date(log.created_at).getTime() >= FAILING_PAIR_COOLDOWN_MS) continue;
+    if (nowMs - new Date(log.created_at).getTime() >= FAILING_PAIR_COOLDOWN_MS) continue;
     senderFailures.set(log.from_instance_id, (senderFailures.get(log.from_instance_id) ?? 0) + 1);
   }
-  const dominantPairs = findDominantPairs(sentLogs);
-  const lastByInstance = new Map<string, any>();
+
+  // Última mensagem trocada POR PAR (não por instância). Assim uma dívida de
+  // resposta entre A↔B não é apagada porque A depois falou com C.
+  const lastByPair = new Map<string, any>();
   for (const log of sentLogs) {
-    if (log.from_instance_id && !lastByInstance.has(log.from_instance_id)) lastByInstance.set(log.from_instance_id, log);
-    if (log.to_instance_id && !lastByInstance.has(log.to_instance_id)) lastByInstance.set(log.to_instance_id, log);
-  }
-
-  type State = { kind: "idle" } | { kind: "waiting"; peerId: string } | { kind: "owes"; peerId: string };
-  const nowMs = Date.now();
-  const stateOf = (id: string): State => {
-    const last = lastByInstance.get(id);
-    if (!last) return { kind: "idle" };
-    const peerId = last.from_instance_id === id ? last.to_instance_id : last.from_instance_id;
-    if (!memberIds.has(peerId)) return { kind: "idle" };
-    if (recentFailedPairs.has(pairKey(id, peerId))) return { kind: "idle" };
-    const age = nowMs - new Date(last.created_at).getTime();
-    if (age > REPLY_TIMEOUT_MS) return { kind: "idle" };
-    const currentPairKey = pairKey(id, peerId);
-    if (dominantPairs.has(currentPairKey)) return { kind: "idle" };
-    if (last.from_instance_id === id) return { kind: "waiting", peerId };
-    return { kind: "owes", peerId };
-  };
-
-  const pairs: Array<{ from: Chip; to: Chip }> = [];
-  const selected = new Set<string>();
-  const shuffled = [...members].sort(() => Math.random() - 0.5);
-
-  for (const m of shuffled) {
-    if (selected.has(m.id)) continue;
-    const s = stateOf(m.id);
-    if (s.kind !== "owes") continue;
-    const peer = members.find((x) => x.id === s.peerId);
-    if (peer && !selected.has(peer.id)) {
-      pairs.push({ from: m, to: peer });
-      selected.add(m.id);
-      selected.add(peer.id);
+    if (!log.from_instance_id || !log.to_instance_id) continue;
+    if (!memberIds.has(log.from_instance_id) || !memberIds.has(log.to_instance_id)) continue;
+    const k = pairKey(log.from_instance_id, log.to_instance_id);
+    const prev = lastByPair.get(k);
+    if (!prev || new Date(log.created_at).getTime() > new Date(prev.created_at).getTime()) {
+      lastByPair.set(k, log);
     }
   }
 
+  const dominantPairs = findDominantPairs(sentLogs);
+
+  // Dívidas em aberto: para cada par, se a última msg foi peer→me e ainda está
+  // dentro da janela de resposta, "me" deve responder ao peer.
+  type Debt = { instanceId: string; peerId: string; age: number };
+  const debts: Debt[] = [];
+  for (const [key, log] of lastByPair.entries()) {
+    if (recentFailedPairs.has(key)) continue;
+    if (dominantPairs.has(key)) continue;
+    const age = nowMs - new Date(log.created_at).getTime();
+    if (age > REPLY_TIMEOUT_MS) continue;
+    // Quem deve resposta é o `to` do último log (recebeu por último).
+    debts.push({ instanceId: log.to_instance_id, peerId: log.from_instance_id, age });
+  }
+  // Prioriza dívidas mais antigas — quem foi ignorado por mais tempo fala primeiro.
+  debts.sort((a, b) => b.age - a.age);
+
+  const pairs: Array<{ from: Chip; to: Chip }> = [];
+  const selected = new Set<string>();
+  const chipById = new Map(members.map((m) => [m.id, m]));
+
+  for (const debt of debts) {
+    if (selected.has(debt.instanceId) || selected.has(debt.peerId)) continue;
+    const from = chipById.get(debt.instanceId);
+    const to = chipById.get(debt.peerId);
+    if (!from || !to) continue;
+    if (from.temporarily_unavailable || to.temporarily_unavailable) continue;
+    pairs.push({ from, to });
+    selected.add(from.id);
+    selected.add(to.id);
+  }
+
+  // Frequência histórica por par — para começar novas conversas priorizando
+  // os pares que menos se falaram (evita monopólio de A↔B).
   const pairCount = new Map<string, number>();
   for (const log of sentLogs) {
     if (!log.from_instance_id || !log.to_instance_id) continue;
@@ -323,7 +334,10 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     pairCount.set(k, (pairCount.get(k) ?? 0) + 1);
   }
 
-  const idle = shuffled.filter((m) => stateOf(m.id).kind === "idle" && !selected.has(m.id));
+  const idle = [...members]
+    .filter((m) => !selected.has(m.id) && !m.temporarily_unavailable)
+    .sort(() => Math.random() - 0.5);
+
   while (idle.length >= 2) {
     let best: { a: Chip; b: Chip; count: number } | null = null;
     for (let i = 0; i < idle.length; i++) {
@@ -339,9 +353,6 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     if (!best) break;
     const aFailures = senderFailures.get(best.a.id) ?? 0;
     const bFailures = senderFailures.get(best.b.id) ?? 0;
-    // Se um número acabou de falhar enviando, ainda deixa ele participar como
-    // destinatário. Assim ele não some do aquecimento e os outros continuam
-    // puxando conversa com ele enquanto a sessão se estabiliza.
     pairs.push(aFailures > bFailures ? { from: best.b, to: best.a } : { from: best.a, to: best.b });
     selected.add(best.a.id);
     selected.add(best.b.id);
@@ -352,6 +363,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
 
   return pairs;
 }
+
 
 function pairKey(a: string, b: string) {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
