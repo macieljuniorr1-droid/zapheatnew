@@ -20,7 +20,7 @@ async function getConfig(): Promise<EvolutionConfig> {
 async function evoFetch(path: string, init: RequestInit = {}) {
   const cfg = await getConfig();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  const timeout = setTimeout(() => controller.abort(), 5_000);
   let res: Response;
   try {
     res = await fetch(`${cfg.api_url}${path}`, {
@@ -87,14 +87,14 @@ export const evolution = {
     if (!cleanNumber) throw new Error("Destinatário sem número válido");
     if (!cleanText) throw new Error("Mensagem vazia: Evolution exige o campo text");
 
-    // Todas as tentativas mantêm `text` no topo do payload. O erro reportado
-    // pelo usuário vinha do fallback antigo, que enviava apenas
-    // `textMessage.text`; algumas versões da Evolution validam o schema antes
-    // de encaminhar ao Baileys e rejeitam quando `text` não está no topo.
+    // Mantém compatibilidade entre versões da Evolution. A variante principal
+    // usa `text` no topo (exigida no erro reportado), mas preservamos fallbacks
+    // seguros para builds que ainda aceitam/esperam `textMessage`.
     const payloads = [
       { number: cleanNumber, text: cleanText, delay: delayMs, linkPreview: false },
       { number: cleanNumber, text: cleanText, options: { delay: delayMs, linkPreview: false } },
       { number: cleanNumber, text: cleanText, textMessage: { text: cleanText }, delay: delayMs, linkPreview: false },
+      { number: cleanNumber, text: cleanText, textMessage: { text: cleanText }, delay: delayMs, options: { delay: delayMs, linkPreview: false } },
     ];
 
     const errors: any[] = [];
