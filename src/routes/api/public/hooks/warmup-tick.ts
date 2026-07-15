@@ -5,9 +5,12 @@ import { createFileRoute } from "@tanstack/react-router";
 // as possible, and only stores a log as "sent" after Evolution confirms the
 // WhatsApp delivery ACK. A plain 201/PENDING response is not considered sent.
 
-const MAX_DELAY_SECONDS = 30;
-const REPLY_TIMEOUT_MS = 30 * 1000;
-const DELIVERY_ACK_WAIT_MS = 18_000;
+const MAX_DELAY_SECONDS = 8;
+const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
+const DELIVERY_ACK_WAIT_MS = 7_000;
+const MAX_BURST_ROUNDS = 3;
+const BURST_BUDGET_MS = 24_000;
+const REPLY_GAP_MS = 1_500;
 
 type Chip = {
   id: string;
@@ -49,7 +52,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
           try {
             const rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
-              .filter((i: any) => i && i.status === "connected");
+              .filter((i: any) => i);
 
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
             await backfillPhones(supabaseAdmin, evolution, rawMembers);
@@ -67,21 +70,31 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               continue;
             }
 
-            const recentLogs = await fetchRecentLogs(supabaseAdmin, (g as any).id);
-            const pairs = pickPairs(members, recentLogs);
-            if (!pairs.length) {
-              await scheduleNext(supabaseAdmin, g);
-              results.push({ group: (g as any).id, status: "waiting", reason: "aguardando respostas" });
-              continue;
+            const broadcast = createBroadcast();
+            const groupResults: any[] = [];
+            const deadline = Date.now() + BURST_BUDGET_MS;
+
+            for (let round = 0; round < MAX_BURST_ROUNDS && Date.now() < deadline; round++) {
+              const recentLogs = await fetchRecentLogs(supabaseAdmin, (g as any).id);
+              const pairs = pickPairs(members, recentLogs);
+              if (!pairs.length) {
+                if (round === 0) groupResults.push({ group: (g as any).id, status: "waiting", reason: "aguardando respostas" });
+                break;
+              }
+
+              const pairResults = await Promise.all(
+                pairs.map((pair) => processPair({ supabaseAdmin, evolution, group: g, pair, broadcast })),
+              );
+              groupResults.push(...pairResults);
+
+              if (!pairResults.some((r) => r.status === "sent")) break;
+              if (round < MAX_BURST_ROUNDS - 1 && Date.now() + REPLY_GAP_MS < deadline) {
+                await new Promise((r) => setTimeout(r, REPLY_GAP_MS));
+              }
             }
 
-            const broadcast = createBroadcast();
-            const pairResults = await Promise.all(
-              pairs.map((pair) => processPair({ supabaseAdmin, evolution, group: g, pair, broadcast })),
-            );
-
             await scheduleNext(supabaseAdmin, g);
-            results.push(...pairResults);
+            results.push(...groupResults);
           } catch (e: any) {
             results.push({ group: (g as any).id, error: e?.message ?? "erro" });
           }
@@ -117,13 +130,19 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         // Não derruba o chip na plataforma por uma leitura instável da Evolution.
         // Chips já conectados ficam conectados no painel e só são ignorados neste ciclo.
         m.temporarily_unavailable = true;
-        if (m.status !== "connected") {
+        if (m.status !== "connected" && m.phone && m.warmup_started_at) {
+          m.status = "connected";
+          await markInstance(supabaseAdmin, m.id, "connected");
+        } else if (m.status !== "connected") {
           m.status = s === "connecting" ? "connecting" : "disconnected";
           await markInstance(supabaseAdmin, m.id, m.status as "connecting" | "disconnected");
         }
       } catch {
         m.temporarily_unavailable = true;
-        if (m.status !== "connected") {
+        if (m.status !== "connected" && m.phone && m.warmup_started_at) {
+          m.status = "connected";
+          await markInstance(supabaseAdmin, m.id, "connected");
+        } else if (m.status !== "connected") {
           m.status = "disconnected";
           await markInstance(supabaseAdmin, m.id, "disconnected");
         }
@@ -260,7 +279,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
   const messageContent = await generateMessage(supabaseAdmin, group.user_id, from.id, to.id, history);
-  const typingMs = Math.min(3000, Math.max(700, messageContent.length * 25));
+  const typingMs = Math.min(1600, Math.max(350, messageContent.length * 15));
   const toNumber = String(to.phone).replace(/\D/g, "");
   const remoteJid = `${toNumber}@s.whatsapp.net`;
 
@@ -276,6 +295,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   });
 
   try {
+    await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
     await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
     await new Promise((r) => setTimeout(r, typingMs));
     const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
@@ -290,6 +310,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
       try {
         await evolution.restart(from.evolution_instance);
         await waitForOpen(evolution, from.evolution_instance);
+        await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
         const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
         const ack = await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
         if (!ack.delivered) {
@@ -333,10 +354,10 @@ async function getPairHistory(supabaseAdmin: any, groupId: string, fromId: strin
     .eq("group_id", groupId)
     .or(`and(from_instance_id.eq.${fromId},to_instance_id.eq.${toId}),and(from_instance_id.eq.${toId},to_instance_id.eq.${fromId})`)
     .eq("status", "sent")
-    .order("created_at", { ascending: true })
-    .limit(10);
+    .order("created_at", { ascending: false })
+    .limit(20);
 
-  return (recent ?? []).map((r: any) => ({
+  return [...(recent ?? [])].reverse().map((r: any) => ({
     from: r.from_instance_id === fromId ? "__me__" : "__other__",
     content: r.content as string,
   }));
@@ -345,7 +366,16 @@ async function getPairHistory(supabaseAdmin: any, groupId: string, fromId: strin
 async function generateMessage(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[]) {
   try {
     const { generateReply } = await import("@/lib/ai.server");
-    return await generateReply(history, { pairSeed: [fromId, toId].sort().join(":") });
+    const { data: names } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("id, name")
+      .in("id", [fromId, toId]);
+    const map = new Map<string, string | null>((names ?? []).map((n: any) => [String(n.id), typeof n.name === "string" ? n.name : null]));
+    return await generateReply(history, {
+      pairSeed: fromId,
+      fromName: map.get(fromId) ?? null,
+      toName: map.get(toId) ?? null,
+    });
   } catch {
     const { data: templates } = await supabaseAdmin
       .from("message_templates")
@@ -354,6 +384,18 @@ async function generateMessage(supabaseAdmin: any, userId: string, fromId: strin
       .limit(200);
     return templates?.length ? templates[Math.floor(Math.random() * templates.length)].content : "oi";
   }
+}
+
+async function markLatestIncomingAsRead(evolution: any, instanceName: string, remoteJid: string) {
+  try {
+    const found = await evolution.findMessages(instanceName, remoteJid);
+    const records = found?.messages?.records ?? found?.records ?? [];
+    const incoming = records
+      .filter((r: any) => r?.key?.id && r?.key?.fromMe === false)
+      .sort((a: any, b: any) => Number(b?.messageTimestamp ?? b?.messageTimestamp?.low ?? 0) - Number(a?.messageTimestamp ?? a?.messageTimestamp?.low ?? 0))[0];
+    if (!incoming?.key?.id) return;
+    await evolution.markMessageAsRead(instanceName, [{ remoteJid, fromMe: false, id: incoming.key.id }]);
+  } catch {}
 }
 
 function createBroadcast() {
