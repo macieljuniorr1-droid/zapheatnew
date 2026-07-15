@@ -7,7 +7,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 7_000;
+const DELIVERY_ACK_WAIT_MS = 15_000;
 const MAX_BURST_ROUNDS = 3;
 const BURST_BUDGET_MS = 24_000;
 const REPLY_GAP_MS = 1_500;
@@ -299,10 +299,13 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
     await new Promise((r) => setTimeout(r, typingMs));
     const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
+    // sendText retornou sem erro — a Evolution aceitou o envio. Só marcamos
+    // como "failed" se o ACK vier explicitamente como ERROR. PENDING/ausente
+    // é normal em redes lentas e não deve poluir o painel com falso-negativo.
     const ack = await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
-    if (!ack.delivered) {
+    if (ack.explicitError) {
       status = "failed";
-      errMsg = ack.error ?? "Mensagem aceita pela Evolution, mas não confirmada como entregue";
+      errMsg = ack.error ?? "WhatsApp retornou erro na entrega";
     }
   } catch (e: any) {
     const firstError = e?.message ?? "erro";
@@ -313,7 +316,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
         await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
         const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
         const ack = await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
-        if (!ack.delivered) {
+        if (ack.explicitError) {
           status = "failed";
           errMsg = ack.error ?? firstError;
         }
@@ -467,12 +470,18 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
       const rec = messageId ? records.find((r: any) => r?.key?.id === messageId) : records[0];
       const updates = rec?.MessageUpdate ?? rec?.messageUpdate ?? [];
       lastStatus = updates?.[updates.length - 1]?.status ?? rec?.status ?? lastStatus;
-      if (["SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) return { delivered: true };
-      if (String(lastStatus) === "ERROR") return { delivered: false, error: "Evolution retornou ERROR para a entrega no WhatsApp" };
+      if (["SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) {
+        return { delivered: true, explicitError: false, ack: lastStatus };
+      }
+      if (String(lastStatus) === "ERROR") {
+        return { delivered: false, explicitError: true, error: "WhatsApp retornou ERROR para a entrega" };
+      }
     } catch (e: any) {
       lastStatus = e?.message ?? lastStatus;
     }
-    await new Promise((r) => setTimeout(r, 3000));
+    await new Promise((r) => setTimeout(r, 2500));
   }
-  return { delivered: false, error: lastStatus ? `Sem confirmação de entrega (${lastStatus})` : "Sem confirmação de entrega" };
+  // Sem ACK explícito dentro da janela: consideramos entregue (a Evolution
+  // aceitou o envio) e apenas registramos o status observado.
+  return { delivered: true, explicitError: false, ack: lastStatus ?? "PENDING" };
 }

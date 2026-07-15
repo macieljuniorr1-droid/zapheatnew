@@ -78,6 +78,16 @@ export const evolution = {
       method: "POST",
       body: JSON.stringify({ where: { key: { remoteJid } } }),
     }),
+  findChats: (instanceName: string) =>
+    evoFetch(`/chat/findChats/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  findContacts: (instanceName: string) =>
+    evoFetch(`/chat/findContacts/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }).catch(() => null),
   markMessageAsRead: (instanceName: string, readMessages: Array<{ remoteJid: string; fromMe: boolean; id: string }>) =>
     evoFetch(`/chat/markMessageAsRead/${encodeURIComponent(instanceName)}`, {
       method: "POST",
