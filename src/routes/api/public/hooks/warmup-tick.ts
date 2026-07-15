@@ -2,10 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 
 // Cron endpoint. Called by pg_cron every minute. It processes every active
 // warmup group whose next_run_at <= now(), creates as many independent pairs
-// as possible, and only stores a log as "sent" after Evolution confirms the
-// WhatsApp device delivery ACK. A plain 201/PENDING/SERVER_ACK response is not
-// considered sent, because SERVER_ACK only means WhatsApp's server accepted the
-// message — not that it reached the recipient's phone.
+// as possible, and stores a log as "sent" when Evolution accepts the send.
+// Some Baileys/Evolution builds do not persist DELIVERY_ACK reliably for every
+// private chat; treating missing ACK as failure was taking healthy chips out of
+// the rotation.
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -140,7 +140,6 @@ async function claimGroupForThisTick(supabaseAdmin: any, group: any, nowIso: str
 
 async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, rawMembers: Chip[]) {
   const existing = new Set(rawMembers.map((m) => m.id));
-  const existingPhones = new Set(rawMembers.map((m) => normalizePhone(m.phone)).filter(Boolean));
   const { data: connected } = await supabaseAdmin
     .from("whatsapp_instances")
       .select("id, name, evolution_instance, status, phone, last_qr, warmup_started_at")
@@ -148,13 +147,7 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
     .eq("status", "connected")
     .not("phone", "is", null);
 
-  const missing = (connected ?? []).filter((chip: Chip) => {
-    if (existing.has(chip.id)) return false;
-    const phone = normalizePhone(chip.phone);
-    if (phone && existingPhones.has(phone)) return false;
-    if (phone) existingPhones.add(phone);
-    return true;
-  });
+  const missing = (connected ?? []).filter((chip: Chip) => !existing.has(chip.id));
   if (!missing.length) return;
 
   await supabaseAdmin.from("warmup_group_members").insert(
@@ -170,54 +163,21 @@ function normalizePhone(phone: string | null | undefined) {
 }
 
 function uniqueSendableMembers(members: Chip[]) {
-  const byPhone = new Map<string, Chip>();
+  const byId = new Map<string, Chip>();
   for (const member of members) {
     const phone = normalizePhone(member.phone);
     if (!phone) continue;
-    const current = byPhone.get(phone);
-    if (!current) {
-      byPhone.set(phone, member);
-      continue;
-    }
-    const currentStarted = current.warmup_started_at ? new Date(current.warmup_started_at).getTime() : 0;
-    const memberStarted = member.warmup_started_at ? new Date(member.warmup_started_at).getTime() : 0;
-    // Se o mesmo WhatsApp foi conectado em duas instâncias, só uma pode entrar
-    // no rodízio. Mantém a conexão mais recente para não gerar conversa consigo
-    // mesmo nem quebrar o cache de contatos da Evolution/Baileys.
-    if (memberStarted > currentStarted) byPhone.set(phone, member);
+    byId.set(member.id, member);
   }
-  return [...byPhone.values()];
+  return [...byId.values()];
 }
 
 async function pruneDuplicateGroupMembers(supabaseAdmin: any, group: any, members: Chip[]) {
-  const byPhone = new Map<string, Chip[]>();
-  for (const member of members) {
-    const phone = normalizePhone(member.phone);
-    if (!phone) continue;
-    const list = byPhone.get(phone) ?? [];
-    list.push(member);
-    byPhone.set(phone, list);
-  }
-
-  const removeIds = new Set<string>();
-  for (const duplicates of byPhone.values()) {
-    if (duplicates.length < 2) continue;
-    duplicates.sort((a, b) => {
-      const aStarted = a.warmup_started_at ? new Date(a.warmup_started_at).getTime() : 0;
-      const bStarted = b.warmup_started_at ? new Date(b.warmup_started_at).getTime() : 0;
-      return bStarted - aStarted;
-    });
-    for (const duplicate of duplicates.slice(1)) removeIds.add(duplicate.id);
-  }
-
-  if (!removeIds.size) return members;
-
-  await supabaseAdmin
-    .from("warmup_group_members")
-    .delete()
-    .eq("group_id", group.id)
-    .in("instance_id", [...removeIds]);
-
+  // Nunca removemos membros automaticamente do grupo. Mesmo que duas instâncias
+  // reportem o mesmo telefone por cache antigo da Evolution, retirar uma delas
+  // faz o usuário enxergar chips "conectados" que não participam do aquecimento.
+  // A proteção contra autoenvio fica no pickPairs/processPair, que apenas evita
+  // formar uma dupla entre telefones iguais.
   return members.filter((member) => !removeIds.has(member.id));
 }
 
