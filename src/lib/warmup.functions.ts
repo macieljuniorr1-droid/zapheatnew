@@ -231,10 +231,9 @@ export const refreshInstance = createServerFn({ method: "POST" })
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else if (!isPaired) {
-        // Para QR novo, NÃO chama connect/restart a cada polling de status.
-        // Cada novo /connect pode invalidar o QR que o usuário está escaneando,
-        // causando o erro do WhatsApp "não foi possível conectar dispositivo".
-        if (qr && !input.force) status = "qr";
+        // Mantém QR estável enquanto ainda estiver fresco. Se ficou velho
+        // (>25s) ou o usuário clicou em "Atualizar" (force), gera novo.
+        if (qrIsFresh && !input.force) status = "qr";
         else await refreshQr();
       }
       else {
@@ -244,13 +243,12 @@ export const refreshInstance = createServerFn({ method: "POST" })
         if (recovered.connected) {
           status = "connected";
           qr = null;
+          qrAt = null;
         } else if (recovered.qr && !isPaired) {
           status = "qr";
           qr = recovered.qr;
+          qrAt = new Date().toISOString();
         } else if (isPaired) {
-          // Chip já foi pareado — mantém como conectado no painel mesmo que a
-          // sessão momentaneamente não confirme "open" (celular offline, sem
-          // internet, etc.). A recuperação acontece em background.
           status = "connected";
         } else {
           status = "connecting";
@@ -259,7 +257,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
       if (!isPaired) {
-        if (qr && !input.force) status = "qr";
+        if (qrIsFresh && !input.force) status = "qr";
         else {
           try {
             await refreshQr();
@@ -273,9 +271,11 @@ export const refreshInstance = createServerFn({ method: "POST" })
         if (recovered.connected) {
           status = "connected";
           qr = null;
+          qrAt = null;
         } else if (recovered.qr && !isPaired) {
           status = "qr";
           qr = recovered.qr;
+          qrAt = new Date().toISOString();
         } else {
           status = "connected";
         }
