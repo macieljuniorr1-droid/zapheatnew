@@ -176,6 +176,18 @@ export const pagarme = {
           },
         },
       ];
+    } else if (payload.method === "credit_card_stored") {
+      if (!payload.card_id) throw new Error("card_id requerido para cobrança recorrente de cartão");
+      payments = [
+        {
+          payment_method: "credit_card",
+          credit_card: {
+            installments: payload.installments ?? 1,
+            statement_descriptor: "ZAPHEAT",
+            card_id: payload.card_id,
+          },
+        },
+      ];
     } else {
       payments = [
         {
