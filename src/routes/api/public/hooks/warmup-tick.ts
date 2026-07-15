@@ -48,8 +48,8 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             // For each instance, find the most recent log it participated in.
             const lastByInstance = new Map<string, any>();
             for (const log of recentLogs ?? []) {
-              if (!lastByInstance.has(log.from_instance_id)) lastByInstance.set(log.from_instance_id, log);
-              if (!lastByInstance.has(log.to_instance_id)) lastByInstance.set(log.to_instance_id, log);
+              if (log.from_instance_id && !lastByInstance.has(log.from_instance_id)) lastByInstance.set(log.from_instance_id, log);
+              if (log.to_instance_id && !lastByInstance.has(log.to_instance_id)) lastByInstance.set(log.to_instance_id, log);
             }
 
             // Timeout: if waiting > 30 min, free the number to start a new conversation.
