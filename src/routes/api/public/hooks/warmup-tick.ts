@@ -298,18 +298,32 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     to_name: to.name ?? "Chip",
   });
 
-  try {
+  const attemptSend = async () => {
     await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
     await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
     await new Promise((r) => setTimeout(r, typingMs));
     const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
-    // sendText retornou sem erro — a Evolution aceitou o envio. Só marcamos
-    // como "failed" se o ACK vier explicitamente como ERROR. PENDING/ausente
-    // é normal em redes lentas e não deve poluir o painel com falso-negativo.
-    const ack = await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
+    return await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
+  };
+
+  try {
+    let ack = await attemptSend();
+    // ERROR explícito indica sessão dessincronizada na Evolution. Reinicia a
+    // instância e tenta mais uma vez antes de marcar como falha — é o que
+    // resolve o loop de entrega falhando para o mesmo número.
+    if (ack.explicitError) {
+      try {
+        await evolution.restart(from.evolution_instance);
+        await waitForOpen(evolution, from.evolution_instance);
+        ack = await attemptSend();
+      } catch (retryErr: any) {
+        errMsg = retryErr?.message ?? ack.error ?? null;
+      }
+    }
     if (ack.explicitError) {
       status = "failed";
-      errMsg = ack.error ?? "WhatsApp retornou erro na entrega";
+      errMsg = ack.error ?? errMsg ?? "WhatsApp retornou erro na entrega";
+      from.temporarily_unavailable = true; // pula esse chip nas próximas iterações do burst
     }
   } catch (e: any) {
     const firstError = e?.message ?? "erro";
@@ -317,16 +331,16 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
       try {
         await evolution.restart(from.evolution_instance);
         await waitForOpen(evolution, from.evolution_instance);
-        await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
-        const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
-        const ack = await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
+        const ack = await attemptSend();
         if (ack.explicitError) {
           status = "failed";
           errMsg = ack.error ?? firstError;
+          from.temporarily_unavailable = true;
         }
       } catch (retryErr: any) {
         status = "failed";
         errMsg = retryErr?.message ?? firstError;
+        from.temporarily_unavailable = true;
       }
     } else {
       status = "failed";
