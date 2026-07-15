@@ -57,6 +57,10 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
             await backfillPhones(supabaseAdmin, evolution, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
+            // Chips com histórico recente de ERROR de entrega recebem um restart
+            // preventivo antes de tentar enviar de novo. Sem isso a sessão da
+            // Evolution fica dessincronizada e todo envio falha em loop.
+            await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
 
             const members = rawMembers.filter((i) => i.status === "connected" && i.phone && !i.temporarily_unavailable);
             if (members.length < 2) {
@@ -179,6 +183,42 @@ async function markWarmupStarted(supabaseAdmin: any, members: Chip[]) {
   }
 }
 
+async function preemptiveRecoverFailingChips(supabaseAdmin: any, evolution: any, members: Chip[], groupId: string) {
+  if (members.length === 0) return;
+  const ids = members.map((m) => m.id);
+  const { data: recent } = await supabaseAdmin
+    .from("warmup_logs")
+    .select("from_instance_id, status, created_at")
+    .eq("group_id", groupId)
+    .in("from_instance_id", ids)
+    .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(200);
+  const streak = new Map<string, number>();
+  const stopped = new Set<string>();
+  for (const r of recent ?? []) {
+    if (stopped.has(r.from_instance_id)) continue;
+    if (r.status === "failed") streak.set(r.from_instance_id, (streak.get(r.from_instance_id) ?? 0) + 1);
+    else stopped.add(r.from_instance_id);
+  }
+  await Promise.all(
+    members.map(async (m) => {
+      const failed = streak.get(m.id) ?? 0;
+      if (failed < 2) return;
+      // 2+ falhas consecutivas recentes → sessão do WhatsApp está travada.
+      // Reinicia a instância na Evolution e, se não voltar a "open", pula
+      // esse chip neste ciclo para não gerar mais falhas em cascata.
+      try {
+        await evolution.restart(m.evolution_instance);
+      } catch {}
+      const ok = await waitForOpen(evolution, m.evolution_instance);
+      if (!ok) {
+        m.temporarily_unavailable = true;
+      }
+    }),
+  );
+}
+
 async function fetchRecentLogs(supabaseAdmin: any, groupId: string) {
   const { data } = await supabaseAdmin
     .from("warmup_logs")
@@ -294,18 +334,32 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     to_name: to.name ?? "Chip",
   });
 
-  try {
+  const attemptSend = async () => {
     await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
     await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
     await new Promise((r) => setTimeout(r, typingMs));
     const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
-    // sendText retornou sem erro — a Evolution aceitou o envio. Só marcamos
-    // como "failed" se o ACK vier explicitamente como ERROR. PENDING/ausente
-    // é normal em redes lentas e não deve poluir o painel com falso-negativo.
-    const ack = await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
+    return await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
+  };
+
+  try {
+    let ack = await attemptSend();
+    // ERROR explícito indica sessão dessincronizada na Evolution. Reinicia a
+    // instância e tenta mais uma vez antes de marcar como falha — é o que
+    // resolve o loop de entrega falhando para o mesmo número.
+    if (ack.explicitError) {
+      try {
+        await evolution.restart(from.evolution_instance);
+        await waitForOpen(evolution, from.evolution_instance);
+        ack = await attemptSend();
+      } catch (retryErr: any) {
+        errMsg = retryErr?.message ?? ack.error ?? null;
+      }
+    }
     if (ack.explicitError) {
       status = "failed";
-      errMsg = ack.error ?? "WhatsApp retornou erro na entrega";
+      errMsg = ack.error ?? errMsg ?? "WhatsApp retornou erro na entrega";
+      from.temporarily_unavailable = true; // pula esse chip nas próximas iterações do burst
     }
   } catch (e: any) {
     const firstError = e?.message ?? "erro";
@@ -313,16 +367,16 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
       try {
         await evolution.restart(from.evolution_instance);
         await waitForOpen(evolution, from.evolution_instance);
-        await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
-        const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
-        const ack = await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
+        const ack = await attemptSend();
         if (ack.explicitError) {
           status = "failed";
           errMsg = ack.error ?? firstError;
+          from.temporarily_unavailable = true;
         }
       } catch (retryErr: any) {
         status = "failed";
         errMsg = retryErr?.message ?? firstError;
+        from.temporarily_unavailable = true;
       }
     } else {
       status = "failed";
