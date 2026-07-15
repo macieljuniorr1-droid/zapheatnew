@@ -588,8 +588,15 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else if (s === "connecting") status = "connecting";
-      phone = state?.instance?.owner ?? phone;
+      phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {}
+    if (status === "connected" && !phone) {
+      try {
+        const fetched = await evolution.fetchInstance((inst as any).evolution_instance);
+        const rec = Array.isArray(fetched) ? fetched[0] : fetched?.instance ?? fetched;
+        phone = extractPhone(rec?.ownerJid, rec?.owner, rec?.wuid, rec?.number);
+      } catch {}
+    }
     if (status !== "connected") {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
