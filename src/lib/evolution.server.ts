@@ -64,4 +64,19 @@ export const evolution = {
       method: "POST",
       body: JSON.stringify({ number, text }),
     }),
+  sendMedia: (
+    instanceName: string,
+    number: string,
+    opts: { mediatype: "image" | "video" | "document"; media: string; caption?: string; fileName?: string },
+  ) =>
+    evoFetch(`/message/sendMedia/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({
+        number,
+        mediatype: opts.mediatype,
+        media: opts.media,
+        caption: opts.caption ?? "",
+        fileName: opts.fileName ?? `arquivo.${opts.mediatype === "image" ? "jpg" : opts.mediatype === "video" ? "mp4" : "pdf"}`,
+      }),
+    }),
 };
