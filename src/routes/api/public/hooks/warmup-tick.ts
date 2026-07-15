@@ -3,7 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 // Cron endpoint. Called by pg_cron every minute. It processes every active
 // warmup group whose next_run_at <= now(), creates as many independent pairs
 // as possible, and only stores a log as "sent" after Evolution confirms the
-// WhatsApp delivery ACK. A plain 201/PENDING response is not considered sent.
+// WhatsApp device delivery ACK. A plain 201/PENDING/SERVER_ACK response is not
+// considered sent, because SERVER_ACK only means WhatsApp's server accepted the
+// message — not that it reached the recipient's phone.
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -674,7 +676,7 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
       }
       const updates = rec?.MessageUpdate ?? rec?.messageUpdate ?? [];
       lastStatus = updates?.[updates.length - 1]?.status ?? rec?.status ?? lastStatus;
-      if (["SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) {
+      if (["DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) {
         return { delivered: true, explicitError: false, ack: lastStatus };
       }
       if (String(lastStatus) === "ERROR") {
@@ -685,12 +687,13 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  // Sem ACK explícito do servidor dentro da janela: a sessão Baileys provavelmente
-  // está dessincronizada (Evolution aceitou o sendText mas WhatsApp real não confirmou).
-  // Nunca marcar como entregue nesse caso — força retry/recover e, se persistir, falha.
+  // Sem ACK explícito de entrega no aparelho dentro da janela: a sessão Baileys
+  // provavelmente está dessincronizada ou o WhatsApp só aceitou no servidor.
+  // Nunca marcar como entregue com SERVER_ACK/PENDING — força retry/recover e,
+  // se persistir, falha.
   return {
     delivered: false,
     explicitError: true,
-    error: `Sem ACK de entrega em ${DELIVERY_ACK_WAIT_MS}ms (status=${lastStatus ?? "PENDING"})`,
+    error: `Sem confirmação real de entrega em ${DELIVERY_ACK_WAIT_MS}ms (status=${lastStatus ?? "PENDING"})`,
   };
 }
