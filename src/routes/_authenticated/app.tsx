@@ -636,6 +636,7 @@ function GroupsTab() {
                   onAdd={(instance_id) => addMember({ data: { group_id: g.id, instance_id } }).then(invalidate)}
                 />
               </div>
+              <GroupEnginePanel groupId={g.id} />
             </CardContent>
           </Card>
         ))}
@@ -644,6 +645,49 @@ function GroupsTab() {
     </div>
   );
 }
+
+function GroupEnginePanel({ groupId }: { groupId: string }) {
+  const fn = useServerFn(getGroupEngineStatus);
+  const q = useQuery({
+    queryKey: ["engine-status", groupId],
+    queryFn: () => fn({ data: { id: groupId } }),
+    refetchInterval: 5000,
+  });
+  const s = q.data;
+  if (!s) return null;
+  const nextIn = s.next_run_at ? Math.max(0, Math.floor((new Date(s.next_run_at).getTime() - Date.now()) / 1000)) : null;
+  const nextLabel = nextIn == null ? "—" : nextIn === 0 ? "agora" : nextIn < 60 ? `${nextIn}s` : `${Math.floor(nextIn / 60)}m ${nextIn % 60}s`;
+  const running = s.active && s.connected_members >= 2;
+  return (
+    <div className="mt-3 rounded-lg border bg-muted/30 p-3">
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <div className="flex items-center gap-1.5 font-medium">
+          <span className={`relative flex h-2 w-2`}>
+            {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-70" />}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? "bg-primary" : "bg-muted-foreground/40"}`} />
+          </span>
+          <Zap className="h-3 w-3" />
+          {running ? "Motor rodando" : s.active ? "Aguardando chips conectados" : "Motor pausado"}
+        </div>
+        <span className="text-muted-foreground">·</span>
+        <span><span className="text-muted-foreground">Próximo tick:</span> <span className="font-mono">{nextLabel}</span></span>
+        <span className="text-muted-foreground">·</span>
+        <span><span className="text-muted-foreground">Hoje:</span> <span className="font-semibold">{s.msgs_today}</span></span>
+        <span className="text-muted-foreground">·</span>
+        <span><span className="text-muted-foreground">Total:</span> <span className="font-semibold">{s.msgs_total}</span></span>
+        <span className="text-muted-foreground">·</span>
+        <span><span className="text-muted-foreground">Chips:</span> <span className="font-semibold">{s.connected_members}/{s.total_members}</span> ativos</span>
+        {s.last_activity && (
+          <>
+            <span className="text-muted-foreground">·</span>
+            <span className="text-muted-foreground">última: {timeAgo(s.last_activity)}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 function AddMemberSelect({ groupId, used, instances, onAdd }: { groupId: string; used: Set<string>; instances: any[]; onAdd: (id: string) => void }) {
   const available = instances.filter((i) => !used.has(i.id));
