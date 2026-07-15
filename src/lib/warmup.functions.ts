@@ -806,14 +806,16 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     if (!inst) throw new Error("Instância não encontrada");
     const { evolution } = await import("@/lib/evolution.server");
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
-    let qr: string | null = null;
+    let qr: string | null = (inst as any).last_qr ?? null;
     let phone: string | null = (inst as any).phone ?? null;
-    const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected");
+    const awaitingQr = (inst as any).status === "qr";
+    const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected") && !awaitingQr;
     let triedSoftReconnect = false;
     try {
       const state = await evolution.connectionState((inst as any).evolution_instance);
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
+      else if (!isPaired && qr) status = "qr";
       else {
         if (s === "connecting") status = "connecting";
         triedSoftReconnect = true;
@@ -830,15 +832,19 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
-      status = isPaired ? "connected" : "disconnected";
-      triedSoftReconnect = true;
-      const recovered = await reconnectInstance(evolution, (inst as any).evolution_instance);
-      if (recovered.connected) {
-        status = "connected";
-        qr = null;
-      } else if (recovered.qr && !isPaired) {
+      if (!isPaired && qr) {
         status = "qr";
-        qr = recovered.qr;
+      } else {
+        status = isPaired ? "connected" : "disconnected";
+        triedSoftReconnect = true;
+        const recovered = await reconnectInstance(evolution, (inst as any).evolution_instance);
+        if (recovered.connected) {
+          status = "connected";
+          qr = null;
+        } else if (recovered.qr && !isPaired) {
+          status = "qr";
+          qr = recovered.qr;
+        }
       }
     }
     if (status === "connected" && !phone) {
@@ -849,7 +855,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
     const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
-    const canRegenerateQr = !isPaired && !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
+    const canRegenerateQr = !isPaired && !triedSoftReconnect && (!(inst as any).last_qr || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
