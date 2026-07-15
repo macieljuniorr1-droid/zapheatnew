@@ -22,6 +22,8 @@ export const getMe = createServerFn({ method: "GET" })
 
 export const WARMUP_DAYS_REQUIRED = 3;
 
+type RefreshInstanceInput = { id: string; force?: boolean };
+
 // Normaliza o QR retornado pela Evolution para uma data URL PNG que o <img>
 // consegue renderizar. A API v2 devolve o base64 em campos variados
 // (qrcode.base64, base64, qrcode.code) e frequentemente SEM o prefixo
@@ -174,13 +176,14 @@ export const createInstance = createServerFn({ method: "POST" })
 
 export const refreshInstance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i) => z.object({ id: z.string().uuid() }).parse(i))
+  .inputValidator((i) => z.object({ id: z.string().uuid(), force: z.boolean().optional().default(false) }).parse(i))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const input = data as RefreshInstanceInput;
     const { data: inst } = await supabase
       .from("whatsapp_instances")
       .select("*")
-      .eq("id", data.id)
+      .eq("id", input.id)
       .eq("user_id", userId)
       .maybeSingle();
     if (!inst) throw new Error("Instância não encontrada");
@@ -189,12 +192,34 @@ export const refreshInstance = createServerFn({ method: "POST" })
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = (inst as any).last_qr ?? null;
     let phone: string | null = (inst as any).phone ?? null;
-    const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected");
+    const awaitingQr = (inst as any).status === "qr";
+    const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected") && !awaitingQr;
     let triedSoftReconnect = false;
+
+    const refreshQr = async () => {
+      const conn = await evolution.connect(inst.evolution_instance);
+      const nextQr = normalizeQr(conn);
+      if (nextQr) {
+        qr = nextQr;
+        status = "qr";
+      } else if (qr) {
+        status = "qr";
+      } else {
+        status = "connecting";
+      }
+    };
+
     try {
       const state = await evolution.connectionState(inst.evolution_instance);
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
+      else if (!isPaired) {
+        // Para QR novo, NÃO chama connect/restart a cada polling de status.
+        // Cada novo /connect pode invalidar o QR que o usuário está escaneando,
+        // causando o erro do WhatsApp "não foi possível conectar dispositivo".
+        if (qr && !input.force) status = "qr";
+        else await refreshQr();
+      }
       else {
         if (s === "connecting") status = "connecting";
         triedSoftReconnect = true;
@@ -216,18 +241,27 @@ export const refreshInstance = createServerFn({ method: "POST" })
       }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
-      triedSoftReconnect = true;
-      const recovered = await reconnectInstance(evolution, inst.evolution_instance);
-      if (recovered.connected) {
-        status = "connected";
-        qr = null;
-      } else if (recovered.qr && !isPaired) {
-        status = "qr";
-        qr = recovered.qr;
-      } else if (isPaired) {
-        status = "connected";
+      if (!isPaired) {
+        if (qr && !input.force) status = "qr";
+        else {
+          try {
+            await refreshQr();
+          } catch {
+            status = qr ? "qr" : "disconnected";
+          }
+        }
       } else {
-        status = "disconnected";
+        triedSoftReconnect = true;
+        const recovered = await reconnectInstance(evolution, inst.evolution_instance);
+        if (recovered.connected) {
+          status = "connected";
+          qr = null;
+        } else if (recovered.qr && !isPaired) {
+          status = "qr";
+          qr = recovered.qr;
+        } else {
+          status = "connected";
+        }
       }
     }
 
@@ -242,18 +276,12 @@ export const refreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
 
-    const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
-    // Só regenera QR se o chip NUNCA foi pareado. Pareados nunca voltam ao QR
-    // — a recuperação é via /connect em background.
-    const canRegenerateQr = !isPaired && !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
+    // Só gera QR automaticamente se ainda não existe nenhum. QR existente fica
+    // estável durante o polling; o botão "Atualizar" força um novo código.
+    const canRegenerateQr = !isPaired && !triedSoftReconnect && !(inst as any).last_qr;
     if (status !== "connected" && canRegenerateQr) {
       try {
-        const conn = await evolution.connect(inst.evolution_instance);
-        const nextQr = normalizeQr(conn);
-        if (nextQr) {
-          qr = nextQr;
-          status = "qr";
-        }
+        await refreshQr();
       } catch {}
     } else if (status !== "connected" && qr && !isPaired) {
       status = "qr";
@@ -272,7 +300,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
           ? { warmup_started_at: new Date().toISOString() }
           : {}),
       } as any)
-      .eq("id", data.id)
+      .eq("id", input.id)
       .select()
       .single();
     if (error) throw new Error(error.message);
@@ -778,14 +806,16 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     if (!inst) throw new Error("Instância não encontrada");
     const { evolution } = await import("@/lib/evolution.server");
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
-    let qr: string | null = null;
+    let qr: string | null = (inst as any).last_qr ?? null;
     let phone: string | null = (inst as any).phone ?? null;
-    const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected");
+    const awaitingQr = (inst as any).status === "qr";
+    const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected") && !awaitingQr;
     let triedSoftReconnect = false;
     try {
       const state = await evolution.connectionState((inst as any).evolution_instance);
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
+      else if (!isPaired && qr) status = "qr";
       else {
         if (s === "connecting") status = "connecting";
         triedSoftReconnect = true;
@@ -802,15 +832,19 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
-      status = isPaired ? "connected" : "disconnected";
-      triedSoftReconnect = true;
-      const recovered = await reconnectInstance(evolution, (inst as any).evolution_instance);
-      if (recovered.connected) {
-        status = "connected";
-        qr = null;
-      } else if (recovered.qr && !isPaired) {
+      if (!isPaired && qr) {
         status = "qr";
-        qr = recovered.qr;
+      } else {
+        status = isPaired ? "connected" : "disconnected";
+        triedSoftReconnect = true;
+        const recovered = await reconnectInstance(evolution, (inst as any).evolution_instance);
+        if (recovered.connected) {
+          status = "connected";
+          qr = null;
+        } else if (recovered.qr && !isPaired) {
+          status = "qr";
+          qr = recovered.qr;
+        }
       }
     }
     if (status === "connected" && !phone) {
@@ -820,8 +854,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
         phone = extractPhone(rec?.ownerJid, rec?.owner, rec?.wuid, rec?.number);
       } catch {}
     }
-    const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
-    const canRegenerateQr = !isPaired && !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
+    const canRegenerateQr = !isPaired && !triedSoftReconnect && (!(inst as any).last_qr || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);

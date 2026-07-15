@@ -22,6 +22,7 @@ type Chip = {
   evolution_instance: string;
   status: string;
   phone: string | null;
+  last_qr?: string | null;
   warmup_started_at?: string | null;
   temporarily_unavailable?: boolean;
   live_state?: string | null;
@@ -44,7 +45,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
         const { data: groups, error: gErr } = await supabaseAdmin
           .from("warmup_groups")
           .select(
-            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, warmup_group_members(instance_id, whatsapp_instances(id, name, evolution_instance, status, phone, warmup_started_at))",
+            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, warmup_group_members(instance_id, whatsapp_instances(id, name, evolution_instance, status, phone, last_qr, warmup_started_at))",
           )
           .eq("active", true)
           .lte("next_run_at", now)
@@ -119,7 +120,7 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
   const existing = new Set(rawMembers.map((m) => m.id));
   const { data: connected } = await supabaseAdmin
     .from("whatsapp_instances")
-    .select("id, name, evolution_instance, status, phone, warmup_started_at")
+      .select("id, name, evolution_instance, status, phone, last_qr, warmup_started_at")
     .eq("user_id", group.user_id)
     .eq("status", "connected")
     .not("phone", "is", null);
@@ -152,7 +153,9 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         }
 
         if (awaitingQr) {
-          await refreshRepairQr(supabaseAdmin, evolution, m);
+          // QR de pareamento deve ficar estável. Gerar outro QR em cada ciclo do
+          // robô invalida o código que o usuário está tentando escanear.
+          if (!m.last_qr) await refreshRepairQr(supabaseAdmin, evolution, m);
           m.temporarily_unavailable = true;
           m.status = "qr";
           return;
@@ -181,7 +184,7 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         }
       } catch {
         if (awaitingQr) {
-          await refreshRepairQr(supabaseAdmin, evolution, m);
+          if (!m.last_qr) await refreshRepairQr(supabaseAdmin, evolution, m);
           m.temporarily_unavailable = true;
           m.status = "qr";
           return;
@@ -209,6 +212,7 @@ async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
     const conn = await evolution.connect(m.evolution_instance);
     const qr = normalizeQr(conn);
     if (qr) {
+      m.last_qr = qr;
       await supabaseAdmin
         .from("whatsapp_instances")
         .update({ status: "qr", last_qr: qr, updated_at: new Date().toISOString() })
