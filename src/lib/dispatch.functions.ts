@@ -173,7 +173,7 @@ export const createCampaign = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(error.message);
 
-    const ciRows = data.instance_ids.map((iid) => ({ campaign_id: camp.id, instance_id: iid }));
+    const ciRows = data.instance_ids.map((iid) => ({ campaign_id: camp.id, instance_id: iid, user_id: userId }));
     const { error: ciErr } = await supabase.from("campaign_instances").insert(ciRows);
     if (ciErr) throw new Error(ciErr.message);
 
