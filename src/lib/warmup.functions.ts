@@ -150,36 +150,71 @@ export const createInstance = createServerFn({ method: "POST" })
     const evolutionInstance = `${userId.slice(0, 8)}_${slug}_${Date.now().toString(36)}`;
 
     const { evolution } = await import("@/lib/evolution.server");
-    const resp = await evolution.createInstance(evolutionInstance);
-    // Evolution v2 pode devolver o QR em campos diferentes e sem o prefixo data:.
-    // Usamos o QR devolvido pelo create quando ele já veio pronto; só chamamos
-    // /instance/connect quando o create não entregou um QR utilizável — porque
-    // um connect após um create com QR válido invalida o primeiro código e é a
-    // causa do "não foi possível conectar" no celular a partir do 2º número.
-    let qr: string | null = await normalizeQr(resp);
+
+    // 1) Cria a instância. Toleramos "already exists" (409) — pode ocorrer se o
+    //    usuário clicar duas vezes ou se o create anterior estourou o timeout
+    //    mas o Evolution acabou provisionando.
+    let createResp: any = null;
+    let createError: any = null;
+    try {
+      createResp = await evolution.createInstance(evolutionInstance);
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      if (/already in use|already exists|409/i.test(msg)) {
+        // segue o baile — a instância já está criada no Evolution
+        createResp = null;
+      } else if (/Evolution API n[aã]o configurada/i.test(msg)) {
+        throw e;
+      } else {
+        createError = e;
+      }
+    }
+
+    if (createError) {
+      // Última tentativa: talvez o Evolution tenha criado mesmo com erro de
+      // resposta. Verificamos com fetchInstance antes de desistir.
+      try {
+        const check = await evolution.fetchInstance(evolutionInstance);
+        if (!check) throw createError;
+      } catch {
+        throw new Error(
+          `Não foi possível criar a instância no servidor de WhatsApp. Tente novamente em alguns segundos. Detalhe: ${String(createError?.message ?? createError).slice(0, 200)}`,
+        );
+      }
+    }
+
+    // 2) Tenta obter QR do próprio create; se não veio, chama /connect com folga.
+    let qr: string | null = createResp ? await normalizeQr(createResp) : null;
     if (!qr) {
       try {
         const conn = await evolution.connect(evolutionInstance);
         qr = await normalizeQr(conn);
       } catch {
-        // mantém null; usuário pode clicar em Atualizar
+        // mantém null; o usuário pode clicar em Atualizar para regenerar
       }
     }
 
+    // 3) Registra a instância mesmo sem QR — status "connecting" para que o
+    //    refresh polling gere o QR na sequência (evita ficar "orfã" no Evolution).
     const { data: row, error } = await supabase
       .from("whatsapp_instances")
       .insert({
         user_id: userId,
         name: data.name,
         evolution_instance: evolutionInstance,
-        status: "qr",
+        status: qr ? "qr" : "connecting",
         last_qr: qr,
         last_qr_at: qr ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       } as any)
       .select()
       .single();
-    if (error) throw new Error(error.message);
+    if (error) {
+      // Se falhou salvar no DB, tenta limpar a instância criada no Evolution
+      // para não deixar lixo pendurado.
+      try { await evolution.deleteInstance(evolutionInstance); } catch {}
+      throw new Error(error.message);
+    }
     return row;
   });
 

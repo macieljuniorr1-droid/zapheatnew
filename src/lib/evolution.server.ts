@@ -61,7 +61,7 @@ export const evolution = {
         integration: "WHATSAPP-BAILEYS",
         qrcode: true,
       }),
-    }),
+    }, 20_000),
   connect: (instanceName: string) =>
     evoFetch(`/instance/connect/${encodeURIComponent(instanceName)}`, { method: "GET" }, 5_000),
   connectionState: (instanceName: string) =>
