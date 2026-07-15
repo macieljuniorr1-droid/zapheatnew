@@ -59,10 +59,15 @@ export const evolution = {
     evoFetch(`/instance/delete/${encodeURIComponent(instanceName)}`, { method: "DELETE" }),
   logout: (instanceName: string) =>
     evoFetch(`/instance/logout/${encodeURIComponent(instanceName)}`, { method: "DELETE" }),
-  sendText: (instanceName: string, number: string, text: string) =>
+  sendPresence: (instanceName: string, number: string, presence: "composing" | "recording" | "paused", delayMs = 1200) =>
+    evoFetch(`/chat/sendPresence/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({ number, presence, delay: delayMs }),
+    }).catch(() => null), // presença é cosmética; não deixa a mensagem quebrar
+  sendText: (instanceName: string, number: string, text: string, delayMs = 0) =>
     evoFetch(`/message/sendText/${encodeURIComponent(instanceName)}`, {
       method: "POST",
-      body: JSON.stringify({ number, text }),
+      body: JSON.stringify({ number, text, delay: delayMs }),
     }),
   sendMedia: (
     instanceName: string,
