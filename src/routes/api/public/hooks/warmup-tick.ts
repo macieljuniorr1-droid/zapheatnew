@@ -337,7 +337,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     const from = chipById.get(debt.instanceId);
     const to = chipById.get(debt.peerId);
     if (!from || !to) continue;
-    if (blockedRecipients.has(to.id) && !blockedRecipients.has(from.id)) continue;
+    if (blockedRecipients.has(to.id)) continue;
     pairs.push({ from, to });
     selected.add(from.id);
     selected.add(to.id);
