@@ -19,14 +19,25 @@ async function getConfig(): Promise<EvolutionConfig> {
 
 async function evoFetch(path: string, init: RequestInit = {}) {
   const cfg = await getConfig();
-  const res = await fetch(`${cfg.api_url}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      apikey: cfg.api_key,
-      ...(init.headers || {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.api_url}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        apikey: cfg.api_key,
+        ...(init.headers || {}),
+      },
+    });
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new Error(`Evolution timeout em ${path}`);
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
   const text = await res.text();
   let body: unknown;
   try {
@@ -72,20 +83,19 @@ export const evolution = {
     const path = `/message/sendText/${encodeURIComponent(instanceName)}`;
     let firstError: any = null;
     try {
-      // Evolution v2.3+ espera `textMessage.text`. Usar o payload antigo
-      // (`text`) funciona em algumas instalações, mas pode disparar erros
-      // internos do Baileys em outras.
+      // A rota sendText da Evolution v2 valida `text` no topo do payload. O
+      // formato aninhado fica só como compatibilidade com instalações alteradas.
       return await evoFetch(path, {
         method: "POST",
-        body: JSON.stringify({ number, textMessage: { text }, delay: delayMs, linkPreview: false }),
+        body: JSON.stringify({ number, text, delay: delayMs, linkPreview: false }),
       });
     } catch (e: any) {
       firstError = e;
-      // Compatibilidade com Evolution mais antiga.
+      // Compatibilidade com forks/versões que aceitam `textMessage.text`.
       try {
         return await evoFetch(path, {
           method: "POST",
-          body: JSON.stringify({ number, text, delay: delayMs, linkPreview: false }),
+          body: JSON.stringify({ number, textMessage: { text }, delay: delayMs, linkPreview: false }),
         });
       } catch (fallbackError: any) {
         const firstMsg = String(firstError?.message ?? "");

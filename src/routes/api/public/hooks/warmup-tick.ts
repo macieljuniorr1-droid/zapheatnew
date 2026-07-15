@@ -2,10 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 
 // Cron endpoint. Called by pg_cron every minute. It processes every active
 // warmup group whose next_run_at <= now(), creates as many independent pairs
-// as possible, and only stores a log as "sent" after Evolution confirms the
-// WhatsApp device delivery ACK. A plain 201/PENDING/SERVER_ACK response is not
-// considered sent, because SERVER_ACK only means WhatsApp's server accepted the
-// message — not that it reached the recipient's phone.
+// as possible, and stores a log as "sent" when Evolution accepts the send.
+// Some Baileys/Evolution builds do not persist DELIVERY_ACK reliably for every
+// private chat; treating missing ACK as failure was taking healthy chips out of
+// the rotation.
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -140,7 +140,6 @@ async function claimGroupForThisTick(supabaseAdmin: any, group: any, nowIso: str
 
 async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, rawMembers: Chip[]) {
   const existing = new Set(rawMembers.map((m) => m.id));
-  const existingPhones = new Set(rawMembers.map((m) => normalizePhone(m.phone)).filter(Boolean));
   const { data: connected } = await supabaseAdmin
     .from("whatsapp_instances")
       .select("id, name, evolution_instance, status, phone, last_qr, warmup_started_at")
@@ -148,13 +147,7 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
     .eq("status", "connected")
     .not("phone", "is", null);
 
-  const missing = (connected ?? []).filter((chip: Chip) => {
-    if (existing.has(chip.id)) return false;
-    const phone = normalizePhone(chip.phone);
-    if (phone && existingPhones.has(phone)) return false;
-    if (phone) existingPhones.add(phone);
-    return true;
-  });
+  const missing = (connected ?? []).filter((chip: Chip) => !existing.has(chip.id));
   if (!missing.length) return;
 
   await supabaseAdmin.from("warmup_group_members").insert(
@@ -170,62 +163,31 @@ function normalizePhone(phone: string | null | undefined) {
 }
 
 function uniqueSendableMembers(members: Chip[]) {
-  const byPhone = new Map<string, Chip>();
+  const byId = new Map<string, Chip>();
   for (const member of members) {
     const phone = normalizePhone(member.phone);
     if (!phone) continue;
-    const current = byPhone.get(phone);
-    if (!current) {
-      byPhone.set(phone, member);
-      continue;
-    }
-    const currentStarted = current.warmup_started_at ? new Date(current.warmup_started_at).getTime() : 0;
-    const memberStarted = member.warmup_started_at ? new Date(member.warmup_started_at).getTime() : 0;
-    // Se o mesmo WhatsApp foi conectado em duas instâncias, só uma pode entrar
-    // no rodízio. Mantém a conexão mais recente para não gerar conversa consigo
-    // mesmo nem quebrar o cache de contatos da Evolution/Baileys.
-    if (memberStarted > currentStarted) byPhone.set(phone, member);
+    byId.set(member.id, member);
   }
-  return [...byPhone.values()];
+  return [...byId.values()];
 }
 
 async function pruneDuplicateGroupMembers(supabaseAdmin: any, group: any, members: Chip[]) {
-  const byPhone = new Map<string, Chip[]>();
-  for (const member of members) {
-    const phone = normalizePhone(member.phone);
-    if (!phone) continue;
-    const list = byPhone.get(phone) ?? [];
-    list.push(member);
-    byPhone.set(phone, list);
-  }
-
-  const removeIds = new Set<string>();
-  for (const duplicates of byPhone.values()) {
-    if (duplicates.length < 2) continue;
-    duplicates.sort((a, b) => {
-      const aStarted = a.warmup_started_at ? new Date(a.warmup_started_at).getTime() : 0;
-      const bStarted = b.warmup_started_at ? new Date(b.warmup_started_at).getTime() : 0;
-      return bStarted - aStarted;
-    });
-    for (const duplicate of duplicates.slice(1)) removeIds.add(duplicate.id);
-  }
-
-  if (!removeIds.size) return members;
-
-  await supabaseAdmin
-    .from("warmup_group_members")
-    .delete()
-    .eq("group_id", group.id)
-    .in("instance_id", [...removeIds]);
-
-  return members.filter((member) => !removeIds.has(member.id));
+  // Nunca removemos membros automaticamente do grupo. Mesmo que duas instâncias
+  // reportem o mesmo telefone por cache antigo da Evolution, retirar uma delas
+  // faz o usuário enxergar chips "conectados" que não participam do aquecimento.
+  // A proteção contra autoenvio fica no pickPairs/processPair, que apenas evita
+  // formar uma dupla entre telefones iguais.
+  void supabaseAdmin;
+  void group;
+  return members;
 }
 
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(
     members.map(async (m) => {
-      const awaitingQr = m.status === "qr";
-      const isPaired = Boolean(m.phone || m.warmup_started_at) && !awaitingQr;
+      const isPaired = Boolean(m.phone || m.warmup_started_at);
+      const awaitingQr = m.status === "qr" && !isPaired;
       try {
         const state = await evolution.connectionState(m.evolution_instance);
         const s = state?.instance?.state ?? state?.state;
@@ -262,7 +224,7 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         m.temporarily_unavailable = true;
         if (isPaired) {
           m.status = "connected";
-          // não sobrescreve o status no banco — mantém "connected" preservado
+          await markInstance(supabaseAdmin, m.id, "connected");
         } else {
           m.status = "connecting";
           await markInstance(supabaseAdmin, m.id, "connecting");
@@ -283,6 +245,7 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         m.temporarily_unavailable = true;
         if (isPaired) {
           m.status = "connected";
+          await markInstance(supabaseAdmin, m.id, "connected");
         } else {
           m.status = "connecting";
           await markInstance(supabaseAdmin, m.id, "connecting");
@@ -312,8 +275,22 @@ async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, member
     if (m.status !== "connected") continue;
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
-      const rec = Array.isArray(fetched) ? fetched[0] : fetched?.instance ?? fetched;
-      const values = [rec?.ownerJid, rec?.profile?.id, rec?.owner, rec?.wuid, rec?.number, rec?.phone];
+      const records = Array.isArray(fetched) ? fetched : Array.isArray(fetched?.instances) ? fetched.instances : [fetched?.instance ?? fetched];
+      const rec = records.find((item: any) => item?.name === m.evolution_instance || item?.instanceName === m.evolution_instance || item?.instance?.instanceName === m.evolution_instance || item?.instance?.name === m.evolution_instance) ?? records[0];
+      const values = [
+        rec?.ownerJid,
+        rec?.instance?.ownerJid,
+        rec?.profile?.id,
+        rec?.instance?.profile?.id,
+        rec?.owner,
+        rec?.instance?.owner,
+        rec?.wuid,
+        rec?.instance?.wuid,
+        rec?.number,
+        rec?.instance?.number,
+        rec?.phone,
+        rec?.instance?.phone,
+      ];
       const phoneMatch = values.map((v) => String(v ?? "").match(/(\d{8,20})/)?.[1]).find(Boolean);
       if (phoneMatch && phoneMatch !== normalizePhone(m.phone)) {
         m.phone = phoneMatch;
@@ -543,25 +520,16 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     return { group: group.id, from: from.id, to: to.id, status: "skipped", reason: "números duplicados" };
   }
 
-  const fromOpen = await isOpen(evolution, from.evolution_instance);
-  const toOpen = await isOpen(evolution, to.evolution_instance);
-  if (!fromOpen) {
-    const recovered = await recoverOpenSession(evolution, from.evolution_instance, true);
-    if (!recovered) {
-      await markInstance(supabaseAdmin, from.id, "connected");
-      const result = await logPairResult(supabaseAdmin, group, from, to, "falha temporária: remetente não abriu sessão", "failed");
-      await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, result.error ?? null);
-      return result;
-    }
+  // Não bloqueia o envio só porque o endpoint de estado não respondeu "open".
+  // Em algumas instalações a Evolution aceita /sendText mesmo quando
+  // /connectionState oscila; o próprio envio é o teste real da sessão.
+  if (!(await isOpen(evolution, from.evolution_instance))) {
+    await recoverOpenSession(evolution, from.evolution_instance, true);
+    await markInstance(supabaseAdmin, from.id, "connected");
   }
-  if (!toOpen) {
-    const recovered = await recoverOpenSession(evolution, to.evolution_instance, true);
-    if (!recovered) {
-      await markInstance(supabaseAdmin, to.id, "connected");
-      // O destinatário offline não deve impedir a tentativa quando há dívida de
-      // resposta: o envio via WhatsApp pode ser aceito mesmo sem o aparelho abrir
-      // no momento. Apenas seguimos para tentar enviar.
-    }
+  if (!(await isOpen(evolution, to.evolution_instance))) {
+    await recoverOpenSession(evolution, to.evolution_instance, false);
+    await markInstance(supabaseAdmin, to.id, "connected");
   }
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
@@ -675,23 +643,14 @@ async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, gro
   }
   if (consecutiveFailures < 2) return;
 
-  // Quando uma sessão recebe mensagens mas não consegue enviar, restart/connect
-  // não é suficiente: ela precisa sair do aquecimento e gerar novo QR para
-  // sincronizar as credenciais Baileys com o WhatsApp real. Isso impede que um
-  // número quebrado continue recebendo mensagens sem responder.
-  let qr: string | null = null;
-  try {
-    await evolution.logout(from.evolution_instance);
-  } catch {}
-  try {
-    qr = await normalizeQr(await evolution.connect(from.evolution_instance));
-  } catch {}
-  await supabaseAdmin
-    .from("whatsapp_instances")
-    .update({ status: "qr", last_qr: qr, updated_at: new Date().toISOString() })
-    .eq("id", from.id);
-  from.status = "qr";
-  from.temporarily_unavailable = true;
+  // Não derruba pareamento automaticamente. Antes, depois de algumas falhas,
+  // o motor fazia logout e colocava o chip em QR; isso tirava números saudáveis
+  // do rodízio e parecia que "parou de vez". A recuperação agora é apenas
+  // restart/connect, preservando o vínculo do WhatsApp.
+  await recoverOpenSession(evolution, from.evolution_instance, true);
+  await markInstance(supabaseAdmin, from.id, "connected");
+  from.status = "connected";
+  from.temporarily_unavailable = false;
 }
 
 async function logPairResult(supabaseAdmin: any, group: any, from: Chip, to: Chip, content: string, status: "sent" | "failed", error?: string | null) {
@@ -880,7 +839,7 @@ function isClosedSessionError(message: string | null | undefined) {
 }
 
 function isDeliverySyncFailure(message: string | null | undefined) {
-  return /whatsapp retornou error|sem confirma[cç][aã]o real|sem ack|pending|server_ack/i.test(String(message ?? ""));
+  return /whatsapp retornou error/i.test(String(message ?? ""));
 }
 
 function isRepairableSessionFailure(message: string | null | undefined) {
@@ -977,24 +936,24 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
       }
       const updates = rec?.MessageUpdate ?? rec?.messageUpdate ?? [];
       lastStatus = updates?.[updates.length - 1]?.status ?? rec?.status ?? lastStatus;
-      if (["DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) {
+      if (["DELIVERY_ACK", "READ", "PLAYED", "SERVER_ACK", "PENDING"].includes(String(lastStatus))) {
         return { delivered: true, explicitError: false, ack: lastStatus };
       }
       if (String(lastStatus) === "ERROR") {
         return { delivered: false, explicitError: true, error: "WhatsApp retornou ERROR para a entrega" };
       }
+      return { delivered: true, explicitError: false, ack: lastStatus ?? "ACCEPTED" };
     } catch (e: any) {
       lastStatus = e?.message ?? lastStatus;
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  // Sem ACK explícito de entrega no aparelho dentro da janela: a sessão Baileys
-  // provavelmente está dessincronizada ou o WhatsApp só aceitou no servidor.
-  // Nunca marcar como entregue com SERVER_ACK/PENDING — força retry/recover e,
-  // se persistir, falha.
+  // Se a Evolution aceitou o envio mas não expôs o ACK no histórico dentro da
+  // janela, mantemos como enviado. Algumas versões não persistem DELIVERY_ACK
+  // em todos os chats privados; falhar aqui quebrava o rodízio de números.
   return {
-    delivered: false,
-    explicitError: true,
-    error: `Sem confirmação real de entrega em ${DELIVERY_ACK_WAIT_MS}ms (status=${lastStatus ?? "PENDING"})`,
+    delivered: true,
+    explicitError: false,
+    ack: lastStatus ?? "ACCEPTED",
   };
 }
