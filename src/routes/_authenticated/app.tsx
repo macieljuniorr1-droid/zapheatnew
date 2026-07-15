@@ -1125,25 +1125,10 @@ function PlanTab() {
               </DialogFooter>
             </div>
           ) : (
-            <div className="space-y-3 text-sm">
-              {checkoutData.pix_qr_code && (
-                <>
-                  <div className="font-medium">Escaneie ou copie o código PIX:</div>
-                  <textarea readOnly className="w-full h-32 text-xs p-2 rounded border bg-muted font-mono" value={checkoutData.pix_qr_code} />
-                  <Button size="sm" onClick={() => { navigator.clipboard.writeText(checkoutData.pix_qr_code!); toast.success("Código copiado"); }}>Copiar código</Button>
-                </>
-              )}
-              {checkoutData.payment_url && (
-                <div>
-                  <a href={checkoutData.payment_url} target="_blank" rel="noreferrer">
-                    <Button className="w-full">Abrir checkout do cartão</Button>
-                  </a>
-                </div>
-              )}
-              <div className="text-xs text-muted-foreground">
-                Assim que o pagamento for confirmado, seu novo número fica disponível automaticamente.
-              </div>
-            </div>
+            <CheckoutView
+              data={checkoutData}
+              onClose={() => { setOpen(false); setCheckoutData(null); qc.invalidateQueries({ queryKey: ["my-billing"] }); }}
+            />
           )}
         </DialogContent>
       </Dialog>
