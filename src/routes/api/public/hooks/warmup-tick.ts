@@ -9,7 +9,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 7_000;
+const DELIVERY_ACK_WAIT_MS = 15_000;
 const MAX_BURST_ROUNDS = 1;
 const BURST_BUDGET_MS = 20_000;
 const REPLY_GAP_MS = 500;
@@ -66,7 +66,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
 
             await syncConnectedUserChipsIntoGroup(supabaseAdmin, g, rawMembers);
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
-            await backfillPhones(supabaseAdmin, evolution, rawMembers);
+            await refreshConnectedPhones(supabaseAdmin, evolution, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
             // Chips com histórico recente de ERROR de entrega recebem recuperação
             // preventiva antes de tentar enviar de novo. Sem isso a sessão fica
@@ -450,7 +450,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
   }
 
   const idle = [...members]
-    .filter((m) => !selected.has(m.id) && !m.temporarily_unavailable)
+    .filter((m) => !selected.has(m.id))
     .sort(() => Math.random() - 0.5);
 
   while (idle.length >= 2) {
