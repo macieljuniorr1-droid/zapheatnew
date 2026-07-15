@@ -9,7 +9,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 45_000;
+const DELIVERY_ACK_WAIT_MS = 25_000;
 const MAX_BURST_ROUNDS = 1;
 const BURST_BUDGET_MS = 20_000;
 const REPLY_GAP_MS = 500;
@@ -580,7 +580,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     let ack = await attemptSend();
     // ERROR explícito indica sessão dessincronizada. Força recuperação e tenta
     // várias vezes antes de registrar falha, porque resposta recebida é prioridade.
-    for (let retry = 0; ack.explicitError && retry < 3; retry++) {
+    for (let retry = 0; ack.explicitError && retry < 1; retry++) {
       try {
         await recoverOpenSession(evolution, from.evolution_instance, true);
         await new Promise((r) => setTimeout(r, 750));
