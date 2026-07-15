@@ -883,6 +883,10 @@ function isDeliverySyncFailure(message: string | null | undefined) {
   return /whatsapp retornou error|sem confirma[cç][aã]o real|sem ack|pending|server_ack/i.test(String(message ?? ""));
 }
 
+function isRepairableSessionFailure(message: string | null | undefined) {
+  return isDeliverySyncFailure(message) || /remetente n[aã]o abriu sess[aã]o|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
+}
+
 async function normalizeQr(payload: any): Promise<string | null> {
   const firstString = (...values: any[]) => values.find((v) => typeof v === "string" && v.trim().length > 0)?.trim();
   const asImage = (raw?: string | null) => {
