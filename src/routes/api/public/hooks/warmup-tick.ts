@@ -549,7 +549,9 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     const recovered = await recoverOpenSession(evolution, from.evolution_instance, true);
     if (!recovered) {
       await markInstance(supabaseAdmin, from.id, "connected");
-      return await logPairResult(supabaseAdmin, group, from, to, "falha temporária: remetente não abriu sessão", "failed");
+      const result = await logPairResult(supabaseAdmin, group, from, to, "falha temporária: remetente não abriu sessão", "failed");
+      await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, result.error ?? null);
+      return result;
     }
   }
   if (!toOpen) {
@@ -656,7 +658,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 }
 
 async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, groupId: string, from: Chip, errMsg: string | null) {
-  if (!isDeliverySyncFailure(errMsg)) return;
+  if (!isRepairableSessionFailure(errMsg)) return;
   const { data: recent } = await supabaseAdmin
     .from("warmup_logs")
     .select("status, error, created_at")
@@ -669,7 +671,7 @@ async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, gro
   let consecutiveFailures = 0;
   for (const log of recent ?? []) {
     if (log.status === "sent") break;
-    if (log.status === "failed" && isDeliverySyncFailure(log.error)) consecutiveFailures++;
+    if (log.status === "failed" && isRepairableSessionFailure(log.error)) consecutiveFailures++;
   }
   if (consecutiveFailures < 2) return;
 
