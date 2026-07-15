@@ -794,7 +794,7 @@ function PlanTab() {
           </CardHeader>
           <CardContent className="text-sm space-y-1">
             <div>✓ {p.max_instances} número(s)</div>
-            <div>✓ {p.max_messages_per_day} mensagens/dia</div>
+            <div>✓ {p.max_messages_per_day >= 100000 ? "Mensagens ilimitadas" : `${p.max_messages_per_day} mensagens/dia`}</div>
             <Button className="w-full mt-3" disabled variant={currentId === p.id ? "secondary" : "default"}>
               {currentId === p.id ? "Plano atual" : "Em breve"}
             </Button>
