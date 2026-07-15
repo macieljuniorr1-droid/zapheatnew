@@ -39,7 +39,7 @@ function AuthPage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/app" });
+      if (data.session) navigate({ to: "/app", search: {} });
     });
   }, [navigate]);
 
@@ -53,7 +53,7 @@ function AuthPage() {
     setLoading(false);
     if (error) return toast.error(error.message);
     toast.success("Bem-vindo!");
-    navigate({ to: "/app" });
+    navigate({ to: "/app", search: {} });
   }
 
   async function handleSignup(e: React.FormEvent) {
@@ -77,7 +77,7 @@ function AuthPage() {
     setLoading(false);
     if (error) return toast.error(error.message);
     toast.success("Conta criada!");
-    navigate({ to: "/app" });
+    navigate({ to: "/app", search: {} });
   }
 
   async function handleGoogle() {
@@ -90,7 +90,7 @@ function AuthPage() {
       return toast.error((result.error as Error).message ?? "Falha no login com Google");
     }
     if (result.redirected) return;
-    navigate({ to: "/app" });
+    navigate({ to: "/app", search: {} });
   }
 
   return (
