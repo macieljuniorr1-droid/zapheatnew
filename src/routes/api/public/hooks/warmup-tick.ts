@@ -185,14 +185,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               status = "failed";
               errMsg = e?.message ?? "erro";
             } finally {
-              try {
-                await typingChannel.send({
-                  type: "broadcast",
-                  event: "typing_end",
-                  payload: { group_id: (g as any).id, from_id: from.id, to_id: to.id },
-                });
-                await supabaseAdmin.removeChannel(typingChannel);
-              } catch {}
+              await broadcast("typing_end", { group_id: (g as any).id, from_id: from.id, to_id: to.id });
             }
 
             await supabaseAdmin.from("warmup_logs").insert({
