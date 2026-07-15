@@ -131,25 +131,21 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           return;
         }
 
-        // Não derruba o chip na plataforma por uma leitura instável da Evolution.
-        // Chips já conectados ficam conectados no painel e só são ignorados neste ciclo.
         m.temporarily_unavailable = true;
-        if (m.status !== "connected" && m.phone && m.warmup_started_at) {
-          m.status = "connected";
-          await markInstance(supabaseAdmin, m.id, "connected");
-        } else if (m.status !== "connected") {
-          m.status = s === "connecting" ? "connecting" : "disconnected";
-          await markInstance(supabaseAdmin, m.id, m.status as "connecting" | "disconnected");
-        }
+        // Se não confirmou OPEN, não deixa o painel mentir como conectado.
+        // Mantém em reconexão para o usuário saber que o chip precisa voltar.
+        m.status = "connecting";
+        await markInstance(supabaseAdmin, m.id, "connecting");
       } catch {
-        m.temporarily_unavailable = true;
-        if (m.status !== "connected" && m.phone && m.warmup_started_at) {
+        const recovered = await recoverOpenSession(evolution, m.evolution_instance);
+        if (recovered) {
           m.status = "connected";
           await markInstance(supabaseAdmin, m.id, "connected");
-        } else if (m.status !== "connected") {
-          m.status = "disconnected";
-          await markInstance(supabaseAdmin, m.id, "disconnected");
+          return;
         }
+        m.temporarily_unavailable = true;
+        m.status = "connecting";
+        await markInstance(supabaseAdmin, m.id, "connecting");
       }
     }),
   );
@@ -205,15 +201,16 @@ async function preemptiveRecoverFailingChips(supabaseAdmin: any, evolution: any,
     members.map(async (m) => {
       const failed = streak.get(m.id) ?? 0;
       if (failed < 2) return;
-      // 2+ falhas consecutivas recentes → sessão do WhatsApp está travada.
-      // Reinicia a instância na Evolution e, se não voltar a "open", pula
-      // esse chip neste ciclo para não gerar mais falhas em cascata.
       try {
-        await evolution.restart(m.evolution_instance);
+        // Reabre a sessão sem apagar o pareamento. Restart em sessão Baileys
+        // pode forçar novo QR e parecer que o celular "desconectou sozinho".
+        await evolution.connect(m.evolution_instance);
       } catch {}
       const ok = await waitForOpen(evolution, m.evolution_instance);
       if (!ok) {
         m.temporarily_unavailable = true;
+        m.status = "connecting";
+        await markInstance(supabaseAdmin, m.id, "connecting");
       }
     }),
   );
@@ -307,12 +304,14 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   if (!fromOpen) {
     const recovered = await recoverOpenSession(evolution, from.evolution_instance);
     if (!recovered) {
+      await markInstance(supabaseAdmin, from.id, "connecting");
       return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Remetente indisponível neste ciclo" };
     }
   }
   if (!toOpen) {
     const recovered = await recoverOpenSession(evolution, to.evolution_instance);
     if (!recovered) {
+      await markInstance(supabaseAdmin, to.id, "connecting");
       return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Destinatário indisponível neste ciclo" };
     }
   }
@@ -344,12 +343,12 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   try {
     let ack = await attemptSend();
-    // ERROR explícito indica sessão dessincronizada na Evolution. Reinicia a
-    // instância e tenta mais uma vez antes de marcar como falha — é o que
-    // resolve o loop de entrega falhando para o mesmo número.
+    // ERROR explícito indica sessão dessincronizada na Evolution. Primeiro
+    // reabrimos com /connect (sem derrubar o vínculo do celular) e tentamos
+    // de novo antes de marcar como falha.
     if (ack.explicitError) {
       try {
-        await evolution.restart(from.evolution_instance);
+        await evolution.connect(from.evolution_instance);
         await waitForOpen(evolution, from.evolution_instance);
         ack = await attemptSend();
       } catch (retryErr: any) {
@@ -365,7 +364,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     const firstError = e?.message ?? "erro";
     if (isClosedSessionError(firstError)) {
       try {
-        await evolution.restart(from.evolution_instance);
+        await evolution.connect(from.evolution_instance);
         await waitForOpen(evolution, from.evolution_instance);
         const ack = await attemptSend();
         if (ack.explicitError) {
@@ -509,7 +508,7 @@ async function waitForOpen(evolution: any, instanceName: string) {
 async function recoverOpenSession(evolution: any, instanceName: string) {
   if (await isOpen(evolution, instanceName)) return true;
   try {
-    await evolution.restart(instanceName);
+    await evolution.connect(instanceName);
   } catch {}
   return await waitForOpen(evolution, instanceName);
 }

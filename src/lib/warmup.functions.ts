@@ -52,18 +52,27 @@ function extractPhone(...candidates: any[]): string | null {
   return null;
 }
 
-async function recoverInstanceConnection(evolution: any, instanceName: string): Promise<boolean> {
+async function reconnectInstance(evolution: any, instanceName: string): Promise<{ connected: boolean; qr: string | null }> {
+  let qr: string | null = null;
+
+  // Não usamos restart aqui: em algumas sessões Baileys ele derruba o vínculo
+  // do WhatsApp e força novo QR. O /connect reabre a sessão existente quando
+  // ainda há credenciais válidas; só devolve QR quando o celular realmente
+  // precisa parear novamente.
   try {
-    await evolution.restart(instanceName);
+    const conn = await evolution.connect(instanceName);
+    qr = normalizeQr(conn);
   } catch {}
+
   for (let i = 0; i < 6; i++) {
     try {
       const state = await evolution.connectionState(instanceName);
-      if ((state?.instance?.state ?? state?.state) === "open") return true;
+      if ((state?.instance?.state ?? state?.state) === "open") return { connected: true, qr: null };
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  return false;
+
+  return { connected: false, qr };
 }
 
 export const listInstances = createServerFn({ method: "GET" })
@@ -168,19 +177,39 @@ export const refreshInstance = createServerFn({ method: "POST" })
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = (inst as any).last_qr ?? null;
     let phone: string | null = (inst as any).phone ?? null;
+    let triedSoftReconnect = false;
     try {
       const state = await evolution.connectionState(inst.evolution_instance);
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
-      else if (s === "connecting") status = "connecting";
-      else if ((inst as any).status === "connected") {
-        const recovered = await recoverInstanceConnection(evolution, inst.evolution_instance);
-        status = recovered ? "connected" : "connected";
-      } else status = "disconnected";
+      else {
+        if (s === "connecting") status = "connecting";
+        triedSoftReconnect = true;
+        const recovered = await reconnectInstance(evolution, inst.evolution_instance);
+        if (recovered.connected) {
+          status = "connected";
+          qr = null;
+        } else if (recovered.qr) {
+          status = "qr";
+          qr = recovered.qr;
+        } else {
+          status = s === "connecting" ? "connecting" : "connecting";
+        }
+      }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
-      // Falha momentânea de leitura da Evolution não pode derrubar o chip no painel.
-      status = (inst as any).status === "connected" ? "connected" : "disconnected";
+      // Não mantém "conectado" às cegas quando a sessão não confirmou open.
+      // Assim o painel mostra que está tentando reconectar em vez de parecer OK.
+      status = (inst as any).status === "connected" ? "connecting" : "disconnected";
+      triedSoftReconnect = true;
+      const recovered = await reconnectInstance(evolution, inst.evolution_instance);
+      if (recovered.connected) {
+        status = "connected";
+        qr = null;
+      } else if (recovered.qr) {
+        status = "qr";
+        qr = recovered.qr;
+      }
     }
 
     // Quando conectado, garante que o telefone (ownerJid) esteja salvo. A v2
@@ -195,7 +224,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
     }
 
     const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
-    const canRegenerateQr = !(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected";
+    const canRegenerateQr = !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect(inst.evolution_instance);
@@ -710,18 +739,37 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = null;
     let phone: string | null = (inst as any).phone ?? null;
+    let triedSoftReconnect = false;
     try {
       const state = await evolution.connectionState((inst as any).evolution_instance);
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
-      else if (s === "connecting") status = "connecting";
-      else if ((inst as any).status === "connected") {
-        const recovered = await recoverInstanceConnection(evolution, (inst as any).evolution_instance);
-        status = recovered ? "connected" : "connected";
+      else {
+        if (s === "connecting") status = "connecting";
+        triedSoftReconnect = true;
+        const recovered = await reconnectInstance(evolution, (inst as any).evolution_instance);
+        if (recovered.connected) {
+          status = "connected";
+          qr = null;
+        } else if (recovered.qr) {
+          status = "qr";
+          qr = recovered.qr;
+        } else {
+          status = s === "connecting" ? "connecting" : "connecting";
+        }
       }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
-      status = (inst as any).status === "connected" ? "connected" : "disconnected";
+      status = (inst as any).status === "connected" ? "connecting" : "disconnected";
+      triedSoftReconnect = true;
+      const recovered = await reconnectInstance(evolution, (inst as any).evolution_instance);
+      if (recovered.connected) {
+        status = "connected";
+        qr = null;
+      } else if (recovered.qr) {
+        status = "qr";
+        qr = recovered.qr;
+      }
     }
     if (status === "connected" && !phone) {
       try {
@@ -731,7 +779,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
     const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
-    const canRegenerateQr = !(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected";
+    const canRegenerateQr = !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);

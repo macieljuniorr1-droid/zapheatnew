@@ -526,7 +526,7 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
             </span>
           ) : chip.status === "qr" || chip.status === "connecting" ? (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30">
-              Aguardando QR
+              {chip.status === "connecting" ? "Reconectando" : "Aguardando QR"}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
