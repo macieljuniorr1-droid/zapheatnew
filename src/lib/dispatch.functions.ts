@@ -110,6 +110,9 @@ export const createCampaign = createServerFn({ method: "POST" })
         per_instance_daily_limit: z.number().int().min(1).max(1000).default(100),
         active_hour_start: z.number().int().min(0).max(23).default(8),
         active_hour_end: z.number().int().min(1).max(24).default(20),
+        media_url: z.string().url().max(2000).optional().nullable(),
+        media_type: z.enum(["image", "video", "document"]).optional().nullable(),
+        media_filename: z.string().max(200).optional().nullable(),
       })
       .parse(i),
   )
@@ -119,8 +122,29 @@ export const createCampaign = createServerFn({ method: "POST" })
       throw new Error("Intervalo máximo deve ser >= mínimo");
     if (data.active_hour_end <= data.active_hour_start)
       throw new Error("Hora final deve ser maior que a inicial");
+    if (data.media_url && !data.media_type)
+      throw new Error("Selecione o tipo da mídia (imagem, vídeo ou documento)");
 
-    // ensure list belongs to user
+    // Regra: só dispara com números que já completaram 3 dias de aquecimento
+    const WARMUP_DAYS_REQUIRED = 3;
+    const { data: chosen } = await supabase
+      .from("whatsapp_instances")
+      .select("id, name, status, warmup_started_at")
+      .in("id", data.instance_ids);
+    const now = Date.now();
+    const notReady = (chosen ?? []).filter((c: any) => {
+      if (c.status !== "connected") return true;
+      if (!c.warmup_started_at) return true;
+      const days = (now - new Date(c.warmup_started_at).getTime()) / 86400000;
+      return days < WARMUP_DAYS_REQUIRED;
+    });
+    if (notReady.length > 0) {
+      const names = notReady.map((n: any) => n.name).join(", ");
+      throw new Error(
+        `Estes números ainda não completaram 3 dias de aquecimento e não podem disparar: ${names}`,
+      );
+    }
+
     const { data: list } = await supabase
       .from("contact_lists")
       .select("id")
@@ -141,7 +165,10 @@ export const createCampaign = createServerFn({ method: "POST" })
         active_hour_start: data.active_hour_start,
         active_hour_end: data.active_hour_end,
         status: "draft",
-      })
+        media_url: data.media_url ?? null,
+        media_type: data.media_type ?? null,
+        media_filename: data.media_filename ?? null,
+      } as any)
       .select()
       .single();
     if (error) throw new Error(error.message);
@@ -150,7 +177,6 @@ export const createCampaign = createServerFn({ method: "POST" })
     const { error: ciErr } = await supabase.from("campaign_instances").insert(ciRows);
     if (ciErr) throw new Error(ciErr.message);
 
-    // Generate targets from the list
     const { data: contacts } = await supabase
       .from("contacts")
       .select("id, phone, name")
