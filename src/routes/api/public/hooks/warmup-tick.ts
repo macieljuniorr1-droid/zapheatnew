@@ -8,8 +8,8 @@ import { createFileRoute } from "@tanstack/react-router";
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 const DELIVERY_ACK_WAIT_MS = 7_000;
-const MAX_BURST_ROUNDS = 2;
-const BURST_BUDGET_MS = 18_000;
+const MAX_BURST_ROUNDS = 6;
+const BURST_BUDGET_MS = 45_000;
 const REPLY_GAP_MS = 500;
 const FAILING_PAIR_COOLDOWN_MS = 90 * 1000;
 const PAIR_DOMINANCE_TURNS = 2;
@@ -65,7 +65,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             // aberta no painel, mas dessincronizada para envio.
             await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
 
-            const members = rawMembers.filter((i) => i.status === "connected" && i.phone && !i.temporarily_unavailable);
+            const members = rawMembers.filter((i) => i.status === "connected" && i.phone);
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
               results.push({
@@ -240,13 +240,13 @@ async function preemptiveRecoverFailingChips(supabaseAdmin: any, evolution: any,
       const failed = streak.get(m.id) ?? 0;
       if (failed < 2) return;
       const ok = await recoverOpenSession(evolution, m.evolution_instance, true);
-      if (!ok) {
+      if (ok) {
+        m.temporarily_unavailable = false;
+        await markInstance(supabaseAdmin, m.id, "connected");
+      } else if (!(m.phone || m.warmup_started_at)) {
         m.temporarily_unavailable = true;
-        // Mantém "connected" no painel para chips pareados; apenas pula o ciclo.
-        if (!(m.phone || m.warmup_started_at)) {
-          m.status = "connecting";
-          await markInstance(supabaseAdmin, m.id, "connecting");
-        }
+        m.status = "connecting";
+        await markInstance(supabaseAdmin, m.id, "connecting");
       }
     }),
   );
@@ -293,22 +293,28 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     }
   }
 
-  const dominantPairs = findDominantPairs(sentLogs);
-
   // Dívidas em aberto: para cada par, se a última msg foi peer→me e ainda está
-  // dentro da janela de resposta, "me" deve responder ao peer.
-  type Debt = { instanceId: string; peerId: string; age: number };
+  // dentro da janela de resposta, "me" deve responder ao peer. Respostas
+  // pendentes são obrigatórias: não entram em cooldown por falha nem em bloqueio
+  // por dominância, porque isso fazia o chip 003 receber e ficar sem responder.
+  type Debt = { instanceId: string; peerId: string; age: number; lastFailedAt: number };
   const debts: Debt[] = [];
   for (const [key, log] of lastByPair.entries()) {
-    if (recentFailedPairs.has(key)) continue;
-    if (dominantPairs.has(key)) continue;
     const age = nowMs - new Date(log.created_at).getTime();
     if (age > REPLY_TIMEOUT_MS) continue;
     // Quem deve resposta é o `to` do último log (recebeu por último).
-    debts.push({ instanceId: log.to_instance_id, peerId: log.from_instance_id, age });
+    const lastFailedAt = latestFailedAtForPair(recentLogs, log.to_instance_id, log.from_instance_id);
+    debts.push({ instanceId: log.to_instance_id, peerId: log.from_instance_id, age, lastFailedAt });
   }
-  // Prioriza dívidas mais antigas — quem foi ignorado por mais tempo fala primeiro.
-  debts.sort((a, b) => b.age - a.age);
+  // Primeiro tenta dívidas sem falha recente. Se todas falharam, roda pela mais
+  // antiga tentativa de falha para não prender o chip no mesmo par para sempre.
+  debts.sort((a, b) => {
+    const aFailed = a.lastFailedAt > 0;
+    const bFailed = b.lastFailedAt > 0;
+    if (aFailed !== bFailed) return aFailed ? 1 : -1;
+    if (aFailed && bFailed && a.lastFailedAt !== b.lastFailedAt) return a.lastFailedAt - b.lastFailedAt;
+    return b.age - a.age;
+  });
 
   const pairs: Array<{ from: Chip; to: Chip }> = [];
   const selected = new Set<string>();
@@ -319,7 +325,6 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     const from = chipById.get(debt.instanceId);
     const to = chipById.get(debt.peerId);
     if (!from || !to) continue;
-    if (from.temporarily_unavailable || to.temporarily_unavailable) continue;
     pairs.push({ from, to });
     selected.add(from.id);
     selected.add(to.id);
@@ -364,6 +369,17 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
   return pairs;
 }
 
+function latestFailedAtForPair(recentLogs: any[], a: string, b: string) {
+  const key = pairKey(a, b);
+  let latest = 0;
+  for (const log of recentLogs) {
+    if (log.status !== "failed") continue;
+    if (pairKey(log.from_instance_id, log.to_instance_id) !== key) continue;
+    latest = Math.max(latest, new Date(log.created_at).getTime());
+  }
+  return latest;
+}
+
 
 function pairKey(a: string, b: string) {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
@@ -394,17 +410,19 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   const fromOpen = await isOpen(evolution, from.evolution_instance);
   const toOpen = await isOpen(evolution, to.evolution_instance);
   if (!fromOpen) {
-    const recovered = await recoverOpenSession(evolution, from.evolution_instance);
+    const recovered = await recoverOpenSession(evolution, from.evolution_instance, true);
     if (!recovered) {
       await markInstance(supabaseAdmin, from.id, "connected");
-      return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Remetente indisponível neste ciclo" };
+      return await logPairResult(supabaseAdmin, group, from, to, "falha temporária: remetente não abriu sessão", "failed");
     }
   }
   if (!toOpen) {
-    const recovered = await recoverOpenSession(evolution, to.evolution_instance);
+    const recovered = await recoverOpenSession(evolution, to.evolution_instance, true);
     if (!recovered) {
       await markInstance(supabaseAdmin, to.id, "connected");
-      return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Destinatário indisponível neste ciclo" };
+      // O destinatário offline não deve impedir a tentativa quando há dívida de
+      // resposta: o envio via WhatsApp pode ser aceito mesmo sem o aparelho abrir
+      // no momento. Apenas seguimos para tentar enviar.
     }
   }
 
@@ -436,12 +454,12 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   try {
     let ack = await attemptSend();
-    // ERROR explícito indica sessão dessincronizada na Evolution. Primeiro
-    // reabrimos com /connect (sem derrubar o vínculo do celular) e tentamos
-    // de novo antes de marcar como falha.
-    if (ack.explicitError) {
+    // ERROR explícito indica sessão dessincronizada. Força recuperação e tenta
+    // várias vezes antes de registrar falha, porque resposta recebida é prioridade.
+    for (let retry = 0; ack.explicitError && retry < 3; retry++) {
       try {
         await recoverOpenSession(evolution, from.evolution_instance, true);
+        await new Promise((r) => setTimeout(r, 750));
         ack = await attemptSend();
       } catch (retryErr: any) {
         errMsg = retryErr?.message ?? ack.error ?? null;
@@ -450,27 +468,21 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     if (ack.explicitError) {
       status = "failed";
       errMsg = ack.error ?? errMsg ?? "WhatsApp retornou erro na entrega";
-      from.temporarily_unavailable = true; // pula esse chip nas próximas iterações do burst
     }
   } catch (e: any) {
     const firstError = e?.message ?? "erro";
-    if (isClosedSessionError(firstError)) {
+    if (isClosedSessionError(firstError) || true) {
       try {
         await recoverOpenSession(evolution, from.evolution_instance, true);
         const ack = await attemptSend();
         if (ack.explicitError) {
           status = "failed";
           errMsg = ack.error ?? firstError;
-          from.temporarily_unavailable = true;
         }
       } catch (retryErr: any) {
         status = "failed";
         errMsg = retryErr?.message ?? firstError;
-        from.temporarily_unavailable = true;
       }
-    } else {
-      status = "failed";
-      errMsg = firstError;
     }
   } finally {
     await broadcast("typing_end", { group_id: group.id, from_id: from.id, to_id: to.id });
@@ -492,6 +504,19 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   });
 
   return { group: group.id, from: from.id, to: to.id, status, error: errMsg ?? undefined };
+}
+
+async function logPairResult(supabaseAdmin: any, group: any, from: Chip, to: Chip, content: string, status: "sent" | "failed", error?: string | null) {
+  await supabaseAdmin.from("warmup_logs").insert({
+    user_id: group.user_id,
+    group_id: group.id,
+    from_instance_id: from.id,
+    to_instance_id: to.id,
+    content,
+    status,
+    error: error ?? content,
+  });
+  return { group: group.id, from: from.id, to: to.id, status, error: error ?? content };
 }
 
 async function getPairHistory(supabaseAdmin: any, groupId: string, fromId: string, toId: string) {
