@@ -137,6 +137,13 @@ function AppPage() {
   const { tab } = Route.useSearch();
   const fetchMe = useServerFn(getMe);
   const me = useQuery({ queryKey: ["me"], queryFn: () => fetchMe() });
+  const beatFn = useServerFn(heartbeat);
+  useEffect(() => {
+    if (!me.data) return;
+    beatFn().catch(() => {});
+    const iv = setInterval(() => beatFn().catch(() => {}), 60_000);
+    return () => clearInterval(iv);
+  }, [me.data, beatFn]);
 
   async function signOut() {
     await supabase.auth.signOut();
