@@ -1107,7 +1107,7 @@ function PlanTab() {
   }>(null);
 
   const purchase = useMutation({
-    mutationFn: () => purchaseFn({ data: { full_name: fullName, document: doc, payment_method: method } }),
+    mutationFn: () => purchaseFn({ data: { full_name: fullName, document: doc, phone, payment_method: method } }),
     onSuccess: (res: any) => {
       setCheckoutData({
         number_subscription_id: res.number_subscription_id,
