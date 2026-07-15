@@ -41,6 +41,17 @@ function normalizeQr(payload: any): string | null {
   return `data:image/png;base64,${raw.replace(/\s+/g, "")}`;
 }
 
+// Normaliza JID/owner do Evolution ("5511...@s.whatsapp.net") em número puro.
+function extractPhone(...candidates: any[]): string | null {
+  for (const c of candidates) {
+    if (!c) continue;
+    const s = String(c);
+    const m = s.match(/(\d{8,20})/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 export const listInstances = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
