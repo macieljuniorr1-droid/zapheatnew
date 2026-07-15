@@ -68,11 +68,26 @@ export const evolution = {
       method: "POST",
       body: JSON.stringify({ number, presence, delay: delayMs }),
     }).catch(() => null), // presença é cosmética; não deixa a mensagem quebrar
-  sendText: (instanceName: string, number: string, text: string, delayMs = 0) =>
-    evoFetch(`/message/sendText/${encodeURIComponent(instanceName)}`, {
-      method: "POST",
-      body: JSON.stringify({ number, text, delay: delayMs }),
-    }),
+  sendText: async (instanceName: string, number: string, text: string, delayMs = 0) => {
+    const path = `/message/sendText/${encodeURIComponent(instanceName)}`;
+    try {
+      // Evolution v2.3+ espera `textMessage.text`. Usar o payload antigo
+      // (`text`) funciona em algumas instalações, mas pode disparar erros
+      // internos do Baileys em outras.
+      return await evoFetch(path, {
+        method: "POST",
+        body: JSON.stringify({ number, textMessage: { text }, delay: delayMs, linkPreview: false }),
+      });
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      if (/Cannot read properties of undefined|reading 'id'|reading "id"/i.test(msg)) throw e;
+      // Compatibilidade com Evolution mais antiga.
+      return await evoFetch(path, {
+        method: "POST",
+        body: JSON.stringify({ number, text, delay: delayMs }),
+      });
+    }
+  },
   whatsappNumbers: (instanceName: string, numbers: string[]) =>
     evoFetch(`/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`, {
       method: "POST",
