@@ -174,8 +174,9 @@ export const createInstance = createServerFn({ method: "POST" })
         evolution_instance: evolutionInstance,
         status: "qr",
         last_qr: qr,
+        last_qr_at: qr ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
-      })
+      } as any)
       .select()
       .single();
     if (error) throw new Error(error.message);
@@ -199,16 +200,24 @@ export const refreshInstance = createServerFn({ method: "POST" })
     const { evolution } = await import("@/lib/evolution.server");
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = (inst as any).last_qr ?? null;
+    let qrAt: string | null = (inst as any).last_qr_at ?? null;
     let phone: string | null = (inst as any).phone ?? null;
     const awaitingQr = (inst as any).status === "qr";
     const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected") && !awaitingQr;
     let triedSoftReconnect = false;
+
+    // QRs do WhatsApp expiram em ~40s. Se o código atual está prestes a
+    // expirar (>25s), regeneramos antes que o usuário escaneie um QR morto
+    // e o celular mostre "não foi possível conectar o dispositivo".
+    const qrAgeMs = qrAt ? Date.now() - new Date(qrAt).getTime() : Number.POSITIVE_INFINITY;
+    const qrIsFresh = qr !== null && qrAgeMs < 25_000;
 
     const refreshQr = async () => {
       const conn = await evolution.connect(inst.evolution_instance);
       const nextQr = await normalizeQr(conn);
       if (nextQr) {
         qr = nextQr;
+        qrAt = new Date().toISOString();
         status = "qr";
       } else if (qr) {
         status = "qr";
@@ -222,10 +231,9 @@ export const refreshInstance = createServerFn({ method: "POST" })
       const s = state?.instance?.state ?? state?.state;
       if (s === "open") status = "connected";
       else if (!isPaired) {
-        // Para QR novo, NÃO chama connect/restart a cada polling de status.
-        // Cada novo /connect pode invalidar o QR que o usuário está escaneando,
-        // causando o erro do WhatsApp "não foi possível conectar dispositivo".
-        if (qr && !input.force) status = "qr";
+        // Mantém QR estável enquanto ainda estiver fresco. Se ficou velho
+        // (>25s) ou o usuário clicou em "Atualizar" (force), gera novo.
+        if (qrIsFresh && !input.force) status = "qr";
         else await refreshQr();
       }
       else {
@@ -235,13 +243,12 @@ export const refreshInstance = createServerFn({ method: "POST" })
         if (recovered.connected) {
           status = "connected";
           qr = null;
+          qrAt = null;
         } else if (recovered.qr && !isPaired) {
           status = "qr";
           qr = recovered.qr;
+          qrAt = new Date().toISOString();
         } else if (isPaired) {
-          // Chip já foi pareado — mantém como conectado no painel mesmo que a
-          // sessão momentaneamente não confirme "open" (celular offline, sem
-          // internet, etc.). A recuperação acontece em background.
           status = "connected";
         } else {
           status = "connecting";
@@ -250,7 +257,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
       if (!isPaired) {
-        if (qr && !input.force) status = "qr";
+        if (qrIsFresh && !input.force) status = "qr";
         else {
           try {
             await refreshQr();
@@ -264,9 +271,11 @@ export const refreshInstance = createServerFn({ method: "POST" })
         if (recovered.connected) {
           status = "connected";
           qr = null;
+          qrAt = null;
         } else if (recovered.qr && !isPaired) {
           status = "qr";
           qr = recovered.qr;
+          qrAt = new Date().toISOString();
         } else {
           status = "connected";
         }
@@ -284,9 +293,10 @@ export const refreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
 
-    // Só gera QR automaticamente se ainda não existe nenhum. QR existente fica
-    // estável durante o polling; o botão "Atualizar" força um novo código.
-    const canRegenerateQr = !isPaired && !triedSoftReconnect && !(inst as any).last_qr;
+    // Regenera QR se: (a) ainda não existe nenhum, ou (b) o atual já está
+    // velho (>25s) e prestes a ser rejeitado pelo WhatsApp com "não foi
+    // possível conectar o dispositivo".
+    const canRegenerateQr = !isPaired && !triedSoftReconnect && (!qr || !qrIsFresh);
     if (status !== "connected" && canRegenerateQr) {
       try {
         await refreshQr();
@@ -301,6 +311,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
       .update({
         status,
         last_qr: status === "connected" ? null : qr,
+        last_qr_at: status === "connected" ? null : qrAt,
         phone,
         updated_at: new Date().toISOString(),
         // Marca início do aquecimento na primeira vez que conecta

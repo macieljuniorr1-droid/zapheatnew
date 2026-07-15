@@ -724,6 +724,7 @@ export type Database = {
           evolution_instance: string
           id: string
           last_qr: string | null
+          last_qr_at: string | null
           name: string
           phone: string | null
           status: string
@@ -737,6 +738,7 @@ export type Database = {
           evolution_instance: string
           id?: string
           last_qr?: string | null
+          last_qr_at?: string | null
           name: string
           phone?: string | null
           status?: string
@@ -750,6 +752,7 @@ export type Database = {
           evolution_instance?: string
           id?: string
           last_qr?: string | null
+          last_qr_at?: string | null
           name?: string
           phone?: string | null
           status?: string
