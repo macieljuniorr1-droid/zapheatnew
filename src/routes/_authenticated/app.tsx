@@ -77,6 +77,7 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app")({
+  validateSearch: (s: Record<string, unknown>) => ({ tab: (s.tab as string) || undefined }),
   head: () => ({
     meta: [{ title: "Painel — WarmUp Pro" }],
   }),
@@ -85,6 +86,7 @@ export const Route = createFileRoute("/_authenticated/app")({
 
 function AppPage() {
   const navigate = useNavigate();
+  const { tab } = Route.useSearch();
   const fetchMe = useServerFn(getMe);
   const me = useQuery({ queryKey: ["me"], queryFn: () => fetchMe() });
 
@@ -120,7 +122,7 @@ function AppPage() {
         </div>
       </header>
       <main className="relative z-10 max-w-7xl mx-auto px-4 py-6">
-        <Tabs defaultValue="dashboard">
+        <Tabs defaultValue={tab || "dashboard"}>
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="dashboard"><Flame className="h-4 w-4 mr-1" />Dashboard</TabsTrigger>
             <TabsTrigger value="tutorial"><BookOpen className="h-4 w-4 mr-1" />Tutorial</TabsTrigger>
