@@ -73,6 +73,12 @@ export const evolution = {
       method: "POST",
       body: JSON.stringify({ number, text, delay: delayMs }),
     }),
+  whatsappNumbers: (instanceName: string, numbers: string[]) =>
+    evoFetch(`/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({ numbers }),
+    }).catch(() => null),
+
   findMessages: (instanceName: string, remoteJid: string) =>
     evoFetch(`/chat/findMessages/${encodeURIComponent(instanceName)}`, {
       method: "POST",
