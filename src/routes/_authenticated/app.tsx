@@ -77,6 +77,7 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app")({
+  validateSearch: (s: Record<string, unknown>) => ({ tab: (s.tab as string) || undefined }),
   head: () => ({
     meta: [{ title: "Painel — WarmUp Pro" }],
   }),
