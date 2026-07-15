@@ -134,12 +134,13 @@ export const pagarme = {
     customer_id: string;
     amount_cents: number;
     description: string;
-    method: "pix" | "credit_card_native" | "credit_card_checkout";
+    method: "pix" | "credit_card_native" | "credit_card_checkout" | "credit_card_stored";
     metadata?: Record<string, string>;
     success_url?: string;
     card_token?: string; // requerido para credit_card_native
+    card_id?: string; // requerido para credit_card_stored (renovação)
     installments?: number; // default 1
-    billing_address?: Address; // requerido para cartão
+    billing_address?: Address; // requerido para cartão novo
   }) => {
     const item = {
       amount: payload.amount_cents,
@@ -172,6 +173,18 @@ export const pagarme = {
             card: {
               billing_address: normalizeAddress(payload.billing_address),
             },
+          },
+        },
+      ];
+    } else if (payload.method === "credit_card_stored") {
+      if (!payload.card_id) throw new Error("card_id requerido para cobrança recorrente de cartão");
+      payments = [
+        {
+          payment_method: "credit_card",
+          credit_card: {
+            installments: payload.installments ?? 1,
+            statement_descriptor: "ZAPHEAT",
+            card_id: payload.card_id,
           },
         },
       ];

@@ -352,11 +352,15 @@ export type Database = {
           current_period_end: string | null
           id: string
           last_charge_url: string | null
+          last_order_id: string | null
           last_pix_qr_code: string | null
+          pagarme_card_id: string | null
           pagarme_plan_id: string | null
           pagarme_subscription_id: string | null
           payment_method: string
           price_cents: number
+          renewal_attempt_at: string | null
+          renewal_order_id: string | null
           status: string
           updated_at: string
           user_id: string
@@ -367,11 +371,15 @@ export type Database = {
           current_period_end?: string | null
           id?: string
           last_charge_url?: string | null
+          last_order_id?: string | null
           last_pix_qr_code?: string | null
+          pagarme_card_id?: string | null
           pagarme_plan_id?: string | null
           pagarme_subscription_id?: string | null
           payment_method: string
           price_cents?: number
+          renewal_attempt_at?: string | null
+          renewal_order_id?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -382,11 +390,15 @@ export type Database = {
           current_period_end?: string | null
           id?: string
           last_charge_url?: string | null
+          last_order_id?: string | null
           last_pix_qr_code?: string | null
+          pagarme_card_id?: string | null
           pagarme_plan_id?: string | null
           pagarme_subscription_id?: string | null
           payment_method?: string
           price_cents?: number
+          renewal_attempt_at?: string | null
+          renewal_order_id?: string | null
           status?: string
           updated_at?: string
           user_id?: string
