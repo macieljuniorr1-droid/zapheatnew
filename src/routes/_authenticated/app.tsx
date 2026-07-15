@@ -79,7 +79,27 @@ import {
   Upload,
   Play,
   Pause,
+  Flame as FlameIcon,
+  Snowflake,
+  Thermometer,
+  Activity,
+  BarChart3,
+  Zap,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as ChartTooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 
 export const Route = createFileRoute("/_authenticated/app")({
   validateSearch: (s: Record<string, unknown>) => ({ tab: (s.tab as string) || undefined }),
