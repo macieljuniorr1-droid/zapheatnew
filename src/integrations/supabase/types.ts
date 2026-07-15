@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      billing_events: {
+        Row: {
+          amount_cents: number | null
+          created_at: string
+          event_type: string
+          id: string
+          number_subscription_id: string | null
+          pagarme_event_id: string | null
+          payload: Json
+          user_id: string | null
+        }
+        Insert: {
+          amount_cents?: number | null
+          created_at?: string
+          event_type: string
+          id?: string
+          number_subscription_id?: string | null
+          pagarme_event_id?: string | null
+          payload: Json
+          user_id?: string | null
+        }
+        Update: {
+          amount_cents?: number | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          number_subscription_id?: string | null
+          pagarme_event_id?: string | null
+          payload?: Json
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_events_number_subscription_id_fkey"
+            columns: ["number_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "number_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_instances: {
         Row: {
           campaign_id: string
@@ -274,6 +315,78 @@ export type Database = {
         }
         Relationships: []
       }
+      number_subscriptions: {
+        Row: {
+          canceled_at: string | null
+          created_at: string
+          current_period_end: string | null
+          id: string
+          last_charge_url: string | null
+          last_pix_qr_code: string | null
+          pagarme_plan_id: string | null
+          pagarme_subscription_id: string | null
+          payment_method: string
+          price_cents: number
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          canceled_at?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          last_charge_url?: string | null
+          last_pix_qr_code?: string | null
+          pagarme_plan_id?: string | null
+          pagarme_subscription_id?: string | null
+          payment_method: string
+          price_cents?: number
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          canceled_at?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          last_charge_url?: string | null
+          last_pix_qr_code?: string | null
+          pagarme_plan_id?: string | null
+          pagarme_subscription_id?: string | null
+          payment_method?: string
+          price_cents?: number
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pagarme_config: {
+        Row: {
+          id: number
+          is_live: boolean
+          plan_id: string | null
+          updated_at: string
+          webhook_url: string | null
+        }
+        Insert: {
+          id?: number
+          is_live?: boolean
+          plan_id?: string | null
+          updated_at?: string
+          webhook_url?: string | null
+        }
+        Update: {
+          id?: number
+          is_live?: boolean
+          plan_id?: string | null
+          updated_at?: string
+          webhook_url?: string | null
+        }
+        Relationships: []
+      }
       plans: {
         Row: {
           created_at: string
@@ -340,25 +453,40 @@ export type Database = {
       subscriptions: {
         Row: {
           created_at: string
+          free_number_bonus: number
           id: string
+          pagarme_customer_id: string | null
           plan_id: string
           status: string
+          suspended: boolean
+          suspended_at: string | null
+          suspended_reason: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          free_number_bonus?: number
           id?: string
+          pagarme_customer_id?: string | null
           plan_id: string
           status?: string
+          suspended?: boolean
+          suspended_at?: string | null
+          suspended_reason?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          free_number_bonus?: number
           id?: string
+          pagarme_customer_id?: string | null
           plan_id?: string
           status?: string
+          suspended?: boolean
+          suspended_at?: string | null
+          suspended_reason?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -564,6 +692,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_financial_summary: {
+        Args: never
+        Returns: {
+          active_paid_numbers: number
+          active_users: number
+          canceled_last_30d: number
+          mrr_cents: number
+          past_due_numbers: number
+          suspended_users: number
+        }[]
+      }
       chip_temperature: {
         Args: { _instance_id: string }
         Returns: {
@@ -602,6 +741,7 @@ export type Database = {
         }[]
       }
       messages_sent_today: { Args: { _user_id: string }; Returns: number }
+      user_number_quota: { Args: { _user_id: string }; Returns: number }
     }
     Enums: {
       app_role: "admin" | "seller"
