@@ -242,12 +242,16 @@ async function preemptiveRecoverFailingChips(supabaseAdmin: any, evolution: any,
       const ok = await recoverOpenSession(evolution, m.evolution_instance, true);
       if (!ok) {
         m.temporarily_unavailable = true;
-        m.status = m.phone || m.warmup_started_at ? "connected" : "connecting";
-        await markInstance(supabaseAdmin, m.id, m.status as "connected" | "connecting");
+        // Mantém "connected" no painel para chips pareados; apenas pula o ciclo.
+        if (!(m.phone || m.warmup_started_at)) {
+          m.status = "connecting";
+          await markInstance(supabaseAdmin, m.id, "connecting");
+        }
       }
     }),
   );
 }
+
 
 async function fetchRecentLogs(supabaseAdmin: any, groupId: string) {
   const { data } = await supabaseAdmin
