@@ -548,7 +548,7 @@ async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, gro
     .order("created_at", { ascending: false })
     .limit(5);
 
-  let consecutiveFailures = 1;
+  let consecutiveFailures = 0;
   for (const log of recent ?? []) {
     if (log.status === "sent") break;
     if (log.status === "failed" && isDeliverySyncFailure(log.error)) consecutiveFailures++;
