@@ -78,7 +78,16 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               return { kind: "owes", peerId: last.from_instance_id };
             };
 
-            // First priority: any instance that owes a reply and its peer is expecting one.
+            // Hard invariant: a number can only participate in ONE active
+            // conversation at a time. `busy` = waiting for a reply OR owes a reply.
+            const busy = new Set<string>();
+            for (const m of members) {
+              const s = stateOf(m.id);
+              if (s.kind !== "idle") busy.add(m.id);
+            }
+
+            // First priority: whoever owes a reply MUST reply before anything else.
+            // Peer is guaranteed to be their exclusive counterpart (both busy with each other).
             let from: any = null;
             let to: any = null;
             const shuffled = [...members].sort(() => Math.random() - 0.5);
@@ -94,16 +103,47 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               }
             }
 
-            // Second: pick two idle instances to start a fresh conversation.
+            // Second: start a new conversation between TWO idle instances.
+            // Rotate: pick the idle pair with the FEWEST prior exchanges so, over time,
+            // every chip talks with every other chip (N-1 peers each) evenly.
             if (!from) {
-              const idle = shuffled.filter((m: any) => stateOf(m.id).kind === "idle");
+              const idle = shuffled.filter((m: any) => !busy.has(m.id));
               if (idle.length >= 2) {
-                from = idle[0];
-                to = idle[1];
+                // Count historical exchanges per pair from the fetched logs.
+                const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+                const pairCount = new Map<string, number>();
+                for (const log of recentLogs ?? []) {
+                  if (!log.from_instance_id || !log.to_instance_id) continue;
+                  const k = pairKey(log.from_instance_id, log.to_instance_id);
+                  pairCount.set(k, (pairCount.get(k) ?? 0) + 1);
+                }
+                let best: { a: any; b: any; count: number } | null = null;
+                for (let i = 0; i < idle.length; i++) {
+                  for (let j = i + 1; j < idle.length; j++) {
+                    const a = idle[i];
+                    const b = idle[j];
+                    const c = pairCount.get(pairKey(a.id, b.id)) ?? 0;
+                    if (!best || c < best.count) best = { a, b, count: c };
+                  }
+                }
+                if (best) {
+                  from = best.a;
+                  to = best.b;
+                }
               }
             }
 
             if (!from || !to) {
+              await scheduleNext(supabaseAdmin, g);
+              continue;
+            }
+
+            // Final safety check: neither side may be engaged with a third party.
+            const fromState = stateOf(from.id);
+            const toState = stateOf(to.id);
+            const fromOk = fromState.kind === "idle" || (fromState.kind === "owes" && fromState.peerId === to.id);
+            const toOk = toState.kind === "idle" || (toState.kind === "waiting" && toState.peerId === from.id);
+            if (!fromOk || !toOk) {
               await scheduleNext(supabaseAdmin, g);
               continue;
             }
