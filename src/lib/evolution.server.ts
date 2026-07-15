@@ -17,10 +17,10 @@ async function getConfig(): Promise<EvolutionConfig> {
   return { api_url: data.api_url.replace(/\/+$/, ""), api_key: data.api_key };
 }
 
-async function evoFetch(path: string, init: RequestInit = {}) {
+async function evoFetch(path: string, init: RequestInit = {}, timeoutMs = 5_000) {
   const cfg = await getConfig();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${cfg.api_url}${path}`, {
@@ -63,13 +63,13 @@ export const evolution = {
       }),
     }),
   connect: (instanceName: string) =>
-    evoFetch(`/instance/connect/${encodeURIComponent(instanceName)}`, { method: "GET" }),
+    evoFetch(`/instance/connect/${encodeURIComponent(instanceName)}`, { method: "GET" }, 3_500),
   connectionState: (instanceName: string) =>
-    evoFetch(`/instance/connectionState/${encodeURIComponent(instanceName)}`, { method: "GET" }),
+    evoFetch(`/instance/connectionState/${encodeURIComponent(instanceName)}`, { method: "GET" }, 3_500),
   fetchInstance: (instanceName: string) =>
-    evoFetch(`/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`, { method: "GET" }),
+    evoFetch(`/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`, { method: "GET" }, 3_500),
   restart: (instanceName: string) =>
-    evoFetch(`/instance/restart/${encodeURIComponent(instanceName)}`, { method: "POST", body: JSON.stringify({}) }),
+    evoFetch(`/instance/restart/${encodeURIComponent(instanceName)}`, { method: "POST", body: JSON.stringify({}) }, 3_500),
   deleteInstance: (instanceName: string) =>
     evoFetch(`/instance/delete/${encodeURIComponent(instanceName)}`, { method: "DELETE" }),
   logout: (instanceName: string) =>
@@ -103,7 +103,7 @@ export const evolution = {
         return await evoFetch(path, {
           method: "POST",
           body: JSON.stringify(payload),
-        });
+        }, 7_000);
       } catch (e: any) {
         errors.push(e);
         const msg = String(e?.message ?? "");
