@@ -48,6 +48,7 @@ import {
   getMyBilling,
   purchaseNumber,
   getNumberSubscriptionStatus,
+  getPagarmePublicKey,
   cancelNumberSubscription,
   adminFinancialSummary,
   adminAddFreeNumbers,
