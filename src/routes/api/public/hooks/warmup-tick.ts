@@ -477,6 +477,20 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   });
 
   const attemptSend = async () => {
+    // Aquece o cache de contatos do Baileys. Sem isso a Evolution ocasionalmente
+    // retorna 400 "Cannot read properties of undefined (reading 'id')" porque o
+    // JID do destinatário ainda não foi resolvido internamente.
+    try {
+      const res = await evolution.whatsappNumbers(from.evolution_instance, [toNumber]);
+      const arr = Array.isArray(res) ? res : res?.result ?? res?.numbers ?? [];
+      const rec = arr.find?.((r: any) => String(r?.number ?? "").includes(toNumber) || String(r?.jid ?? "").includes(toNumber));
+      if (rec && rec.exists === false) {
+        throw new Error(`Destinatário ${toNumber} não está no WhatsApp`);
+      }
+    } catch (checkErr: any) {
+      if (checkErr?.message?.includes("não está no WhatsApp")) throw checkErr;
+      // Silencia falhas do check — segue a tentativa de envio.
+    }
     await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
     await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
     await new Promise((r) => setTimeout(r, typingMs));
