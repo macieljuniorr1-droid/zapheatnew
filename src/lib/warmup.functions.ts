@@ -20,6 +20,8 @@ export const getMe = createServerFn({ method: "GET" })
 
 // ---------------- Instances ----------------
 
+export const WARMUP_DAYS_REQUIRED = 3;
+
 export const listInstances = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -28,7 +30,14 @@ export const listInstances = createServerFn({ method: "GET" })
       .select("*")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return data ?? [];
+    const now = Date.now();
+    return (data ?? []).map((i: any) => {
+      const started = i.warmup_started_at ? new Date(i.warmup_started_at).getTime() : null;
+      const days_warming = started ? Math.floor((now - started) / (1000 * 60 * 60 * 24)) : 0;
+      const days_remaining = started ? Math.max(0, WARMUP_DAYS_REQUIRED - days_warming) : WARMUP_DAYS_REQUIRED;
+      const is_ready = started !== null && days_warming >= WARMUP_DAYS_REQUIRED && i.status === "connected";
+      return { ...i, days_warming, days_remaining, is_ready };
+    });
   });
 
 export const createInstance = createServerFn({ method: "POST" })
@@ -109,9 +118,18 @@ export const refreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
 
-    const { data: updated, error } = await supabase
+    const { data: updated, error } = await context.supabase
       .from("whatsapp_instances")
-      .update({ status, last_qr: qr, phone, updated_at: new Date().toISOString() })
+      .update({
+        status,
+        last_qr: qr,
+        phone,
+        updated_at: new Date().toISOString(),
+        // Marca início do aquecimento na primeira vez que conecta
+        ...(status === "connected" && !(inst as any).warmup_started_at
+          ? { warmup_started_at: new Date().toISOString() }
+          : {}),
+      } as any)
       .eq("id", data.id)
       .select()
       .single();

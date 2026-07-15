@@ -16,7 +16,7 @@ export const Route = createFileRoute("/api/public/hooks/campaign-tick")({
         const { data: camps, error } = await supabaseAdmin
           .from("campaigns")
           .select(
-            "id, user_id, message, min_delay_seconds, max_delay_seconds, per_instance_daily_limit, active_hour_start, active_hour_end, campaign_instances(instance_id, whatsapp_instances(id, evolution_instance, status, phone))",
+            "id, user_id, message, media_url, media_type, media_filename, min_delay_seconds, max_delay_seconds, per_instance_daily_limit, active_hour_start, active_hour_end, campaign_instances(instance_id, whatsapp_instances(id, evolution_instance, status, phone, warmup_started_at))",
           )
           .eq("status", "running")
           .lte("next_run_at", nowIso)
@@ -33,9 +33,15 @@ export const Route = createFileRoute("/api/public/hooks/campaign-tick")({
               continue;
             }
 
+            const WARMUP_MS = 3 * 24 * 60 * 60 * 1000;
+            const nowMs = Date.now();
             const instances = ((c as any).campaign_instances ?? [])
               .map((ci: any) => ci.whatsapp_instances)
-              .filter((i: any) => i && i.status === "connected");
+              .filter((i: any) => {
+                if (!i || i.status !== "connected") return false;
+                if (!i.warmup_started_at) return false;
+                return nowMs - new Date(i.warmup_started_at).getTime() >= WARMUP_MS;
+              });
             if (instances.length === 0) {
               await scheduleNext(supabaseAdmin, c);
               continue;
@@ -78,12 +84,32 @@ export const Route = createFileRoute("/api/public/hooks/campaign-tick")({
               continue;
             }
 
-            const msg = String((c as any).message).replace(/\{nome\}/gi, (target as any).name ?? "");
+            const rawName = ((target as any).name ?? "").toString().trim();
+            const firstName = rawName ? rawName.split(/\s+/)[0] : "";
             const toNumber = String((target as any).phone).replace(/\D/g, "");
+            const substitute = (t: string) =>
+              String(t)
+                .replace(/\{nome\}/gi, rawName)
+                .replace(/\{primeiro_?nome\}/gi, firstName)
+                .replace(/\{telefone\}/gi, toNumber);
+            const msg = substitute((c as any).message);
+            const mediaUrl = (c as any).media_url as string | null;
+            const mediaType = (c as any).media_type as "image" | "video" | "document" | null;
+            const mediaFilename = (c as any).media_filename as string | null;
             let status = "sent";
             let errMsg: string | null = null;
             try {
-              await evolution.sendText(inst.evolution_instance, toNumber, msg);
+              if (mediaUrl && mediaType) {
+                // Envia mídia com legenda (a mensagem vira caption)
+                await evolution.sendMedia(inst.evolution_instance, toNumber, {
+                  mediatype: mediaType,
+                  media: mediaUrl,
+                  caption: msg,
+                  fileName: mediaFilename ?? undefined,
+                });
+              } else {
+                await evolution.sendText(inst.evolution_instance, toNumber, msg);
+              }
             } catch (e: any) {
               status = "failed";
               errMsg = e?.message ?? "erro";

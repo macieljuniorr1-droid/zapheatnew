@@ -403,6 +403,18 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
           </span>
         </div>
 
+        <div>
+          {chip.is_ready ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+              ✓ Pronto para disparo
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+              Em aquecimento · {chip.days_remaining ?? 3}d restantes
+            </span>
+          )}
+        </div>
+
         <div className="grid grid-cols-3 gap-2 text-center pt-1">
           <div>
             <div className="text-lg font-bold leading-none">{chip.msgs_7d}</div>
@@ -1607,6 +1619,9 @@ function CampaignsSection() {
   const [limit, setLimit] = useState(100);
   const [h1, setH1] = useState(8);
   const [h2, setH2] = useState(20);
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaType, setMediaType] = useState<"image" | "video" | "document" | "">("");
+  const [mediaFilename, setMediaFilename] = useState("");
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["campaigns"] });
 
@@ -1623,12 +1638,16 @@ function CampaignsSection() {
           per_instance_daily_limit: limit,
           active_hour_start: h1,
           active_hour_end: h2,
+          media_url: mediaUrl.trim() || null,
+          media_type: mediaType || null,
+          media_filename: mediaFilename.trim() || null,
         },
       }),
     onSuccess: () => {
       toast.success("Campanha criada. Clique em Iniciar para começar a enviar.");
       setOpen(false);
       setName(""); setMessage(""); setListId(""); setInstanceIds([]);
+      setMediaUrl(""); setMediaType(""); setMediaFilename("");
       invalidate();
     },
     onError: (e: any) => toast.error(e.message),
@@ -1653,14 +1672,52 @@ function CampaignsSection() {
                 <Input value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div>
-                <Label>Mensagem (use <code>{"{nome}"}</code> para personalizar)</Label>
+                <Label>Mensagem</Label>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  rows={4}
-                  className="w-full mt-1 rounded-md border bg-background p-2 text-sm"
-                  placeholder="Olá {nome}, tudo bem?"
+                  rows={5}
+                  className="w-full mt-1 rounded-md border bg-background p-2 text-sm font-mono"
+                  placeholder={"Olá {primeiro_nome}, tudo bem?\n\nDá uma olhada nesse material: https://seusite.com/oferta"}
                 />
+                <div className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+                  Variáveis suportadas: <code className="bg-muted px-1 rounded">{"{nome}"}</code>{" "}
+                  <code className="bg-muted px-1 rounded">{"{primeiro_nome}"}</code>{" "}
+                  <code className="bg-muted px-1 rounded">{"{telefone}"}</code>. Links são enviados
+                  como links clicáveis. Para enviar imagem, vídeo ou documento, cole a URL abaixo — a
+                  mensagem vai como legenda.
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 p-3 rounded-md border bg-muted/30">
+                <div className="md:col-span-2">
+                  <Label>URL da mídia (opcional)</Label>
+                  <Input
+                    value={mediaUrl}
+                    onChange={(e) => setMediaUrl(e.target.value)}
+                    placeholder="https://.../imagem.jpg"
+                  />
+                </div>
+                <div>
+                  <Label>Tipo</Label>
+                  <Select value={mediaType} onValueChange={(v) => setMediaType(v as any)}>
+                    <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="image">Imagem</SelectItem>
+                      <SelectItem value="video">Vídeo</SelectItem>
+                      <SelectItem value="document">Documento</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {mediaType === "document" && (
+                  <div className="md:col-span-3">
+                    <Label>Nome do arquivo (documento)</Label>
+                    <Input
+                      value={mediaFilename}
+                      onChange={(e) => setMediaFilename(e.target.value)}
+                      placeholder="proposta.pdf"
+                    />
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Lista de contatos</Label>
@@ -1675,8 +1732,11 @@ function CampaignsSection() {
               </div>
               <div>
                 <Label>Números que vão disparar (marque um ou mais)</Label>
+                <div className="text-[11px] text-muted-foreground mt-1">
+                  Somente números com <b>3+ dias de aquecimento</b> podem disparar.
+                </div>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {insts.data?.filter((i: any) => i.status === "connected").map((i: any) => {
+                  {insts.data?.filter((i: any) => i.is_ready).map((i: any) => {
                     const on = instanceIds.includes(i.id);
                     return (
                       <button
@@ -1689,10 +1749,17 @@ function CampaignsSection() {
                       </button>
                     );
                   })}
-                  {insts.data?.filter((i: any) => i.status === "connected").length === 0 && (
-                    <div className="text-xs text-muted-foreground">Nenhum número conectado.</div>
+                  {insts.data?.filter((i: any) => i.is_ready).length === 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      Nenhum número pronto. Aguarde completar 3 dias de aquecimento.
+                    </div>
                   )}
                 </div>
+                {insts.data?.some((i: any) => i.status === "connected" && !i.is_ready) && (
+                  <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                    {insts.data.filter((i: any) => i.status === "connected" && !i.is_ready).length} número(s) ainda aquecendo — aparecem aqui após 3 dias.
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div><Label>Delay mín (s)</Label><Input type="number" value={minD} onChange={(e) => setMinD(+e.target.value)} /></div>
