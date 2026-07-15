@@ -702,7 +702,7 @@ export const adminPlatformDashboard = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: daily } = await supabaseAdmin.rpc("messages_daily_series", {
-      _user_id: null,
+      _user_id: null as any,
       _days: 30,
     });
 
