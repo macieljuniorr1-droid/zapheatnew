@@ -7,7 +7,13 @@ import { createFileRoute } from "@tanstack/react-router";
 export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
+        const expectedKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+        const apiKey = request.headers.get("apikey");
+        if (expectedKey && apiKey !== expectedKey) {
+          return Response.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { evolution } = await import("@/lib/evolution.server");
 
@@ -237,6 +243,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             const toNumber = String(to.phone).replace(/\D/g, "");
             let status = "sent";
             let errMsg: string | null = null;
+            let shouldMarkDisconnected = false;
             try {
               // Mostra "digitando..." no WhatsApp do destinatário (cosmético, real)
               await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
@@ -244,10 +251,34 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               await new Promise((r) => setTimeout(r, typingMs));
               await evolution.sendText(from.evolution_instance, toNumber, messageContent);
             } catch (e: any) {
-              status = "failed";
-              errMsg = e?.message ?? "erro";
+              const firstError = e?.message ?? "erro";
+              if (isClosedSessionError(firstError)) {
+                try {
+                  await evolution.restart(from.evolution_instance);
+                  await waitForOpen(evolution, from.evolution_instance);
+                  await evolution.sendText(from.evolution_instance, toNumber, messageContent);
+                  await supabaseAdmin
+                    .from("whatsapp_instances")
+                    .update({ status: "connected", updated_at: new Date().toISOString() })
+                    .eq("id", from.id);
+                } catch (retryErr: any) {
+                  status = "failed";
+                  errMsg = retryErr?.message ?? firstError;
+                  shouldMarkDisconnected = isClosedSessionError(errMsg);
+                }
+              } else {
+                status = "failed";
+                errMsg = firstError;
+              }
             } finally {
               await broadcast("typing_end", { group_id: (g as any).id, from_id: from.id, to_id: to.id });
+            }
+
+            if (shouldMarkDisconnected) {
+              await supabaseAdmin
+                .from("whatsapp_instances")
+                .update({ status: "disconnected", updated_at: new Date().toISOString() })
+                .eq("id", from.id);
             }
 
             await supabaseAdmin.from("warmup_logs").insert({
@@ -278,4 +309,20 @@ async function scheduleNext(supabaseAdmin: any, g: any) {
   const delay = Math.floor(Math.random() * (max - min + 1)) + min;
   const next = new Date(Date.now() + delay * 1000).toISOString();
   await supabaseAdmin.from("warmup_groups").update({ next_run_at: next }).eq("id", g.id);
+}
+
+function isClosedSessionError(message: string | null | undefined) {
+  return /connection closed|no sessions|sessionerror|stream errored|timed out/i.test(String(message ?? ""));
+}
+
+async function waitForOpen(evolution: any, instanceName: string) {
+  for (let i = 0; i < 8; i++) {
+    try {
+      const state = await evolution.connectionState(instanceName);
+      const s = state?.instance?.state ?? state?.state;
+      if (s === "open") return true;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  return false;
 }

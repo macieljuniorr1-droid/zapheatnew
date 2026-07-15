@@ -269,7 +269,7 @@ export const toggleGroup = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase
       .from("warmup_groups")
-      .update({ active: data.active })
+      .update({ active: data.active, ...(data.active ? { next_run_at: new Date().toISOString() } : {}) })
       .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -292,6 +292,11 @@ export const addGroupMember = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.from("warmup_group_members").insert(data);
     if (error) throw new Error(error.message);
+    await context.supabase
+      .from("warmup_groups")
+      .update({ next_run_at: new Date().toISOString() })
+      .eq("id", data.group_id)
+      .eq("active", true);
     return { ok: true };
   });
 
