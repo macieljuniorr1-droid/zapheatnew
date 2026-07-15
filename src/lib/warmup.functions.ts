@@ -502,18 +502,37 @@ export const getStats = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const [{ count: instances }, { count: groups }, { count: sentToday }] = await Promise.all([
-      supabase.from("whatsapp_instances").select("id", { count: "exact", head: true }),
-      supabase.from("warmup_groups").select("id", { count: "exact", head: true }).eq("active", true),
+
+    // Descobre o "billing owner" (master da equipe) para somar envios de todos
+    // os membros da equipe, não apenas do usuário logado.
+    const { data: ownerRow } = await supabase.rpc("billing_owner", { _user_id: userId });
+    const ownerId = (ownerRow as any) ?? userId;
+
+    // IDs dos membros da equipe (o próprio master + seus filhos por owner_id)
+    const { data: teamRows } = await supabase
+      .from("profiles")
+      .select("id")
+      .or(`id.eq.${ownerId},owner_id.eq.${ownerId}`);
+    const teamIds = (teamRows ?? []).map((r: any) => r.id);
+    const scopedIds = teamIds.length > 0 ? teamIds : [userId];
+
+    const [{ count: instancesConnected }, { count: groups }, { count: sentToday }] = await Promise.all([
+      supabase
+        .from("whatsapp_instances")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "connected")
+        .in("user_id", scopedIds),
+      supabase.from("warmup_groups").select("id", { count: "exact", head: true }).eq("active", true).in("user_id", scopedIds),
       supabase
         .from("warmup_logs")
         .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
+        .in("user_id", scopedIds)
         .eq("status", "sent")
         .gte("created_at", today.toISOString()),
     ]);
-    return { instances: instances ?? 0, activeGroups: groups ?? 0, sentToday: sentToday ?? 0 };
+    return { instances: instancesConnected ?? 0, activeGroups: groups ?? 0, sentToday: sentToday ?? 0 };
   });
+
 
 // ---------------- Plans ----------------
 
