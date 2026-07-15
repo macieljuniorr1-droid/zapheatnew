@@ -20,7 +20,7 @@ async function getConfig(): Promise<EvolutionConfig> {
 async function evoFetch(path: string, init: RequestInit = {}) {
   const cfg = await getConfig();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25_000);
+  const timeout = setTimeout(() => controller.abort(), 12_000);
   let res: Response;
   try {
     res = await fetch(`${cfg.api_url}${path}`, {
