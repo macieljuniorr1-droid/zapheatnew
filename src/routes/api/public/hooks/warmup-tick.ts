@@ -60,13 +60,14 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             const claimed = await claimGroupForThisTick(supabaseAdmin, g, now);
             if (!claimed) continue;
 
-            const rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
+            let rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
               .filter((i: any) => i);
 
             await syncConnectedUserChipsIntoGroup(supabaseAdmin, g, rawMembers);
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
             await refreshConnectedPhones(supabaseAdmin, evolution, rawMembers);
+            rawMembers = await pruneDuplicateGroupMembers(supabaseAdmin, g, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
             // Chips com histórico recente de ERROR de entrega recebem recuperação
             // preventiva antes de tentar enviar de novo. Sem isso a sessão fica
