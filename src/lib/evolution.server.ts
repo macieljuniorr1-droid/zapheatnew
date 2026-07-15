@@ -73,6 +73,11 @@ export const evolution = {
       method: "POST",
       body: JSON.stringify({ number, text, delay: delayMs }),
     }),
+  findMessages: (instanceName: string, remoteJid: string) =>
+    evoFetch(`/chat/findMessages/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({ where: { key: { remoteJid } } }),
+    }),
   sendMedia: (
     instanceName: string,
     number: string,
