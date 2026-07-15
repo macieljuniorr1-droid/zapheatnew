@@ -367,8 +367,8 @@ export const createGroup = createServerFn({ method: "POST" })
     z
       .object({
         name: z.string().min(1).max(80),
-        min_delay_seconds: z.number().int().min(20).max(3600).default(60),
-        max_delay_seconds: z.number().int().min(30).max(7200).default(300),
+        min_delay_seconds: z.number().int().min(0).max(3600).default(60),
+        max_delay_seconds: z.number().int().min(0).max(7200).default(300),
         daily_limit: z.number().int().min(0).max(1000).default(0),
       })
       .parse(i),
