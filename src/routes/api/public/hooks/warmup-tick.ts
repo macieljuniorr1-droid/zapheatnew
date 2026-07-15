@@ -56,6 +56,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             }
 
             const members = rawMembers.filter((i: any) => i.phone);
+            const memberIds = new Set(members.map((i: any) => i.id));
 
             // Marca warmup_started_at para números já conectados que ainda não têm data
             for (const m of members) {
@@ -100,6 +101,8 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             const stateOf = (id: string): State => {
               const last = lastByInstance.get(id);
               if (!last) return { kind: "idle" };
+              const peerId = last.from_instance_id === id ? last.to_instance_id : last.from_instance_id;
+              if (!memberIds.has(peerId)) return { kind: "idle" };
               const age = nowMs - new Date(last.created_at).getTime();
               if (age > REPLY_TIMEOUT_MS) return { kind: "idle" };
               if (last.from_instance_id === id) return { kind: "waiting", peerId: last.to_instance_id };
@@ -312,7 +315,7 @@ async function scheduleNext(supabaseAdmin: any, g: any) {
 }
 
 function isClosedSessionError(message: string | null | undefined) {
-  return /connection closed|no sessions|sessionerror|stream errored|timed out/i.test(String(message ?? ""));
+  return /connection closed|no sessions|sessionerror|stream errored|timed out|1006/i.test(String(message ?? ""));
 }
 
 async function waitForOpen(evolution: any, instanceName: string) {
