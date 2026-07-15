@@ -52,6 +52,20 @@ function extractPhone(...candidates: any[]): string | null {
   return null;
 }
 
+async function recoverInstanceConnection(evolution: any, instanceName: string): Promise<boolean> {
+  try {
+    await evolution.restart(instanceName);
+  } catch {}
+  for (let i = 0; i < 6; i++) {
+    try {
+      const state = await evolution.connectionState(instanceName);
+      if ((state?.instance?.state ?? state?.state) === "open") return true;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  return false;
+}
+
 export const listInstances = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
