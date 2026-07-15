@@ -205,15 +205,17 @@ export const refreshInstance = createServerFn({ method: "POST" })
         } else if (recovered.qr && !isPaired) {
           status = "qr";
           qr = recovered.qr;
+        } else if (isPaired) {
+          // Chip já foi pareado — mantém como conectado no painel mesmo que a
+          // sessão momentaneamente não confirme "open" (celular offline, sem
+          // internet, etc.). A recuperação acontece em background.
+          status = "connected";
         } else {
-          status = isPaired ? "connected" : "connecting";
+          status = "connecting";
         }
       }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
-      // Não mantém "conectado" às cegas quando a sessão não confirmou open.
-      // Assim o painel mostra que está tentando reconectar em vez de parecer OK.
-      status = isPaired ? "connected" : "disconnected";
       triedSoftReconnect = true;
       const recovered = await reconnectInstance(evolution, inst.evolution_instance);
       if (recovered.connected) {
@@ -222,6 +224,10 @@ export const refreshInstance = createServerFn({ method: "POST" })
       } else if (recovered.qr && !isPaired) {
         status = "qr";
         qr = recovered.qr;
+      } else if (isPaired) {
+        status = "connected";
+      } else {
+        status = "disconnected";
       }
     }
 
@@ -237,6 +243,8 @@ export const refreshInstance = createServerFn({ method: "POST" })
     }
 
     const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
+    // Só regenera QR se o chip NUNCA foi pareado. Pareados nunca voltam ao QR
+    // — a recuperação é via /connect em background.
     const canRegenerateQr = !isPaired && !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
@@ -247,9 +255,10 @@ export const refreshInstance = createServerFn({ method: "POST" })
           status = "qr";
         }
       } catch {}
-    } else if (status !== "connected" && qr) {
+    } else if (status !== "connected" && qr && !isPaired) {
       status = "qr";
     }
+
 
     const { data: updated, error } = await context.supabase
       .from("whatsapp_instances")
