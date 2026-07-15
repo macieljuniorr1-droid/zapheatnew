@@ -137,9 +137,24 @@ export const Route = createFileRoute("/_authenticated/app")({
 function AppPage() {
   const navigate = useNavigate();
   const { tab } = Route.useSearch();
+  const [activeTab, setActiveTab] = useState(tab || "dashboard");
   const fetchMe = useServerFn(getMe);
   const me = useQuery({ queryKey: ["me"], queryFn: () => fetchMe() });
   const beatFn = useServerFn(heartbeat);
+
+  useEffect(() => {
+    setActiveTab(tab || "dashboard");
+  }, [tab]);
+
+  const changeTab = (value: string) => {
+    setActiveTab(value);
+    navigate({
+      to: "/_authenticated/app",
+      search: { tab: value === "dashboard" ? undefined : value },
+      replace: true,
+    });
+  };
+
   useEffect(() => {
     if (!me.data) return;
     beatFn().catch(() => {});
@@ -179,7 +194,7 @@ function AppPage() {
         </div>
       </header>
       <main className="relative z-10 max-w-7xl mx-auto px-4 py-6">
-        <Tabs defaultValue={tab || "dashboard"}>
+        <Tabs value={activeTab} onValueChange={changeTab}>
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="dashboard"><Flame className="h-4 w-4 mr-1" />Dashboard</TabsTrigger>
             <TabsTrigger value="tutorial"><BookOpen className="h-4 w-4 mr-1" />Tutorial</TabsTrigger>
