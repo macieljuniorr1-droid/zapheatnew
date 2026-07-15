@@ -948,33 +948,173 @@ function LogsTab() {
   );
 }
 
-// ---------------- Plan ----------------
+// ---------------- Plan (novo modelo: 2 grátis + R$25/mês por número extra) ----------------
 function PlanTab() {
-  const fn = useServerFn(listPlans);
-  const meFn = useServerFn(getMe);
-  const plans = useQuery({ queryKey: ["plans"], queryFn: () => fn() });
-  const me = useQuery({ queryKey: ["me"], queryFn: () => meFn() });
-  const currentId = (me.data?.subscription as any)?.plan?.id;
+  const qc = useQueryClient();
+  const billingFn = useServerFn(getMyBilling);
+  const purchaseFn = useServerFn(purchaseNumber);
+  const cancelFn = useServerFn(cancelNumberSubscription);
+
+  const b = useQuery({ queryKey: ["my-billing"], queryFn: () => billingFn(), refetchInterval: 20000 });
+  const [open, setOpen] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [doc, setDoc] = useState("");
+  const [method, setMethod] = useState<"pix" | "credit_card">("pix");
+  const [checkoutData, setCheckoutData] = useState<null | { pix_qr_code: string | null; payment_url: string | null }>(null);
+
+  const purchase = useMutation({
+    mutationFn: () => purchaseFn({ data: { full_name: fullName, document: doc, payment_method: method } }),
+    onSuccess: (res: any) => {
+      setCheckoutData({ pix_qr_code: res.pix_qr_code, payment_url: res.payment_url });
+      qc.invalidateQueries({ queryKey: ["my-billing"] });
+      toast.success("Cobrança gerada! Complete o pagamento.");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const data = b.data;
+  const brl = (cents: number) => `R$ ${(cents / 100).toFixed(2)}`;
+
   return (
-    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      {plans.data?.map((p: any) => (
-        <Card key={p.id} className={currentId === p.id ? "border-primary" : ""}>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">{p.name}{currentId === p.id && <Badge>Atual</Badge>}</CardTitle>
-            <CardDescription>{p.price_cents === 0 ? "Grátis" : `R$ ${(p.price_cents / 100).toFixed(2)}/mês`}</CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm space-y-1">
-            <div>✓ {p.max_instances} número(s)</div>
-            <div>✓ {p.max_messages_per_day >= 100000 ? "Mensagens ilimitadas" : `${p.max_messages_per_day} mensagens/dia`}</div>
-            <Button className="w-full mt-3" disabled variant={currentId === p.id ? "secondary" : "default"}>
-              {currentId === p.id ? "Plano atual" : "Em breve"}
+    <div className="mt-4 space-y-6">
+      {data?.suspended && (
+        <Card className="border-destructive">
+          <CardContent className="pt-4 text-sm">
+            <b>Conta suspensa</b>
+            {data.suspended_reason ? `: ${data.suspended_reason}` : ""}. Fale com o suporte.
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader><CardTitle>Quota</CardTitle><CardDescription>Números disponíveis na sua conta</CardDescription></CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold">{data?.used ?? 0} / {data?.quota ?? 2}</div>
+            <div className="text-xs text-muted-foreground mt-2">
+              Inclui {data?.free_included ?? 2} grátis
+              {data?.free_bonus ? ` + ${data.free_bonus} de cortesia` : ""}
+              {data?.numbers?.filter?.((n: any) => n.status === "active").length
+                ? ` + ${data.numbers.filter((n: any) => n.status === "active").length} pago(s)`
+                : ""}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Mensagens</CardTitle><CardDescription>Uso diário</CardDescription></CardHeader>
+          <CardContent><div className="text-4xl font-bold">Ilimitado</div><div className="text-xs text-muted-foreground mt-2">Sem restrição de disparos ou aquecimento.</div></CardContent>
+        </Card>
+
+        <Card className="border-primary">
+          <CardHeader><CardTitle>Adicionar número</CardTitle><CardDescription>R$ 25/mês por número extra</CardDescription></CardHeader>
+          <CardContent>
+            <Button className="w-full" onClick={() => { setOpen(true); setCheckoutData(null); }} disabled={data?.suspended}>
+              Comprar 1 número
             </Button>
           </CardContent>
         </Card>
-      ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Seus números pagos</CardTitle>
+          <CardDescription>Renovação a cada 30 dias. Você pode cancelar quando quiser.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {(data?.numbers ?? []).length === 0 && (
+            <div className="text-sm text-muted-foreground text-center py-4">
+              Nenhum número pago. Você tem {data?.quota ?? 2} disponível(is) grátis.
+            </div>
+          )}
+          <div className="divide-y">
+            {(data?.numbers ?? []).map((n: any) => (
+              <div key={n.id} className="py-3 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-sm">
+                    <Badge variant={n.status === "active" ? "default" : n.status === "past_due" ? "destructive" : "secondary"}>
+                      {n.status === "active" ? "Ativo" : n.status === "past_due" ? "Vencido" : n.status === "pending" ? "Aguardando pagamento" : "Cancelado"}
+                    </Badge>
+                    <span className="ml-2 font-medium">{brl(n.price_cents)}/mês</span>
+                    <span className="ml-2 text-xs text-muted-foreground uppercase">{n.payment_method === "pix" ? "PIX" : "Cartão"}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {n.current_period_end ? `Válido até ${new Date(n.current_period_end).toLocaleDateString("pt-BR")}` : "Aguardando confirmação de pagamento"}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {n.status === "pending" && n.last_charge_url && (
+                    <a href={n.last_charge_url} target="_blank" rel="noreferrer"><Button size="sm">Pagar</Button></a>
+                  )}
+                  {(n.status === "active" || n.status === "past_due" || n.status === "pending") && (
+                    <Button size="sm" variant="ghost" onClick={() => {
+                      if (!confirm("Cancelar esta assinatura?")) return;
+                      cancelFn({ data: { id: n.id } }).then(() => { toast.success("Cancelada"); qc.invalidateQueries({ queryKey: ["my-billing"] }); });
+                    }}>Cancelar</Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Comprar 1 número extra — R$ 25/mês</DialogTitle></DialogHeader>
+          {!checkoutData ? (
+            <div className="space-y-3">
+              <div>
+                <Label>Nome completo</Label>
+                <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Como está no seu CPF" />
+              </div>
+              <div>
+                <Label>CPF</Label>
+                <Input value={doc} onChange={(e) => setDoc(e.target.value)} placeholder="000.000.000-00" />
+              </div>
+              <div>
+                <Label>Método de pagamento</Label>
+                <Select value={method} onValueChange={(v) => setMethod(v as any)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pix">PIX (QR Code)</SelectItem>
+                    <SelectItem value="credit_card">Cartão de crédito</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => purchase.mutate()} disabled={!fullName || doc.replace(/\D/g, "").length !== 11 || purchase.isPending}>
+                  {purchase.isPending ? "Gerando..." : "Gerar cobrança"}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-3 text-sm">
+              {checkoutData.pix_qr_code && (
+                <>
+                  <div className="font-medium">Escaneie ou copie o código PIX:</div>
+                  <textarea readOnly className="w-full h-32 text-xs p-2 rounded border bg-muted font-mono" value={checkoutData.pix_qr_code} />
+                  <Button size="sm" onClick={() => { navigator.clipboard.writeText(checkoutData.pix_qr_code!); toast.success("Código copiado"); }}>Copiar código</Button>
+                </>
+              )}
+              {checkoutData.payment_url && (
+                <div>
+                  <a href={checkoutData.payment_url} target="_blank" rel="noreferrer">
+                    <Button className="w-full">Abrir checkout do cartão</Button>
+                  </a>
+                </div>
+              )}
+              <div className="text-xs text-muted-foreground">
+                Assim que o pagamento for confirmado, seu novo número fica disponível automaticamente.
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
 
 // ---------------- Admin ----------------
 function AdminTab() {
