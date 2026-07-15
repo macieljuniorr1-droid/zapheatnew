@@ -402,8 +402,9 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
     await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
     await new Promise((r) => setTimeout(r, typingMs));
+    const sentAtMs = Date.now();
     const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
-    return await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
+    return await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, extractMessageId(sendResp), messageContent, sentAtMs);
   };
 
   try {
@@ -578,14 +579,39 @@ async function recoverOpenSession(evolution: any, instanceName: string) {
   return await waitForOpen(evolution, instanceName);
 }
 
-async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJid: string, messageId?: string) {
+function extractMessageId(sendResp: any) {
+  return sendResp?.key?.id ?? sendResp?.message?.key?.id ?? sendResp?.data?.key?.id ?? sendResp?.id ?? sendResp?.messageId;
+}
+
+function messageText(record: any) {
+  const msg = record?.message ?? {};
+  return msg?.conversation ?? msg?.extendedTextMessage?.text ?? msg?.imageMessage?.caption ?? msg?.videoMessage?.caption ?? "";
+}
+
+function messageTimestampMs(record: any) {
+  const raw = Number(record?.messageTimestamp?.low ?? record?.messageTimestamp ?? 0);
+  return raw > 1_000_000_000_000 ? raw : raw * 1000;
+}
+
+async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJid: string, messageId?: string, text?: string, sentAtMs?: number) {
   const deadline = Date.now() + DELIVERY_ACK_WAIT_MS;
   let lastStatus: string | null = null;
   while (Date.now() < deadline) {
     try {
       const found = await evolution.findMessages(instanceName, remoteJid);
       const records = found?.messages?.records ?? found?.records ?? [];
-      const rec = messageId ? records.find((r: any) => r?.key?.id === messageId) : records[0];
+      const rec = messageId
+        ? records.find((r: any) => r?.key?.id === messageId)
+        : records.find((r: any) => {
+            if (!r?.key?.fromMe) return false;
+            if (text && messageText(r) !== text) return false;
+            if (sentAtMs && messageTimestampMs(r) < sentAtMs - 30_000) return false;
+            return true;
+          });
+      if (!rec) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
       const updates = rec?.MessageUpdate ?? rec?.messageUpdate ?? [];
       lastStatus = updates?.[updates.length - 1]?.status ?? rec?.status ?? lastStatus;
       if (["SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) {
