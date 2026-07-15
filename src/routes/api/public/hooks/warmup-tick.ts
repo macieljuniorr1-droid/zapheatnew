@@ -183,6 +183,42 @@ async function markWarmupStarted(supabaseAdmin: any, members: Chip[]) {
   }
 }
 
+async function preemptiveRecoverFailingChips(supabaseAdmin: any, evolution: any, members: Chip[], groupId: string) {
+  if (members.length === 0) return;
+  const ids = members.map((m) => m.id);
+  const { data: recent } = await supabaseAdmin
+    .from("warmup_logs")
+    .select("from_instance_id, status, created_at")
+    .eq("group_id", groupId)
+    .in("from_instance_id", ids)
+    .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(200);
+  const streak = new Map<string, number>();
+  const stopped = new Set<string>();
+  for (const r of recent ?? []) {
+    if (stopped.has(r.from_instance_id)) continue;
+    if (r.status === "failed") streak.set(r.from_instance_id, (streak.get(r.from_instance_id) ?? 0) + 1);
+    else stopped.add(r.from_instance_id);
+  }
+  await Promise.all(
+    members.map(async (m) => {
+      const failed = streak.get(m.id) ?? 0;
+      if (failed < 2) return;
+      // 2+ falhas consecutivas recentes → sessão do WhatsApp está travada.
+      // Reinicia a instância na Evolution e, se não voltar a "open", pula
+      // esse chip neste ciclo para não gerar mais falhas em cascata.
+      try {
+        await evolution.restart(m.evolution_instance);
+      } catch {}
+      const ok = await waitForOpen(evolution, m.evolution_instance);
+      if (!ok) {
+        m.temporarily_unavailable = true;
+      }
+    }),
+  );
+}
+
 async function fetchRecentLogs(supabaseAdmin: any, groupId: string) {
   const { data } = await supabaseAdmin
     .from("warmup_logs")
