@@ -403,6 +403,18 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
           </span>
         </div>
 
+        <div>
+          {chip.is_ready ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+              ✓ Pronto para disparo
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+              Em aquecimento · {chip.days_remaining ?? 3}d restantes
+            </span>
+          )}
+        </div>
+
         <div className="grid grid-cols-3 gap-2 text-center pt-1">
           <div>
             <div className="text-lg font-bold leading-none">{chip.msgs_7d}</div>
