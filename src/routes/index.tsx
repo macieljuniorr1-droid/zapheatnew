@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Flame,
@@ -118,6 +119,20 @@ function Landing() {
             <Stat value="10 msg" label="de contexto na IA" />
             <Stat value="60–300s" label="delay humano" />
           </div>
+        </section>
+
+        {/* NETWORK — 8 chips conversando */}
+        <section className="max-w-6xl mx-auto px-6 py-16">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">rede viva</div>
+            <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
+              Seus chips conversando entre si, 24 horas por dia
+            </h2>
+            <p className="mt-3 text-muted-foreground">
+              A IA orquestra pares aleatórios: enquanto um par troca mensagens, os outros aguardam sua vez — igual a um grupo de amigos no zap.
+            </p>
+          </div>
+          <NetworkGraph />
         </section>
 
         {/* FEATURES */}
@@ -349,5 +364,139 @@ function Faq({ q, a }: { q: string; a: string }) {
       </summary>
       <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{a}</p>
     </details>
+  );
+}
+
+const CHIPS = [
+  { name: "Chip 01", phone: "+55 11 9•••• 4821" },
+  { name: "Chip 02", phone: "+55 21 9•••• 7392" },
+  { name: "Chip 03", phone: "+55 31 9•••• 2154" },
+  { name: "Chip 04", phone: "+55 41 9•••• 8867" },
+  { name: "Chip 05", phone: "+55 51 9•••• 3319" },
+  { name: "Chip 06", phone: "+55 61 9•••• 5502" },
+  { name: "Chip 07", phone: "+55 71 9•••• 6238" },
+  { name: "Chip 08", phone: "+55 85 9•••• 1147" },
+];
+
+const CONVO_SCRIPT: Array<{ from: number; to: number; text: string }> = [
+  { from: 0, to: 1, text: "oi tudo bem?" },
+  { from: 1, to: 0, text: "tudo tranquilo e vc?" },
+  { from: 2, to: 4, text: "bora almoçar amanhã?" },
+  { from: 4, to: 2, text: "bora sim, que horas" },
+  { from: 3, to: 5, text: "vc viu o jogo ontem?" },
+  { from: 5, to: 3, text: "kkkkk foi lindo" },
+  { from: 6, to: 7, text: "chegou aquela encomenda?" },
+  { from: 7, to: 6, text: "chegou sim, obg!" },
+  { from: 0, to: 3, text: "hoje tem reunião ne" },
+  { from: 3, to: 0, text: "tem sim, 15h" },
+];
+
+function NetworkGraph() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setStep((s) => (s + 1) % CONVO_SCRIPT.length), 2200);
+    return () => clearInterval(id);
+  }, []);
+
+  const active = CONVO_SCRIPT[step];
+  const cx = 210;
+  const cy = 210;
+  const r = 160;
+  const positions = CHIPS.map((_, i) => {
+    const angle = (i / CHIPS.length) * Math.PI * 2 - Math.PI / 2;
+    return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+  });
+
+  return (
+    <div className="panel rounded-2xl p-6 md:p-8 relative overflow-hidden">
+      <div className="absolute top-4 left-4 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-ember z-10">
+        <span className="h-1.5 w-1.5 rounded-full bg-ember animate-ember" />
+        rede · 8 chips ativos
+      </div>
+      <div className="grid md:grid-cols-[1fr_1.2fr] gap-6 items-center">
+        <div className="relative aspect-square max-w-[420px] mx-auto w-full">
+          <svg viewBox="0 0 420 420" className="w-full h-full">
+            {/* mesh lines */}
+            {positions.map((p1, i) =>
+              positions.slice(i + 1).map((p2, j) => (
+                <line
+                  key={`${i}-${j}`}
+                  x1={p1.x}
+                  y1={p1.y}
+                  x2={p2.x}
+                  y2={p2.y}
+                  stroke="hsl(var(--ember) / 0.08)"
+                  strokeWidth="1"
+                />
+              )),
+            )}
+            {/* active line */}
+            <line
+              x1={positions[active.from].x}
+              y1={positions[active.from].y}
+              x2={positions[active.to].x}
+              y2={positions[active.to].y}
+              stroke="hsl(var(--ember))"
+              strokeWidth="2"
+              strokeDasharray="6 6"
+              className="animate-pulse"
+            />
+            {/* nodes */}
+            {positions.map((p, i) => {
+              const isActive = i === active.from || i === active.to;
+              return (
+                <g key={i}>
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={isActive ? 22 : 16}
+                    fill="hsl(var(--background))"
+                    stroke="hsl(var(--ember))"
+                    strokeWidth={isActive ? 2 : 1}
+                    opacity={isActive ? 1 : 0.6}
+                    className="transition-all duration-500"
+                  />
+                  <text
+                    x={p.x}
+                    y={p.y + 4}
+                    textAnchor="middle"
+                    fontSize="11"
+                    fill="hsl(var(--ember))"
+                    fontFamily="monospace"
+                  >
+                    {String(i + 1).padStart(2, "0")}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        <div className="space-y-2">
+          <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-3">
+            conversas ao vivo
+          </div>
+          {CONVO_SCRIPT.slice(0, 5).map((c, i) => {
+            const isNow = i === step % 5;
+            return (
+              <div
+                key={i}
+                className={`flex items-center gap-2 text-sm font-mono transition-all duration-500 ${
+                  isNow ? "bg-ember/5 border border-ember/30" : "border border-transparent opacity-60"
+                } rounded-lg px-3 py-2`}
+              >
+                <span className="text-gold shrink-0">{CHIPS[c.from].name}</span>
+                <span className="text-muted-foreground/40 shrink-0">→</span>
+                <span className="text-ember shrink-0">{CHIPS[c.to].name}</span>
+                <span className="text-foreground/80 truncate min-w-0">{c.text}</span>
+                {isNow && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-ember animate-ember shrink-0" />}
+              </div>
+            );
+          })}
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60 pt-2">
+            só um par conversa por vez · IA aguarda resposta antes do próximo
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
