@@ -2936,6 +2936,7 @@ function TeamTab() {
   const listFn = useServerFn(listTeamMembers);
   const createFn = useServerFn(createTeamMember);
   const removeFn = useServerFn(removeTeamMember);
+  const resetPwdFn = useServerFn(resetTeamMemberPassword);
   const updateFn = useServerFn(updateTeamMember);
   const assignFn = useServerFn(assignInstanceToMember);
   const activityFn = useServerFn(getTeamActivity);
