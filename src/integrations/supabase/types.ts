@@ -552,12 +552,42 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      chip_temperature: {
+        Args: { _instance_id: string }
+        Returns: {
+          active_days_7d: number
+          last_activity: string
+          msgs_7d: number
+          msgs_total: number
+          temperature: string
+        }[]
+      }
+      group_engine_status: {
+        Args: { _group_id: string }
+        Returns: {
+          active: boolean
+          connected_members: number
+          last_activity: string
+          msgs_today: number
+          msgs_total: number
+          next_run_at: string
+          total_members: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      messages_daily_series: {
+        Args: { _days?: number; _user_id: string }
+        Returns: {
+          day: string
+          failed: number
+          sent: number
+        }[]
       }
       messages_sent_today: { Args: { _user_id: string }; Returns: number }
     }
