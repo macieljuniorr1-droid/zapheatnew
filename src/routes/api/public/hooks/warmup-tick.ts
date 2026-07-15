@@ -136,6 +136,7 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(
     members.map(async (m) => {
+      const isPaired = Boolean(m.phone || m.warmup_started_at);
       try {
         const state = await evolution.connectionState(m.evolution_instance);
         const s = state?.instance?.state ?? state?.state;
@@ -147,6 +148,9 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           return;
         }
 
+        // Tenta reabrir a sessão em background sem mexer no status do painel.
+        // O usuário pareou o número; a plataforma NUNCA deve marcar como
+        // desconectado sozinha — só o próprio usuário desconecta manualmente.
         const recovered = await recoverOpenSession(evolution, m.evolution_instance);
         if (recovered) {
           m.status = "connected";
@@ -154,11 +158,17 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           return;
         }
 
+        // Sessão não confirmou "open" agora — pulamos apenas este ciclo de
+        // envio, mas mantemos o chip como "conectado" no painel se já foi
+        // pareado. Chips que nunca foram pareados continuam em "connecting".
         m.temporarily_unavailable = true;
-        // Não derruba no painel um chip que já foi pareado. O motor apenas
-        // pula neste ciclo e segue tentando recuperar nos próximos ticks.
-        m.status = m.phone || m.warmup_started_at ? "connected" : "connecting";
-        await markInstance(supabaseAdmin, m.id, m.status as "connected" | "connecting");
+        if (isPaired) {
+          m.status = "connected";
+          // não sobrescreve o status no banco — mantém "connected" preservado
+        } else {
+          m.status = "connecting";
+          await markInstance(supabaseAdmin, m.id, "connecting");
+        }
       } catch {
         const recovered = await recoverOpenSession(evolution, m.evolution_instance);
         if (recovered) {
@@ -167,12 +177,17 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           return;
         }
         m.temporarily_unavailable = true;
-        m.status = m.phone || m.warmup_started_at ? "connected" : "connecting";
-        await markInstance(supabaseAdmin, m.id, m.status as "connected" | "connecting");
+        if (isPaired) {
+          m.status = "connected";
+        } else {
+          m.status = "connecting";
+          await markInstance(supabaseAdmin, m.id, "connecting");
+        }
       }
     }),
   );
 }
+
 
 async function backfillPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
   for (const m of members) {
