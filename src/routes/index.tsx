@@ -233,17 +233,23 @@ const CHIPS = [
   { id: 2, label: "Chip 02", phone: "+55 21 9•••• 7733" },
   { id: 3, label: "Chip 03", phone: "+55 31 9•••• 2109" },
   { id: 4, label: "Chip 04", phone: "+55 47 9•••• 5588" },
+  { id: 5, label: "Chip 05", phone: "+55 51 9•••• 3312" },
+  { id: 6, label: "Chip 06", phone: "+55 61 9•••• 9004" },
+  { id: 7, label: "Chip 07", phone: "+55 71 9•••• 6620" },
+  { id: 8, label: "Chip 08", phone: "+55 85 9•••• 1147" },
 ];
 
 const CONVO_SCRIPT: Array<{ from: number; to: number; text: string }> = [
-  { from: 1, to: 2, text: "oi, bom dia 👋" },
-  { from: 3, to: 4, text: "e aí, como foi ontem?" },
-  { from: 2, to: 1, text: "opa, bom dia! tudo tranquilo" },
-  { from: 4, to: 3, text: "foi bom demais kkk" },
-  { from: 1, to: 2, text: "beleza demais 🙌" },
-  { from: 3, to: 4, text: "bora marcar de novo" },
-  { from: 2, to: 1, text: "combinado, depois te chamo" },
-  { from: 4, to: 3, text: "bora sim, sexta?" },
+  { from: 1, to: 5, text: "oi, bom dia 👋" },
+  { from: 3, to: 7, text: "e aí, como foi ontem?" },
+  { from: 2, to: 6, text: "opa, tudo tranquilo" },
+  { from: 4, to: 8, text: "bora marcar de novo" },
+  { from: 5, to: 1, text: "bom dia! td certo?" },
+  { from: 7, to: 3, text: "foi bom demais kkk" },
+  { from: 6, to: 2, text: "beleza demais 🙌" },
+  { from: 8, to: 4, text: "sexta tá bom" },
+  { from: 1, to: 3, text: "tamo junto" },
+  { from: 5, to: 8, text: "aí sim!" },
 ];
 
 function useLiveConvo() {
