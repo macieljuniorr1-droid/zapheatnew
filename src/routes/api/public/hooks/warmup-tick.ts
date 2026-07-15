@@ -685,6 +685,64 @@ async function markLatestIncomingAsRead(evolution: any, instanceName: string, re
   } catch {}
 }
 
+async function resolveSendTargets(evolution: any, instanceName: string, phone: string) {
+  const fallback = { number: phone, remoteJid: `${phone}@s.whatsapp.net` };
+  const targets: Array<{ number: string; remoteJid: string }> = [];
+  const addTarget = (value: unknown) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return;
+    const isJid = /@(s\.whatsapp\.net|lid)$/i.test(raw);
+    const digits = normalizePhone(raw);
+    if (!isJid && digits !== phone) return;
+    const remoteJid = isJid ? raw : `${digits}@s.whatsapp.net`;
+    const number = /@lid$/i.test(remoteJid) ? remoteJid : digits;
+    if (!number || targets.some((t) => t.number === number || t.remoteJid === remoteJid)) return;
+    targets.push({ number, remoteJid });
+  };
+
+  try {
+    const resolved = await evolution.whatsappNumbers(instanceName, [phone]);
+    for (const rec of normalizeEvolutionRecords(resolved)) {
+      if (rec?.exists === false && !String(rec?.jid ?? rec?.number ?? "").includes("@lid")) {
+        throw new Error(`Destinatário ${phone} não está no WhatsApp`);
+      }
+      addTarget(rec?.jid);
+      addTarget(rec?.number);
+      addTarget(rec?.id);
+    }
+  } catch (e: any) {
+    if (String(e?.message ?? "").includes("não está no WhatsApp")) throw e;
+  }
+
+  // Em versões recentes do WhatsApp, alguns contatos aparecem como @lid. Buscar
+  // contatos locais dá uma segunda chance de achar o JID real antes do envio.
+  try {
+    const contacts = await evolution.findContacts(instanceName);
+    for (const rec of normalizeEvolutionRecords(contacts)) {
+      const blob = JSON.stringify(rec ?? {});
+      if (!blob.includes(phone)) continue;
+      addTarget(rec?.id);
+      addTarget(rec?.jid);
+      addTarget(rec?.remoteJid);
+      addTarget(rec?.number);
+    }
+  } catch {}
+
+  addTarget(fallback.remoteJid);
+  return targets.length ? targets : [fallback];
+}
+
+function normalizeEvolutionRecords(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.result)) return payload.result;
+  if (Array.isArray(payload?.numbers)) return payload.numbers;
+  if (Array.isArray(payload?.contacts)) return payload.contacts;
+  if (Array.isArray(payload?.records)) return payload.records;
+  if (Array.isArray(payload?.response?.message)) return payload.response.message;
+  if (Array.isArray(payload?.messages?.records)) return payload.messages.records;
+  return [];
+}
+
 function createBroadcast() {
   return async (event: string, payload: any) => {
     try {
@@ -805,6 +863,10 @@ async function recoverOpenSession(evolution: any, instanceName: string, forceRes
 
 function extractMessageId(sendResp: any) {
   return sendResp?.key?.id ?? sendResp?.message?.key?.id ?? sendResp?.data?.key?.id ?? sendResp?.id ?? sendResp?.messageId;
+}
+
+function extractRemoteJid(sendResp: any) {
+  return sendResp?.key?.remoteJid ?? sendResp?.message?.key?.remoteJid ?? sendResp?.data?.key?.remoteJid ?? sendResp?.remoteJid;
 }
 
 function messageText(record: any) {
