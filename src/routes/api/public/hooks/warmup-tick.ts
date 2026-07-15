@@ -137,6 +137,12 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         m.status = "connecting";
         await markInstance(supabaseAdmin, m.id, "connecting");
       } catch {
+        const recovered = await recoverOpenSession(evolution, m.evolution_instance);
+        if (recovered) {
+          m.status = "connected";
+          await markInstance(supabaseAdmin, m.id, "connected");
+          return;
+        }
         m.temporarily_unavailable = true;
         m.status = "connecting";
         await markInstance(supabaseAdmin, m.id, "connecting");
