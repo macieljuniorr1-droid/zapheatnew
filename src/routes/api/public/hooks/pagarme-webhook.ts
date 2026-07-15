@@ -1,0 +1,130 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { verifyPagarmeSignature } from "@/lib/pagarme.server";
+
+/**
+ * Webhook receiver do Pagar.me.
+ *
+ * Configurar no dashboard Pagar.me:
+ *   URL: https://zapheatnew.lovable.app/api/public/hooks/pagarme-webhook
+ *   Segredo: mesmo valor guardado em PAGARME_WEBHOOK_SECRET
+ *   Eventos:
+ *     - order.paid
+ *     - charge.paid
+ *     - charge.payment_failed
+ *     - charge.refunded
+ *     - charge.chargedback
+ */
+export const Route = createFileRoute("/api/public/hooks/pagarme-webhook")({
+  server: {
+    handlers: {
+      POST: async ({ request }) => {
+        const rawBody = await request.text();
+        const signature = request.headers.get("x-hub-signature");
+
+        if (!verifyPagarmeSignature(rawBody, signature)) {
+          return new Response("invalid signature", { status: 401 });
+        }
+
+        let event: any;
+        try {
+          event = JSON.parse(rawBody);
+        } catch {
+          return new Response("bad json", { status: 400 });
+        }
+
+        const eventId: string = event?.id ?? crypto.randomUUID();
+        const eventType: string = event?.type ?? "unknown";
+        const data = event?.data ?? {};
+
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+        // Idempotência
+        const { data: existing } = await supabaseAdmin
+          .from("billing_events")
+          .select("id")
+          .eq("pagarme_event_id", eventId)
+          .maybeSingle();
+        if (existing) return new Response("ok (dup)");
+
+        // Descobre a number_subscription pelo metadata ou code
+        const metadata = data?.metadata ?? data?.order?.metadata ?? {};
+        const nsId: string | null =
+          metadata.number_subscription_id ??
+          // fallback: data.code = zh_ns_<uuid> ou data.order.code
+          extractNsIdFromCode(data?.code) ??
+          extractNsIdFromCode(data?.order?.code) ??
+          null;
+
+        let userId: string | null = metadata.user_id ?? null;
+        let amount: number | null =
+          data?.amount ?? data?.order?.amount ?? data?.paid_amount ?? null;
+
+        let ns: any = null;
+        if (nsId) {
+          const { data: row } = await supabaseAdmin
+            .from("number_subscriptions")
+            .select("*")
+            .eq("id", nsId)
+            .maybeSingle();
+          ns = row;
+          if (!userId && ns?.user_id) userId = ns.user_id;
+        }
+
+        // Processa por tipo de evento
+        const now = new Date();
+        const in30d = new Date(now.getTime() + 30 * 86400_000).toISOString();
+
+        if (eventType === "order.paid" || eventType === "charge.paid") {
+          if (ns) {
+            await supabaseAdmin
+              .from("number_subscriptions")
+              .update({
+                status: "active",
+                current_period_end: in30d,
+              })
+              .eq("id", ns.id);
+          }
+        } else if (
+          eventType === "charge.payment_failed" ||
+          eventType === "order.payment_failed"
+        ) {
+          if (ns) {
+            await supabaseAdmin
+              .from("number_subscriptions")
+              .update({ status: "past_due" })
+              .eq("id", ns.id);
+          }
+        } else if (
+          eventType === "charge.refunded" ||
+          eventType === "charge.chargedback" ||
+          eventType === "order.canceled"
+        ) {
+          if (ns) {
+            await supabaseAdmin
+              .from("number_subscriptions")
+              .update({ status: "canceled", canceled_at: now.toISOString() })
+              .eq("id", ns.id);
+          }
+        }
+
+        // Log de auditoria
+        await supabaseAdmin.from("billing_events").insert({
+          pagarme_event_id: eventId,
+          event_type: eventType,
+          user_id: userId,
+          number_subscription_id: nsId,
+          amount_cents: typeof amount === "number" ? amount : null,
+          payload: event,
+        });
+
+        return new Response("ok");
+      },
+    },
+  },
+});
+
+function extractNsIdFromCode(code: unknown): string | null {
+  if (typeof code !== "string") return null;
+  const m = code.match(/^zh_ns_([0-9a-f-]{36})$/i);
+  return m ? m[1] : null;
+}

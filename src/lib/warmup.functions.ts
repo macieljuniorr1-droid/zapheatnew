@@ -46,19 +46,30 @@ export const createInstance = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    // enforce plan limit
+    // Bloqueia conta suspensa
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("plan:plans(max_instances)")
+      .select("suspended, suspended_reason")
       .eq("user_id", userId)
       .maybeSingle();
-    const max = (sub as any)?.plan?.max_instances ?? 1;
+    if ((sub as any)?.suspended) {
+      throw new Error(
+        `Sua conta está suspensa${(sub as any).suspended_reason ? `: ${(sub as any).suspended_reason}` : ""}. Fale com o suporte.`,
+      );
+    }
+
+    // Quota: 2 grátis + bônus de cortesia + números pagos ativos
+    const { data: quotaData } = await supabase.rpc("user_number_quota", { _user_id: userId });
+    const max = typeof quotaData === "number" ? quotaData : 2;
     const { count } = await supabase
       .from("whatsapp_instances")
       .select("id", { count: "exact", head: true });
     if ((count ?? 0) >= max) {
-      throw new Error(`Seu plano permite no máximo ${max} número(s). Faça upgrade para adicionar mais.`);
+      throw new Error(
+        `Você já usa seus ${max} número(s) disponíveis. Compre mais na aba Plano (R$ 25/mês por número).`,
+      );
     }
+
 
     const slug = data.name.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20) || "chip";
     const evolutionInstance = `${userId.slice(0, 8)}_${slug}_${Date.now().toString(36)}`;
