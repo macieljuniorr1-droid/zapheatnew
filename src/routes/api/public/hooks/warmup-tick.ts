@@ -15,7 +15,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
         const { data: groups, error: gErr } = await supabaseAdmin
           .from("warmup_groups")
           .select(
-            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, warmup_group_members(instance_id, whatsapp_instances(id, evolution_instance, status, phone, warmup_started_at))",
+            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, warmup_group_members(instance_id, whatsapp_instances(id, name, evolution_instance, status, phone, warmup_started_at))",
           )
           .eq("active", true)
           .lte("next_run_at", now)
