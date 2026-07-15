@@ -72,6 +72,18 @@ async function reconnectInstance(evolution: any, instanceName: string): Promise<
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 
+  try {
+    await evolution.restart(instanceName);
+  } catch {}
+
+  for (let i = 0; i < 6; i++) {
+    try {
+      const state = await evolution.connectionState(instanceName);
+      if ((state?.instance?.state ?? state?.state) === "open") return { connected: true, qr: null };
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+
   return { connected: false, qr };
 }
 
@@ -177,6 +189,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = (inst as any).last_qr ?? null;
     let phone: string | null = (inst as any).phone ?? null;
+    const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected");
     let triedSoftReconnect = false;
     try {
       const state = await evolution.connectionState(inst.evolution_instance);
@@ -189,24 +202,24 @@ export const refreshInstance = createServerFn({ method: "POST" })
         if (recovered.connected) {
           status = "connected";
           qr = null;
-        } else if (recovered.qr) {
+        } else if (recovered.qr && !isPaired) {
           status = "qr";
           qr = recovered.qr;
         } else {
-          status = s === "connecting" ? "connecting" : "connecting";
+          status = isPaired ? "connected" : "connecting";
         }
       }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
       // Não mantém "conectado" às cegas quando a sessão não confirmou open.
       // Assim o painel mostra que está tentando reconectar em vez de parecer OK.
-      status = (inst as any).status === "connected" ? "connecting" : "disconnected";
+      status = isPaired ? "connected" : "disconnected";
       triedSoftReconnect = true;
       const recovered = await reconnectInstance(evolution, inst.evolution_instance);
       if (recovered.connected) {
         status = "connected";
         qr = null;
-      } else if (recovered.qr) {
+      } else if (recovered.qr && !isPaired) {
         status = "qr";
         qr = recovered.qr;
       }
@@ -224,7 +237,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
     }
 
     const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
-    const canRegenerateQr = !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
+    const canRegenerateQr = !isPaired && !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect(inst.evolution_instance);
@@ -739,6 +752,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = null;
     let phone: string | null = (inst as any).phone ?? null;
+    const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected");
     let triedSoftReconnect = false;
     try {
       const state = await evolution.connectionState((inst as any).evolution_instance);
@@ -751,22 +765,22 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
         if (recovered.connected) {
           status = "connected";
           qr = null;
-        } else if (recovered.qr) {
+        } else if (recovered.qr && !isPaired) {
           status = "qr";
           qr = recovered.qr;
         } else {
-          status = s === "connecting" ? "connecting" : "connecting";
+          status = isPaired ? "connected" : "connecting";
         }
       }
       phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
-      status = (inst as any).status === "connected" ? "connecting" : "disconnected";
+      status = isPaired ? "connected" : "disconnected";
       triedSoftReconnect = true;
       const recovered = await reconnectInstance(evolution, (inst as any).evolution_instance);
       if (recovered.connected) {
         status = "connected";
         qr = null;
-      } else if (recovered.qr) {
+      } else if (recovered.qr && !isPaired) {
         status = "qr";
         qr = recovered.qr;
       }
@@ -779,7 +793,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
     const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
-    const canRegenerateQr = !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
+    const canRegenerateQr = !isPaired && !triedSoftReconnect && (!(inst as any).last_qr || lastQrAgeMs > 45_000 || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
