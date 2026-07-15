@@ -186,6 +186,46 @@ export const updateTeamMember = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// -------- Master: redefinir senha de um funcionário --------
+export const resetTeamMemberPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i) =>
+    z
+      .object({
+        member_id: z.string().uuid(),
+        new_password: z.string().min(8).max(72),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // confirma que o alvo é membro deste master
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("owner_id, email")
+      .eq("id", data.member_id)
+      .maybeSingle();
+    if (!prof || prof.owner_id !== userId) {
+      throw new Error("Funcionário não pertence a você.");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.member_id, {
+      password: data.new_password,
+    });
+    if (error) throw new Error(error.message);
+
+    await supabase.from("activity_logs").insert({
+      user_id: userId,
+      action: "team.member_password_reset",
+      entity_type: "profile",
+      entity_id: data.member_id,
+      metadata: { email: prof.email },
+    });
+    return { ok: true };
+  });
+
 // -------- Master: atribuir número a um membro --------
 export const assignInstanceToMember = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
