@@ -562,6 +562,8 @@ function AdminTab() {
         </CardContent>
       </Card>
 
+      <AdminInstancesCard />
+
       <Card>
         <CardHeader><CardTitle>Clientes</CardTitle><CardDescription>Gerencie planos e visualize dados de cada usuário.</CardDescription></CardHeader>
         <CardContent>
@@ -573,7 +575,10 @@ function AdminTab() {
               return (
                 <div key={u.id} className="py-3 flex items-center justify-between gap-3 flex-wrap">
                   <div>
-                    <div className="text-sm font-medium">{u.email}</div>
+                    <div className="text-sm font-medium">{u.full_name || u.email}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {u.email}{u.phone ? ` · ${u.phone}` : ""}{u.company ? ` · ${u.company}` : ""}
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       Plano: {currentPlanName} {price > 0 && `· ${brl(price)}/mês`} · Desde {new Date(u.created_at).toLocaleDateString("pt-BR")}
                     </div>
@@ -589,6 +594,50 @@ function AdminTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function AdminInstancesCard() {
+  const qc = useQueryClient();
+  const listFn = useServerFn(adminListInstances);
+  const refreshFn = useServerFn(adminRefreshInstance);
+  const delFn = useServerFn(adminDeleteInstance);
+  const q = useQuery({ queryKey: ["admin-instances"], queryFn: () => listFn(), refetchInterval: 15000 });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["admin-instances"] });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Números conectados (todos os clientes)</CardTitle>
+        <CardDescription>Monitore, reconecte ou remova chips de qualquer usuário.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="divide-y max-h-96 overflow-y-auto">
+          {q.data?.map((i: any) => (
+            <div key={i.id} className="py-3 flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">
+                  {i.name} {i.phone && <span className="text-muted-foreground font-mono ml-1">· {i.phone}</span>}
+                </div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {i.profiles?.full_name || i.profiles?.email || i.user_id.slice(0, 8)} · {i.evolution_instance}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={i.status === "connected" ? "default" : "secondary"}>{i.status}</Badge>
+                <Button size="sm" variant="ghost" onClick={() => refreshFn({ data: { id: i.id } }).then(() => { toast.success("Atualizado"); invalidate(); }).catch((e: any) => toast.error(e.message))}>
+                  <RefreshCw className="h-3 w-3" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Remover ${i.name}?`)) delFn({ data: { id: i.id } }).then(() => { toast.success("Removido"); invalidate(); }); }}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          ))}
+          {q.data && q.data.length === 0 && <div className="py-4 text-sm text-muted-foreground text-center">Nenhum número conectado ainda.</div>}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
