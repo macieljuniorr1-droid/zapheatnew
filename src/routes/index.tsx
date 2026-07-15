@@ -437,7 +437,7 @@ function NetworkGraph() {
         rede · 8 chips ativos
       </div>
       <div className="grid md:grid-cols-[1fr_1.2fr] gap-6 items-center">
-        <div className="relative aspect-square max-w-[420px] mx-auto w-full">
+        <div className="relative aspect-square max-w-[420px] mx-auto w-full text-ember">
           <svg viewBox="0 0 420 420" className="w-full h-full">
             {/* mesh lines */}
             {positions.map((p1, i) =>
@@ -448,7 +448,8 @@ function NetworkGraph() {
                   y1={p1.y}
                   x2={p2.x}
                   y2={p2.y}
-                  stroke="hsl(var(--ember) / 0.08)"
+                  stroke="currentColor"
+                  strokeOpacity="0.12"
                   strokeWidth="1"
                 />
               )),
@@ -459,33 +460,45 @@ function NetworkGraph() {
               y1={positions[active.from].y}
               x2={positions[active.to].x}
               y2={positions[active.to].y}
-              stroke="hsl(var(--ember))"
-              strokeWidth="2"
+              stroke="currentColor"
+              strokeWidth="2.5"
               strokeDasharray="6 6"
               className="animate-pulse"
-            />
+            >
+              <animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1s" repeatCount="indefinite" />
+            </line>
             {/* nodes */}
             {positions.map((p, i) => {
               const isActive = i === active.from || i === active.to;
               return (
-                <g key={i}>
+                <g key={i} className="transition-all duration-500">
+                  {isActive && (
+                    <circle
+                      cx={p.x}
+                      cy={p.y}
+                      r={28}
+                      fill="currentColor"
+                      opacity="0.15"
+                      className="animate-pulse"
+                    />
+                  )}
                   <circle
                     cx={p.x}
                     cy={p.y}
                     r={isActive ? 22 : 16}
-                    fill="hsl(var(--background))"
-                    stroke="hsl(var(--ember))"
-                    strokeWidth={isActive ? 2 : 1}
-                    opacity={isActive ? 1 : 0.6}
-                    className="transition-all duration-500"
+                    fill="hsl(20 14% 8%)"
+                    stroke="currentColor"
+                    strokeWidth={isActive ? 2.5 : 1.5}
+                    opacity={isActive ? 1 : 0.55}
                   />
                   <text
                     x={p.x}
                     y={p.y + 4}
                     textAnchor="middle"
                     fontSize="11"
-                    fill="hsl(var(--ember))"
+                    fill="currentColor"
                     fontFamily="monospace"
+                    opacity={isActive ? 1 : 0.75}
                   >
                     {String(i + 1).padStart(2, "0")}
                   </text>
