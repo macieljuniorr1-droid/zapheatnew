@@ -981,6 +981,7 @@ function CheckoutView({
     pix_qr_code: string | null;
     pix_qr_code_url: string | null;
     payment_url: string | null;
+    is_automatic_pix?: boolean;
   };
   onClose: () => void;
 }) {
@@ -1027,7 +1028,14 @@ function CheckoutView({
     <div className="space-y-4 text-sm">
       {isPix && (
         <>
-          <div className="font-medium">Escaneie o QR Code no seu app do banco:</div>
+          <div className="font-medium">
+            {data.is_automatic_pix ? "Autorize o Pix Automático no app do seu banco:" : "Escaneie o QR Code no seu app do banco:"}
+          </div>
+          {data.is_automatic_pix && (
+            <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+              🔁 <b>Cobrança recorrente.</b> Você autoriza uma única vez agora — as próximas mensalidades serão debitadas automaticamente pelo seu banco, sem precisar escanear QR de novo.
+            </div>
+          )}
           {qrDataUrl ? (
             <div className="flex justify-center bg-white p-3 rounded-lg">
               <img src={qrDataUrl} alt="QR Code PIX" className="w-56 h-56" />

@@ -135,87 +135,82 @@ export const purchaseNumber = createServerFn({ method: "POST" })
       .single();
     if (nsErr) throw new Error(nsErr.message);
 
-    // 3. Cria order no Pagar.me
-    const order = await pagarme.createOrder({
-      code: `zh_ns_${nsRow.id}`,
-      customer_id: customer_id!,
-      amount_cents: PRICE_CENTS,
-      description: "Número WhatsApp extra ZapHeat (30 dias)",
-      method: data.payment_method === "pix" ? "pix" : "credit_card_native",
-      card_token: data.card_token,
-      installments: data.installments,
-      billing_address: data.address,
-      metadata: {
-        number_subscription_id: nsRow.id,
-        user_id: userId,
-      },
-    });
-
-    const chargeFailed = order?.charges?.[0];
-    const gwErr =
-      chargeFailed?.last_transaction?.gateway_response?.errors?.[0]?.message ??
-      chargeFailed?.last_transaction?.acquirer_message;
-    if (order?.status === "failed" || chargeFailed?.status === "failed") {
+    // 3. Cria ASSINATURA RECORRENTE no Pagar.me (não uma order avulsa).
+    //    - PIX → payment_method "automatic_pix" (Pix Automático Bacen).
+    //      Cliente autoriza UMA vez no app do banco, cobranças seguintes são
+    //      debitadas sozinhas todo mês, sem novo QR.
+    //    - Cartão → payment_method "credit_card" com card_token; card_id é
+    //      salvo pelo Pagar.me e reutilizado nos ciclos seguintes.
+    let subscription: any;
+    try {
+      subscription = await pagarme.createSubscription({
+        code: `zh_ns_${nsRow.id}`,
+        customer_id: customer_id!,
+        amount_cents: PRICE_CENTS,
+        description: "Número WhatsApp extra ZapHeat",
+        method: data.payment_method === "pix" ? "automatic_pix" : "credit_card",
+        card_token: data.card_token,
+        installments: data.installments,
+        billing_address: data.address,
+        metadata: {
+          number_subscription_id: nsRow.id,
+          user_id: userId,
+        },
+      });
+    } catch (e: any) {
       await supabase
         .from("number_subscriptions")
         .update({ status: "canceled", canceled_at: new Date().toISOString() })
         .eq("id", nsRow.id);
-      throw new Error(gwErr ?? "Pagar.me recusou a cobrança. Verifique seus dados.");
+      throw new Error(e?.message ?? "Falha ao criar assinatura no Pagar.me");
     }
 
-    // Cartão aprovado direto → já ativa a assinatura + salva card_id p/ recorrência
-    if (data.payment_method === "credit_card" && chargeFailed?.status === "paid") {
-      const in30d = new Date(Date.now() + 30 * 86400_000).toISOString();
-      const cardId: string | null = chargeFailed?.last_transaction?.card?.id ?? null;
-      await supabase
-        .from("number_subscriptions")
-        .update({
-          status: "active",
-          current_period_end: in30d,
-          pagarme_card_id: cardId,
-          last_order_id: order?.id ?? null,
-        })
-        .eq("id", nsRow.id);
-    }
+    const subId: string | null = subscription?.id ?? null;
+    const currentCharge =
+      subscription?.current_charge ??
+      subscription?.current_cycle?.charge ??
+      subscription?.charges?.[0] ??
+      null;
+    const lt = currentCharge?.last_transaction ?? {};
 
-
-
-
-
-    // 4. Extrai QR PIX (texto EMV + imagem) ou URL de checkout do cartão
-    const charge = order?.charges?.[0];
-    const lt = charge?.last_transaction ?? {};
+    // PIX Automático: QR de AUTORIZAÇÃO (uma vez só, os próximos ciclos são silenciosos)
     const pix_qr_code: string | null =
-      lt.qr_code ?? charge?.qr_code ?? order?.qr_code ?? null;
+      lt.qr_code ?? currentCharge?.qr_code ?? subscription?.qr_code ?? null;
     const pix_qr_code_url: string | null =
-      lt.qr_code_url ?? charge?.qr_code_url ?? null;
+      lt.qr_code_url ?? currentCharge?.qr_code_url ?? null;
+    // URL alternativa (deep link para o app do banco)
     const payment_url: string | null =
       lt.url ??
       lt.payment_url ??
-      charge?.payment_url ??
-      (Array.isArray(charge?.checkout) ? charge.checkout[0]?.payment_url : null) ??
-      charge?.checkout?.payment_url ??
+      currentCharge?.payment_url ??
       null;
 
-    if (!pix_qr_code && !pix_qr_code_url && !payment_url) {
-      // Nada retornado → devolve o payload para o cliente saber que falhou
-      console.error("Pagar.me sem dados de checkout:", JSON.stringify(order));
-    }
+    // Cartão aprovado no ato → ativa e salva card_id
+    const cardCharged = data.payment_method === "credit_card" && currentCharge?.status === "paid";
+    const cardId: string | null =
+      lt.card?.id ?? subscription?.card?.id ?? null;
 
-    await supabase
-      .from("number_subscriptions")
-      .update({
-        last_pix_qr_code: pix_qr_code,
-        last_charge_url: payment_url ?? pix_qr_code_url,
-      })
-      .eq("id", nsRow.id);
+    const patch: any = {
+      pagarme_subscription_id: subId,
+      last_pix_qr_code: pix_qr_code,
+      last_charge_url: payment_url ?? pix_qr_code_url,
+    };
+    if (cardCharged) {
+      patch.status = "active";
+      patch.current_period_end = new Date(Date.now() + 30 * 86400_000).toISOString();
+      patch.pagarme_card_id = cardId;
+    }
+    await supabase.from("number_subscriptions").update(patch).eq("id", nsRow.id);
 
     return {
       number_subscription_id: nsRow.id,
-      order_id: order.id,
+      subscription_id: subId,
       pix_qr_code,
       pix_qr_code_url,
       payment_url,
+      // Frontend deve exibir: "Escaneie este QR no app do seu banco. Ele autoriza
+      // o débito automático mensal — você não precisará escanear novamente."
+      is_automatic_pix: data.payment_method === "pix",
     };
   });
 
@@ -237,6 +232,25 @@ export const cancelNumberSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
+    // Busca a assinatura + pagarme_subscription_id
+    const { data: row } = await context.supabase
+      .from("number_subscriptions")
+      .select("id, pagarme_subscription_id")
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    if (!row) throw new Error("Assinatura não encontrada");
+
+    // Cancela recorrência no Pagar.me para parar as próximas cobranças automáticas
+    if (row.pagarme_subscription_id) {
+      try {
+        const { pagarme } = await import("@/lib/pagarme.server");
+        await pagarme.cancelSubscription(row.pagarme_subscription_id);
+      } catch (e) {
+        console.error("Falha ao cancelar subscription no Pagar.me:", e);
+      }
+    }
+
     const { error } = await context.supabase
       .from("number_subscriptions")
       .update({ status: "canceled", canceled_at: new Date().toISOString() })
