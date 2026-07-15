@@ -118,9 +118,18 @@ export const refreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
 
-    const { data: updated, error } = await supabase
+    const { data: updated, error } = await context.supabase
       .from("whatsapp_instances")
-      .update({ status, last_qr: qr, phone, updated_at: new Date().toISOString() })
+      .update({
+        status,
+        last_qr: qr,
+        phone,
+        updated_at: new Date().toISOString(),
+        // Marca início do aquecimento na primeira vez que conecta
+        ...(status === "connected" && !(inst as any).warmup_started_at
+          ? { warmup_started_at: new Date().toISOString() }
+          : {}),
+      } as any)
       .eq("id", data.id)
       .select()
       .single();
