@@ -62,6 +62,7 @@ import {
   listTeamMembers,
   createTeamMember,
   removeTeamMember,
+  resetTeamMemberPassword,
   updateTeamMember,
   assignInstanceToMember,
   getTeamActivity,
