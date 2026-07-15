@@ -716,7 +716,7 @@ async function isOpen(evolution: any, instanceName: string) {
 }
 
 function isClosedSessionError(message: string | null | undefined) {
-  return /connection closed|no sessions|sessionerror|stream errored|timed out|1006/i.test(String(message ?? ""));
+  return /connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
 }
 
 function isDeliverySyncFailure(message: string | null | undefined) {
