@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as ApiPublicHooksWarmupTickRouteImport } from './routes/api/public/hooks/warmup-tick'
 import { Route as ApiPublicHooksPagarmeWebhookRouteImport } from './routes/api/public/hooks/pagarme-webhook'
 import { Route as ApiPublicHooksCampaignTickRouteImport } from './routes/api/public/hooks/campaign-tick'
 import { Route as ApiPublicHooksBootstrapAdminRouteImport } from './routes/api/public/hooks/bootstrap-admin'
@@ -43,6 +44,12 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiPublicHooksWarmupTickRoute =
+  ApiPublicHooksWarmupTickRouteImport.update({
+    id: '/api/public/hooks/warmup-tick',
+    path: '/api/public/hooks/warmup-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksPagarmeWebhookRoute =
   ApiPublicHooksPagarmeWebhookRouteImport.update({
     id: '/api/public/hooks/pagarme-webhook',
@@ -77,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/bootstrap-admin': typeof ApiPublicHooksBootstrapAdminRoute
   '/api/public/hooks/campaign-tick': typeof ApiPublicHooksCampaignTickRoute
   '/api/public/hooks/pagarme-webhook': typeof ApiPublicHooksPagarmeWebhookRoute
+  '/api/public/hooks/warmup-tick': typeof ApiPublicHooksWarmupTickRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -87,6 +95,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/bootstrap-admin': typeof ApiPublicHooksBootstrapAdminRoute
   '/api/public/hooks/campaign-tick': typeof ApiPublicHooksCampaignTickRoute
   '/api/public/hooks/pagarme-webhook': typeof ApiPublicHooksPagarmeWebhookRoute
+  '/api/public/hooks/warmup-tick': typeof ApiPublicHooksWarmupTickRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -99,6 +108,7 @@ export interface FileRoutesById {
   '/api/public/hooks/bootstrap-admin': typeof ApiPublicHooksBootstrapAdminRoute
   '/api/public/hooks/campaign-tick': typeof ApiPublicHooksCampaignTickRoute
   '/api/public/hooks/pagarme-webhook': typeof ApiPublicHooksPagarmeWebhookRoute
+  '/api/public/hooks/warmup-tick': typeof ApiPublicHooksWarmupTickRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/bootstrap-admin'
     | '/api/public/hooks/campaign-tick'
     | '/api/public/hooks/pagarme-webhook'
+    | '/api/public/hooks/warmup-tick'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/bootstrap-admin'
     | '/api/public/hooks/campaign-tick'
     | '/api/public/hooks/pagarme-webhook'
+    | '/api/public/hooks/warmup-tick'
   id:
     | '__root__'
     | '/'
@@ -132,6 +144,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/bootstrap-admin'
     | '/api/public/hooks/campaign-tick'
     | '/api/public/hooks/pagarme-webhook'
+    | '/api/public/hooks/warmup-tick'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -142,6 +155,7 @@ export interface RootRouteChildren {
   ApiPublicHooksBootstrapAdminRoute: typeof ApiPublicHooksBootstrapAdminRoute
   ApiPublicHooksCampaignTickRoute: typeof ApiPublicHooksCampaignTickRoute
   ApiPublicHooksPagarmeWebhookRoute: typeof ApiPublicHooksPagarmeWebhookRoute
+  ApiPublicHooksWarmupTickRoute: typeof ApiPublicHooksWarmupTickRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -180,6 +194,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin'
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/api/public/hooks/warmup-tick': {
+      id: '/api/public/hooks/warmup-tick'
+      path: '/api/public/hooks/warmup-tick'
+      fullPath: '/api/public/hooks/warmup-tick'
+      preLoaderRoute: typeof ApiPublicHooksWarmupTickRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/pagarme-webhook': {
       id: '/api/public/hooks/pagarme-webhook'
@@ -233,6 +254,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksBootstrapAdminRoute: ApiPublicHooksBootstrapAdminRoute,
   ApiPublicHooksCampaignTickRoute: ApiPublicHooksCampaignTickRoute,
   ApiPublicHooksPagarmeWebhookRoute: ApiPublicHooksPagarmeWebhookRoute,
+  ApiPublicHooksWarmupTickRoute: ApiPublicHooksWarmupTickRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
