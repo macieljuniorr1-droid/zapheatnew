@@ -921,6 +921,138 @@ function AdminTab() {
   );
 }
 
+function AdminPlatformDashboard() {
+  const fn = useServerFn(adminPlatformDashboard);
+  const q = useQuery({
+    queryKey: ["admin-platform-dashboard"],
+    queryFn: () => fn(),
+    refetchInterval: 30000,
+  });
+  const d = q.data;
+  if (!d) {
+    return (
+      <Card>
+        <CardContent className="py-10 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+  const chartData = d.dailySeries.map((r: any) => ({
+    day: new Date(r.day).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+    enviadas: r.sent,
+    falhas: r.failed,
+  }));
+  const tempData = [
+    { name: "Quentes", value: d.temperature.hot, color: "#f97316" },
+    { name: "Mornos", value: d.temperature.warm, color: "#eab308" },
+    { name: "Frios", value: d.temperature.cold, color: "#0ea5e9" },
+  ];
+  const engineHealthy = d.engine.successRate >= 90 && d.engine.lastLogAt && Date.now() - new Date(d.engine.lastLogAt).getTime() < 5 * 60 * 1000;
+  return (
+    <Card className="border-primary/20">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" />Visão geral da plataforma</CardTitle>
+        <CardDescription>Números somados de todos os clientes (atualiza a cada 30s).</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard label="Chips totais" value={`${d.totals.connectedChips}/${d.totals.totalChips}`} icon={<Smartphone />} />
+          <StatCard label="Mensagens hoje" value={d.dailySeries[d.dailySeries.length - 1]?.sent ?? 0} icon={<MessageSquare />} />
+          <StatCard label="Mensagens 7d" value={d.totals.totalMsgs7d} icon={<TrendingUp />} />
+          <StatCard label="Mensagens (total)" value={d.totals.totalMsgs} icon={<Flame />} />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <div className="text-sm font-medium mb-2">Mensagens por dia (30d, toda a plataforma)</div>
+            <div className="h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                  <XAxis dataKey="day" tick={{ fontSize: 10 }} interval={2} />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <ChartTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                  <Line type="monotone" dataKey="enviadas" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="falhas" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-2">Temperatura dos chips</div>
+            <div className="h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={tempData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={4}>
+                    {tempData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                  </Pie>
+                  <ChartTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex justify-center gap-3 text-xs mt-1">
+              {tempData.map((t) => (
+                <span key={t.name} className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full" style={{ background: t.color }} />
+                  {t.name}: <b>{t.value}</b>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg border p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium flex items-center gap-1.5"><Zap className="h-4 w-4" />Saúde do motor (24h)</div>
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${engineHealthy ? "bg-green-500/15 text-green-600 dark:text-green-400" : "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400"}`}>
+                {engineHealthy ? "Saudável" : "Atenção"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="text-lg font-bold leading-none">{d.engine.sent24h}</div>
+                <div className="text-[10px] text-muted-foreground uppercase mt-1">Enviadas</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold leading-none text-destructive">{d.engine.failed24h}</div>
+                <div className="text-[10px] text-muted-foreground uppercase mt-1">Falhas</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold leading-none">{d.engine.successRate}%</div>
+                <div className="text-[10px] text-muted-foreground uppercase mt-1">Sucesso</div>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground mt-2">
+              Última mensagem: {d.engine.lastLogAt ? timeAgo(d.engine.lastLogAt) : "nunca"}
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="text-sm font-medium mb-2">Top 10 clientes (7d)</div>
+            <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
+              {d.topClients.length === 0 && <div className="text-xs text-muted-foreground">Ainda sem atividade.</div>}
+              {d.topClients.map((c: any, idx: number) => (
+                <div key={c.id} className="flex items-center justify-between text-sm border rounded px-2.5 py-1.5">
+                  <span className="truncate">
+                    <span className="text-muted-foreground font-mono text-xs mr-2">#{idx + 1}</span>
+                    {c.name}
+                  </span>
+                  <span className="text-xs shrink-0">
+                    <Badge variant="secondary" className="mr-1 text-[10px]">{c.chips} chips</Badge>
+                    <b>{c.msgs_7d}</b> msgs
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AdminInstancesCard() {
   const qc = useQueryClient();
   const listFn = useServerFn(adminListInstances);
