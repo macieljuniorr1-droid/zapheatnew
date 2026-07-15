@@ -274,17 +274,17 @@ async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
 }
 
 
-async function backfillPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
+async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
   for (const m of members) {
-    if (m.status !== "connected" || m.phone) continue;
+    if (m.status !== "connected") continue;
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
       const rec = Array.isArray(fetched) ? fetched[0] : fetched?.instance ?? fetched;
-      const jid: string | undefined = rec?.ownerJid ?? rec?.owner ?? rec?.wuid ?? rec?.number;
-      const phoneMatch = jid ? String(jid).match(/(\d{8,20})/) : null;
-      if (phoneMatch) {
-        m.phone = phoneMatch[1];
-        await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone }).eq("id", m.id);
+      const values = [rec?.ownerJid, rec?.profile?.id, rec?.owner, rec?.wuid, rec?.number, rec?.phone];
+      const phoneMatch = values.map((v) => String(v ?? "").match(/(\d{8,20})/)?.[1]).find(Boolean);
+      if (phoneMatch && phoneMatch !== normalizePhone(m.phone)) {
+        m.phone = phoneMatch;
+        await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone, updated_at: new Date().toISOString() }).eq("id", m.id);
       }
     } catch {}
   }
