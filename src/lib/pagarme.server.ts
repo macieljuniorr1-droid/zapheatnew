@@ -134,12 +134,13 @@ export const pagarme = {
     customer_id: string;
     amount_cents: number;
     description: string;
-    method: "pix" | "credit_card_native" | "credit_card_checkout";
+    method: "pix" | "credit_card_native" | "credit_card_checkout" | "credit_card_stored";
     metadata?: Record<string, string>;
     success_url?: string;
     card_token?: string; // requerido para credit_card_native
+    card_id?: string; // requerido para credit_card_stored (renovação)
     installments?: number; // default 1
-    billing_address?: Address; // requerido para cartão
+    billing_address?: Address; // requerido para cartão novo
   }) => {
     const item = {
       amount: payload.amount_cents,
