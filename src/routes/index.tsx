@@ -310,7 +310,9 @@ function LiveSimulation() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <NetworkGraph typing={typing} messages={messages} />
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8 mb-6">
         {CHIPS.map((c) => {
           const isTyping = typing.has(c.id);
           return (
