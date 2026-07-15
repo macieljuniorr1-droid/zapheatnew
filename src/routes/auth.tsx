@@ -34,8 +34,6 @@ function AuthPage() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [company, setCompany] = useState("");
-  const [useCase, setUseCase] = useState("");
-  const [source, setSource] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -72,8 +70,7 @@ function AuthPage() {
           full_name: fullName.trim(),
           phone: phone.trim(),
           company: company.trim(),
-          use_case: useCase,
-          source,
+
         },
       },
     });
@@ -148,32 +145,6 @@ function AuthPage() {
                 <Field label="Nome completo *" value={fullName} onChange={setFullName} />
                 <Field label="Telefone / WhatsApp *" value={phone} onChange={setPhone} type="tel" placeholder="(11) 99999-9999" />
                 <Field label="Empresa (opcional)" value={company} onChange={setCompany} required={false} />
-                <div className="space-y-2">
-                  <Label>Para que você vai usar?</Label>
-                  <Select value={useCase} onValueChange={setUseCase}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="vendas">Vendas / prospecção</SelectItem>
-                      <SelectItem value="atendimento">Atendimento ao cliente</SelectItem>
-                      <SelectItem value="marketing">Marketing / disparos</SelectItem>
-                      <SelectItem value="agencia">Agência (múltiplos clientes)</SelectItem>
-                      <SelectItem value="outro">Outro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Como nos conheceu?</Label>
-                  <Select value={source} onValueChange={setSource}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="google">Google / busca</SelectItem>
-                      <SelectItem value="instagram">Instagram</SelectItem>
-                      <SelectItem value="youtube">YouTube</SelectItem>
-                      <SelectItem value="indicacao">Indicação de amigo</SelectItem>
-                      <SelectItem value="outro">Outro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <Field label="E-mail *" value={email} onChange={setEmail} type="email" />
                 <Field label="Senha *" value={password} onChange={setPassword} type="password" />
                 <Button type="submit" className="w-full" disabled={loading}>
