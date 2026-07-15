@@ -318,7 +318,7 @@ export const adminListUsers = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("profiles")
-      .select("id, email, created_at, subscriptions(plan:plans(name, price_cents, max_instances, max_messages_per_day))")
+      .select("id, email, full_name, phone, company, use_case, source, created_at, subscriptions(plan:plans(name, price_cents, max_instances, max_messages_per_day))")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
