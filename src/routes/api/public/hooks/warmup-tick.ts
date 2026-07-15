@@ -127,20 +127,28 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             }));
 
             // Broadcast "typing" event so the UI shows a real typing indicator BEFORE we generate/send.
-            const typingChannel = supabaseAdmin.channel("ai-engine-live");
-            try {
-              await typingChannel.send({
-                type: "broadcast",
-                event: "typing_start",
-                payload: {
-                  group_id: (g as any).id,
-                  from_id: from.id,
-                  to_id: to.id,
-                  from_name: from.name ?? "Chip",
-                  to_name: to.name ?? "Chip",
-                },
-              });
-            } catch {}
+            const broadcast = async (event: string, payload: any) => {
+              try {
+                await fetch(`${process.env.SUPABASE_URL}/realtime/v1/api/broadcast`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+                    Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+                  },
+                  body: JSON.stringify({
+                    messages: [{ topic: "ai-engine-live", event, payload }],
+                  }),
+                });
+              } catch {}
+            };
+            await broadcast("typing_start", {
+              group_id: (g as any).id,
+              from_id: from.id,
+              to_id: to.id,
+              from_name: from.name ?? "Chip",
+              to_name: to.name ?? "Chip",
+            });
 
             // Generate reply via AI, fallback to template pool if AI fails
             let messageContent = "";
