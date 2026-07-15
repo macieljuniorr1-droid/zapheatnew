@@ -1619,6 +1619,9 @@ function CampaignsSection() {
   const [limit, setLimit] = useState(100);
   const [h1, setH1] = useState(8);
   const [h2, setH2] = useState(20);
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaType, setMediaType] = useState<"image" | "video" | "document" | "">("");
+  const [mediaFilename, setMediaFilename] = useState("");
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["campaigns"] });
 
@@ -1635,12 +1638,16 @@ function CampaignsSection() {
           per_instance_daily_limit: limit,
           active_hour_start: h1,
           active_hour_end: h2,
+          media_url: mediaUrl.trim() || null,
+          media_type: mediaType || null,
+          media_filename: mediaFilename.trim() || null,
         },
       }),
     onSuccess: () => {
       toast.success("Campanha criada. Clique em Iniciar para começar a enviar.");
       setOpen(false);
       setName(""); setMessage(""); setListId(""); setInstanceIds([]);
+      setMediaUrl(""); setMediaType(""); setMediaFilename("");
       invalidate();
     },
     onError: (e: any) => toast.error(e.message),
