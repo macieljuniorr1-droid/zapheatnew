@@ -9,14 +9,15 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 25_000;
-const MAX_BURST_ROUNDS = 1;
-const BURST_BUDGET_MS = 20_000;
+const DELIVERY_ACK_WAIT_MS = 9_000;
+const MAX_BURST_ROUNDS = 2;
+const BURST_BUDGET_MS = 24_000;
 const REPLY_GAP_MS = 500;
-const FAILING_PAIR_COOLDOWN_MS = 90 * 1000;
+const FAILING_PAIR_COOLDOWN_MS = 25 * 1000;
 const SENDER_REPAIR_WINDOW_MS = 20 * 60 * 1000;
 const PAIR_STREAK_WINDOW_MS = 8 * 60 * 1000;
 const PAIR_STREAK_LIMIT = 4;
+const MAX_SEND_ATTEMPTS_PER_PAIR = 3;
 
 type Chip = {
   id: string;
@@ -26,6 +27,8 @@ type Chip = {
   phone: string | null;
   last_qr?: string | null;
   warmup_started_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   temporarily_unavailable?: boolean;
   live_state?: string | null;
 };
@@ -47,7 +50,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
         const { data: groups, error: gErr } = await supabaseAdmin
           .from("warmup_groups")
           .select(
-            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, warmup_group_members(instance_id, whatsapp_instances(id, name, evolution_instance, status, phone, last_qr, warmup_started_at))",
+            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, warmup_group_members(instance_id, whatsapp_instances(id, name, evolution_instance, status, phone, last_qr, warmup_started_at, created_at, updated_at))",
           )
           .eq("active", true)
           .lte("next_run_at", now)
@@ -97,8 +100,8 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             for (let round = 0; round < MAX_BURST_ROUNDS && Date.now() < deadline; round++) {
               const recentLogs = await fetchRecentLogs(supabaseAdmin, (g as any).id);
               const pairs = pickPairs(members, recentLogs);
-              if (!pairs.length) {
-                if (round === 0) groupResults.push({ group: (g as any).id, status: "waiting", reason: "aguardando respostas" });
+          if (!pairs.length) {
+            if (round === 0) groupResults.push({ group: (g as any).id, status: "waiting", reason: "sem pares seguros disponíveis agora" });
                 break;
               }
 
@@ -107,7 +110,8 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               );
               groupResults.push(...pairResults);
 
-              if (!pairResults.some((r) => r.status === "sent")) break;
+              const activeEnough = pairResults.some((r) => r.status === "sent" || (r.status === "failed" && !isRepairableSessionFailure(r.error)));
+              if (!activeEnough && round >= MAX_BURST_ROUNDS - 1) break;
               if (round < MAX_BURST_ROUNDS - 1 && Date.now() + REPLY_GAP_MS < deadline) {
                 await new Promise((r) => setTimeout(r, REPLY_GAP_MS));
               }
@@ -146,7 +150,7 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
   const existing = new Set(rawMembers.map((m) => m.id));
   const { data: connected } = await supabaseAdmin
     .from("whatsapp_instances")
-      .select("id, name, evolution_instance, status, phone, last_qr, warmup_started_at")
+      .select("id, name, evolution_instance, status, phone, last_qr, warmup_started_at, created_at, updated_at")
     .eq("user_id", group.user_id)
     .eq("status", "connected")
     .not("phone", "is", null);
@@ -167,13 +171,26 @@ function normalizePhone(phone: string | null | undefined) {
 }
 
 function uniqueSendableMembers(members: Chip[]) {
-  const byId = new Map<string, Chip>();
+  const byPhone = new Map<string, Chip>();
   for (const member of members) {
     const phone = normalizePhone(member.phone);
     if (!phone) continue;
-    byId.set(member.id, member);
+    const current = byPhone.get(phone);
+    if (!current || preferChip(member, current)) byPhone.set(phone, member);
   }
-  return [...byId.values()];
+  return [...byPhone.values()];
+}
+
+function preferChip(candidate: Chip, current: Chip) {
+  if (candidate.temporarily_unavailable !== current.temporarily_unavailable) {
+    return !candidate.temporarily_unavailable;
+  }
+  const candidateCreated = new Date(candidate.created_at ?? 0).getTime();
+  const currentCreated = new Date(current.created_at ?? 0).getTime();
+  if (candidateCreated !== currentCreated) return candidateCreated > currentCreated;
+  const candidateUpdated = new Date(candidate.updated_at ?? 0).getTime();
+  const currentUpdated = new Date(current.updated_at ?? 0).getTime();
+  return candidateUpdated > currentUpdated;
 }
 
 async function pruneDuplicateGroupMembers(supabaseAdmin: any, group: any, members: Chip[]) {
@@ -389,17 +406,10 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     if (nowMs - new Date(log.created_at).getTime() >= FAILING_PAIR_COOLDOWN_MS) continue;
     senderFailures.set(log.from_instance_id, (senderFailures.get(log.from_instance_id) ?? 0) + 1);
   }
-  const lastOutboundStatus = new Map<string, string>();
-  for (const log of recentLogs) {
-    if (!log.from_instance_id || lastOutboundStatus.has(log.from_instance_id)) continue;
-    lastOutboundStatus.set(log.from_instance_id, log.status);
-  }
-  // Se o último envio real de um chip falhou, ele não pode continuar recebendo
-  // novas mensagens. Ele só entra em novas duplas como remetente até provar que
-  // voltou a entregar; assim nenhum número fica acumulando mensagens sem resposta.
-  const blockedRecipients = new Set(
-    [...lastOutboundStatus.entries()].filter(([, status]) => status === "failed").map(([id]) => id),
-  );
+  // Se um chip acabou de falhar como remetente, não forçamos ele a responder
+  // imediatamente em loop. Ele pode receber mensagens enquanto o motor tenta
+  // recuperar a sessão; no próximo ciclo volta a ter chance de enviar.
+  const coolingSenders = new Set(senderFailures.keys());
 
   // Última mensagem trocada POR PAR (não por instância). Assim uma dívida de
   // resposta entre A↔B não é apagada porque A depois falou com C.
@@ -448,7 +458,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     const to = chipById.get(debt.peerId);
     if (!from || !to) continue;
     if (from.id === to.id || normalizePhone(from.phone) === normalizePhone(to.phone)) continue;
-    if (blockedRecipients.has(to.id)) continue;
+    if (coolingSenders.has(from.id)) continue;
     pairs.push({ from, to });
     selected.add(from.id);
     selected.add(to.id);
@@ -477,7 +487,6 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
         if (normalizePhone(a.phone) === normalizePhone(b.phone)) continue;
         if (overheatedPairs.has(pairKey(a.id, b.id))) continue;
         if (recentFailedPairs.has(pairKey(a.id, b.id))) continue;
-        if (blockedRecipients.has(a.id) && blockedRecipients.has(b.id)) continue;
         const count = pairCount.get(pairKey(a.id, b.id)) ?? 0;
         if (!best || count < best.count) best = { a, b, count };
       }
@@ -485,10 +494,10 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     if (!best) break;
     const aFailures = senderFailures.get(best.a.id) ?? 0;
     const bFailures = senderFailures.get(best.b.id) ?? 0;
-    const aBlocked = blockedRecipients.has(best.a.id);
-    const bBlocked = blockedRecipients.has(best.b.id);
-    if (aBlocked || bBlocked) {
-      pairs.push(aBlocked ? { from: best.a, to: best.b } : { from: best.b, to: best.a });
+    const aCooling = coolingSenders.has(best.a.id);
+    const bCooling = coolingSenders.has(best.b.id);
+    if (aCooling || bCooling) {
+      pairs.push(aCooling ? { from: best.b, to: best.a } : { from: best.a, to: best.b });
     } else {
       pairs.push(aFailures > bFailures ? { from: best.b, to: best.a } : { from: best.a, to: best.b });
     }
@@ -538,13 +547,13 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     return await logPairResult(supabaseAdmin, group, from, to, cleanMessage, "failed", error);
   }
 
-  const recipientOpen = await ensureOpenSession(evolution, to.evolution_instance, false);
-  if (!recipientOpen) {
-    const error = "falha temporária: destinatário não confirmou sessão aberta";
-    return await logPairResult(supabaseAdmin, group, from, to, cleanMessage, "failed", error);
-  }
+  // O destinatário não precisa estar com o socket da Evolution aberto para
+  // RECEBER a mensagem no WhatsApp; só precisa quando chegar a vez dele enviar.
+  // Antes isso derrubava envios saudáveis porque uma checagem preventiva do
+  // destinatário falhava. Agora tentamos recuperar em background e seguimos.
+  ensureOpenSession(evolution, to.evolution_instance, false).catch(() => false);
 
-  const typingMs = Math.min(900, Math.max(250, messageContent.length * 10));
+  const typingMs = Math.min(900, Math.max(250, cleanMessage.length * 10));
   const toNumber = normalizePhone(to.phone);
   const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, toNumber);
 
@@ -561,21 +570,25 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const attemptSend = async () => {
     let lastErr: any = null;
-    for (const target of sendTargets) {
-      try {
-        await markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid);
-        await primeChatSession(evolution, from.evolution_instance, target.number);
-        await evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs);
-        await new Promise((r) => setTimeout(r, typingMs));
-        const sentAtMs = Date.now();
-        const sendResp = await evolution.sendText(from.evolution_instance, target.number, cleanMessage);
-        const ackJid = extractRemoteJid(sendResp) ?? target.remoteJid;
-        return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, extractMessageId(sendResp), cleanMessage, sentAtMs);
-      } catch (sendErr: any) {
-        lastErr = sendErr;
-        if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
-        await recoverOpenSession(evolution, from.evolution_instance, true);
+    for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS_PER_PAIR; attempt++) {
+      for (const target of sendTargets) {
+        try {
+          await markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid);
+          await primeChatSession(evolution, from.evolution_instance, target.number);
+          await evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs);
+          await new Promise((r) => setTimeout(r, typingMs));
+          const sentAtMs = Date.now();
+          const sendResp = await evolution.sendText(from.evolution_instance, target.number, cleanMessage);
+          const ackJid = extractRemoteJid(sendResp) ?? target.remoteJid;
+          return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, extractMessageId(sendResp), cleanMessage, sentAtMs);
+        } catch (sendErr: any) {
+          lastErr = sendErr;
+          if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
+          await recoverOpenSession(evolution, from.evolution_instance, true);
+        }
       }
+      if (!isClosedSessionError(lastErr?.message) && !isDeliverySyncFailure(lastErr?.message)) break;
+      await new Promise((r) => setTimeout(r, 650));
     }
     throw lastErr ?? new Error(`Não foi possível resolver o destinatário ${toNumber}`);
   };
@@ -881,9 +894,9 @@ async function normalizeQr(payload: any): Promise<string | null> {
 }
 
 async function waitForOpen(evolution: any, instanceName: string) {
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 2; i++) {
     if (await isOpen(evolution, instanceName)) return true;
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 750));
   }
   return false;
 }
@@ -902,14 +915,8 @@ async function ensureOpenSession(evolution: any, instanceName: string, forceRest
   try { await evolution.restart(instanceName); } catch {}
   if (await waitForOpen(evolution, instanceName)) return true;
 
-  // Rodada 3: nova tentativa de connect após o restart estabilizar.
-  try { await evolution.connect(instanceName); } catch {}
-  if (await waitForOpen(evolution, instanceName)) return true;
-
-  // Rodada 4 (apenas para o remetente, que pediu forceRestart): mais um ciclo
-  // completo de restart+connect antes de desistir deste tick.
+  // Rodada final (apenas para o remetente): um connect extra depois do restart.
   if (forceRestart) {
-    try { await evolution.restart(instanceName); } catch {}
     try { await evolution.connect(instanceName); } catch {}
     if (await waitForOpen(evolution, instanceName)) return true;
   }

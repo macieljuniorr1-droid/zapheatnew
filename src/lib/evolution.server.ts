@@ -17,10 +17,10 @@ async function getConfig(): Promise<EvolutionConfig> {
   return { api_url: data.api_url.replace(/\/+$/, ""), api_key: data.api_key };
 }
 
-async function evoFetch(path: string, init: RequestInit = {}) {
+async function evoFetch(path: string, init: RequestInit = {}, timeoutMs = 5_000) {
   const cfg = await getConfig();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${cfg.api_url}${path}`, {
@@ -63,13 +63,13 @@ export const evolution = {
       }),
     }),
   connect: (instanceName: string) =>
-    evoFetch(`/instance/connect/${encodeURIComponent(instanceName)}`, { method: "GET" }),
+    evoFetch(`/instance/connect/${encodeURIComponent(instanceName)}`, { method: "GET" }, 2_000),
   connectionState: (instanceName: string) =>
-    evoFetch(`/instance/connectionState/${encodeURIComponent(instanceName)}`, { method: "GET" }),
+    evoFetch(`/instance/connectionState/${encodeURIComponent(instanceName)}`, { method: "GET" }, 1_500),
   fetchInstance: (instanceName: string) =>
-    evoFetch(`/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`, { method: "GET" }),
+    evoFetch(`/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`, { method: "GET" }, 2_000),
   restart: (instanceName: string) =>
-    evoFetch(`/instance/restart/${encodeURIComponent(instanceName)}`, { method: "POST", body: JSON.stringify({}) }),
+    evoFetch(`/instance/restart/${encodeURIComponent(instanceName)}`, { method: "POST", body: JSON.stringify({}) }, 2_000),
   deleteInstance: (instanceName: string) =>
     evoFetch(`/instance/delete/${encodeURIComponent(instanceName)}`, { method: "DELETE" }),
   logout: (instanceName: string) =>
@@ -87,14 +87,14 @@ export const evolution = {
     if (!cleanNumber) throw new Error("Destinatário sem número válido");
     if (!cleanText) throw new Error("Mensagem vazia: Evolution exige o campo text");
 
-    // Todas as tentativas mantêm `text` no topo do payload. O erro reportado
-    // pelo usuário vinha do fallback antigo, que enviava apenas
-    // `textMessage.text`; algumas versões da Evolution validam o schema antes
-    // de encaminhar ao Baileys e rejeitam quando `text` não está no topo.
+    // Mantém compatibilidade entre versões da Evolution. A variante principal
+    // usa `text` no topo (exigida no erro reportado), mas preservamos fallbacks
+    // seguros para builds que ainda aceitam/esperam `textMessage`.
     const payloads = [
       { number: cleanNumber, text: cleanText, delay: delayMs, linkPreview: false },
       { number: cleanNumber, text: cleanText, options: { delay: delayMs, linkPreview: false } },
       { number: cleanNumber, text: cleanText, textMessage: { text: cleanText }, delay: delayMs, linkPreview: false },
+      { number: cleanNumber, text: cleanText, textMessage: { text: cleanText }, delay: delayMs, options: { delay: delayMs, linkPreview: false } },
     ];
 
     const errors: any[] = [];
@@ -103,7 +103,7 @@ export const evolution = {
         return await evoFetch(path, {
           method: "POST",
           body: JSON.stringify(payload),
-        });
+        }, 7_000);
       } catch (e: any) {
         errors.push(e);
         const msg = String(e?.message ?? "");
