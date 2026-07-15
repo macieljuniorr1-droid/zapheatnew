@@ -33,9 +33,15 @@ export const Route = createFileRoute("/api/public/hooks/campaign-tick")({
               continue;
             }
 
+            const WARMUP_MS = 3 * 24 * 60 * 60 * 1000;
+            const nowMs = Date.now();
             const instances = ((c as any).campaign_instances ?? [])
               .map((ci: any) => ci.whatsapp_instances)
-              .filter((i: any) => i && i.status === "connected");
+              .filter((i: any) => {
+                if (!i || i.status !== "connected") return false;
+                if (!i.warmup_started_at) return false;
+                return nowMs - new Date(i.warmup_started_at).getTime() >= WARMUP_MS;
+              });
             if (instances.length === 0) {
               await scheduleNext(supabaseAdmin, c);
               continue;
