@@ -25,9 +25,31 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
         const results: any[] = [];
         for (const g of groups ?? []) {
           try {
-            const members = ((g as any).warmup_group_members ?? [])
+            const rawMembers = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
-              .filter((i: any) => i && i.status === "connected" && i.phone);
+              .filter((i: any) => i && i.status === "connected");
+
+            // Backfill: instâncias conectadas sem phone salvo. Sem phone o motor
+            // não consegue enviar. Consulta /instance/fetchInstances e grava.
+            for (const m of rawMembers) {
+              if (!m.phone) {
+                try {
+                  const fetched = await evolution.fetchInstance(m.evolution_instance);
+                  const rec = Array.isArray(fetched) ? fetched[0] : fetched?.instance ?? fetched;
+                  const jid: string | undefined = rec?.ownerJid ?? rec?.owner ?? rec?.wuid ?? rec?.number;
+                  const phoneMatch = jid ? String(jid).match(/(\d{8,20})/) : null;
+                  if (phoneMatch) {
+                    m.phone = phoneMatch[1];
+                    await supabaseAdmin
+                      .from("whatsapp_instances")
+                      .update({ phone: m.phone })
+                      .eq("id", m.id);
+                  }
+                } catch {}
+              }
+            }
+
+            const members = rawMembers.filter((i: any) => i.phone);
 
             // Marca warmup_started_at para números já conectados que ainda não têm data
             for (const m of members) {
