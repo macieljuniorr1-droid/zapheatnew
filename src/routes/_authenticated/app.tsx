@@ -1528,9 +1528,14 @@ function AdminTab() {
   const [url, setUrl] = useState("");
   const [key, setKey] = useState("");
   const saveCfg = useMutation({
-    mutationFn: () => setCfgFn({ data: { api_url: url, api_key: key } }),
-    onSuccess: () => { toast.success("Config salva"); qc.invalidateQueries({ queryKey: ["evo-cfg"] }); },
-    onError: (e: any) => toast.error(e.message),
+    mutationFn: () => setCfgFn({ data: { api_url: url.trim(), api_key: key.trim() } }),
+    onSuccess: () => {
+      toast.success("Configuração da Evolution salva");
+      setUrl("");
+      setKey("");
+      qc.invalidateQueries({ queryKey: ["evo-cfg"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao salvar configuração"),
   });
 
   const s = stats.data;
