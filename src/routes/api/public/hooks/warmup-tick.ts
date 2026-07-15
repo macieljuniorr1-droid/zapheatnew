@@ -210,7 +210,7 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
 async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
   try {
     const conn = await evolution.connect(m.evolution_instance);
-    const qr = normalizeQr(conn);
+    const qr = await normalizeQr(conn);
     if (qr) {
       m.last_qr = qr;
       await supabaseAdmin
@@ -568,7 +568,7 @@ async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, gro
     await evolution.logout(from.evolution_instance);
   } catch {}
   try {
-    qr = normalizeQr(await evolution.connect(from.evolution_instance));
+    qr = await normalizeQr(await evolution.connect(from.evolution_instance));
   } catch {}
   await supabaseAdmin
     .from("whatsapp_instances")

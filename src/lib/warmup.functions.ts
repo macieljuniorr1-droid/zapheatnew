@@ -63,7 +63,7 @@ async function reconnectInstance(evolution: any, instanceName: string): Promise<
   // precisa parear novamente.
   try {
     const conn = await evolution.connect(instanceName);
-    qr = normalizeQr(conn);
+    qr = await normalizeQr(conn);
   } catch {}
 
   for (let i = 0; i < 6; i++) {
@@ -148,11 +148,11 @@ export const createInstance = createServerFn({ method: "POST" })
     // /instance/connect quando o create não entregou um QR utilizável — porque
     // um connect após um create com QR válido invalida o primeiro código e é a
     // causa do "não foi possível conectar" no celular a partir do 2º número.
-    let qr: string | null = normalizeQr(resp);
+    let qr: string | null = await normalizeQr(resp);
     if (!qr) {
       try {
         const conn = await evolution.connect(evolutionInstance);
-        qr = normalizeQr(conn);
+        qr = await normalizeQr(conn);
       } catch {
         // mantém null; usuário pode clicar em Atualizar
       }
@@ -198,7 +198,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
 
     const refreshQr = async () => {
       const conn = await evolution.connect(inst.evolution_instance);
-      const nextQr = normalizeQr(conn);
+      const nextQr = await normalizeQr(conn);
       if (nextQr) {
         qr = nextQr;
         status = "qr";
@@ -858,7 +858,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     if (status !== "connected" && canRegenerateQr) {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
-        const nextQr = normalizeQr(conn);
+        const nextQr = await normalizeQr(conn);
         if (nextQr) {
           qr = nextQr;
           status = "qr";
