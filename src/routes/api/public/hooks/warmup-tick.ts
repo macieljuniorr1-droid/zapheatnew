@@ -74,7 +74,11 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             // aberta no painel, mas dessincronizada para envio.
             await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
 
-            const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone && !i.temporarily_unavailable));
+            // Enquanto a instância estiver marcada como conectada e pareada no
+            // painel, ela entra no rodízio. A checagem definitiva de sessão
+            // aberta acontece em ensureOpenSession() logo antes do envio — se
+            // por acaso o socket cair, o motor faz connect+restart e segue.
+            const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone));
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
               results.push({
@@ -885,17 +889,32 @@ async function waitForOpen(evolution: any, instanceName: string) {
 }
 
 async function ensureOpenSession(evolution: any, instanceName: string, forceRestart = false) {
+  // Se o painel já reporta a instância como conectada, o motor deve manter os
+  // envios acontecendo. Fazemos múltiplas rodadas de recuperação (connect +
+  // restart) antes de considerar a sessão indisponível.
   if (await isOpen(evolution, instanceName)) return true;
-  const recovered = await recoverOpenSession(evolution, instanceName, forceRestart);
-  if (recovered) return true;
 
-  // Última tentativa curta: algumas instalações retornam `connect` antes do
-  // socket ficar efetivamente aberto. Sem essa espera, o próximo sendText cai em
-  // "sender has not opened session" mesmo com o painel mostrando conectado.
-  try {
-    await evolution.connect(instanceName);
-  } catch {}
-  return await waitForOpen(evolution, instanceName);
+  // Rodada 1: connect suave.
+  try { await evolution.connect(instanceName); } catch {}
+  if (await waitForOpen(evolution, instanceName)) return true;
+
+  // Rodada 2: restart preservando o pareamento (recria o socket Baileys).
+  try { await evolution.restart(instanceName); } catch {}
+  if (await waitForOpen(evolution, instanceName)) return true;
+
+  // Rodada 3: nova tentativa de connect após o restart estabilizar.
+  try { await evolution.connect(instanceName); } catch {}
+  if (await waitForOpen(evolution, instanceName)) return true;
+
+  // Rodada 4 (apenas para o remetente, que pediu forceRestart): mais um ciclo
+  // completo de restart+connect antes de desistir deste tick.
+  if (forceRestart) {
+    try { await evolution.restart(instanceName); } catch {}
+    try { await evolution.connect(instanceName); } catch {}
+    if (await waitForOpen(evolution, instanceName)) return true;
+  }
+
+  return false;
 }
 
 async function primeChatSession(evolution: any, instanceName: string, number: string) {
