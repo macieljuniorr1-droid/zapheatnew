@@ -918,6 +918,7 @@ function messageTimestampMs(record: any) {
 async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJid: string, messageId?: string, text?: string, sentAtMs?: number) {
   const deadline = Date.now() + DELIVERY_ACK_WAIT_MS;
   let lastStatus: string | null = null;
+  let sawRecord = false;
   while (Date.now() < deadline) {
     try {
       const found = await evolution.findMessages(instanceName, remoteJid);
@@ -934,23 +935,40 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
         await new Promise((r) => setTimeout(r, 1000));
         continue;
       }
+      sawRecord = true;
       const updates = rec?.MessageUpdate ?? rec?.messageUpdate ?? [];
       lastStatus = updates?.[updates.length - 1]?.status ?? rec?.status ?? lastStatus;
-      if (["DELIVERY_ACK", "READ", "PLAYED", "SERVER_ACK", "PENDING"].includes(String(lastStatus))) {
+      const s = String(lastStatus ?? "").toUpperCase();
+      // Entrega real: dispositivo do destinatário confirmou recebimento.
+      if (s === "DELIVERY_ACK" || s === "READ" || s === "PLAYED") {
         return { delivered: true, explicitError: false, ack: lastStatus };
       }
-      if (String(lastStatus) === "ERROR") {
+      if (s === "ERROR") {
         return { delivered: false, explicitError: true, error: "WhatsApp retornou ERROR para a entrega" };
       }
-      return { delivered: true, explicitError: false, ack: lastStatus ?? "ACCEPTED" };
+      // PENDING/SERVER_ACK: só o servidor do WhatsApp aceitou; o celular do
+      // destinatário ainda não recebeu. Continua aguardando dentro da janela.
+      await new Promise((r) => setTimeout(r, 1000));
+      continue;
     } catch (e: any) {
       lastStatus = e?.message ?? lastStatus;
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  // Se a Evolution aceitou o envio mas não expôs o ACK no histórico dentro da
-  // janela, mantemos como enviado. Algumas versões não persistem DELIVERY_ACK
-  // em todos os chats privados; falhar aqui quebrava o rodízio de números.
+  // Ficou preso em SERVER_ACK/PENDING: mensagem saiu do remetente mas o
+  // destinatário nunca recebeu. Tratamos como falha para acionar a recuperação
+  // de sessão em vez de mentir que foi entregue.
+  const s = String(lastStatus ?? "").toUpperCase();
+  if (sawRecord && (s === "SERVER_ACK" || s === "PENDING")) {
+    return {
+      delivered: false,
+      explicitError: true,
+      error: `mensagem não entregue ao destinatário (${lastStatus}) — sessão pode estar dessincronizada`,
+    };
+  }
+  // Nenhum registro apareceu no findMessages dentro da janela. Algumas versões
+  // da Evolution simplesmente não expõem o histórico; mantemos como enviado
+  // para não punir builds que não retornam ACK, mas sinalizamos no log.
   return {
     delivered: true,
     explicitError: false,
