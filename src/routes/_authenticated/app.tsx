@@ -219,9 +219,9 @@ function Dashboard() {
                 <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                 <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <ChartTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                <Line type="monotone" dataKey="enviadas" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="falhas" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={false} />
+                <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
+                <Line type="monotone" dataKey="enviadas" stroke="var(--primary)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="falhas" stroke="var(--destructive)" strokeWidth={1.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -512,8 +512,8 @@ function ChipReportDialog({ id, onClose }: { id: string | null; onClose: () => v
                     <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                     <XAxis dataKey="day" tick={{ fontSize: 10 }} interval={2} />
                     <YAxis tick={{ fontSize: 10 }} />
-                    <ChartTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                    <Bar dataKey="qtd" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
+                    <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                    <Bar dataKey="qtd" fill="var(--primary)" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -527,8 +527,8 @@ function ChipReportDialog({ id, onClose }: { id: string | null; onClose: () => v
                     <BarChart data={r.hourly.map((h: any) => ({ h: `${h.hour}h`, qtd: h.count }))}>
                       <XAxis dataKey="h" tick={{ fontSize: 9 }} interval={2} />
                       <YAxis tick={{ fontSize: 9 }} />
-                      <ChartTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                      <Bar dataKey="qtd" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
+                      <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                      <Bar dataKey="qtd" fill="var(--primary)" radius={[2, 2, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -972,9 +972,9 @@ function AdminPlatformDashboard() {
                   <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                   <XAxis dataKey="day" tick={{ fontSize: 10 }} interval={2} />
                   <YAxis tick={{ fontSize: 10 }} />
-                  <ChartTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                  <Line type="monotone" dataKey="enviadas" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="falhas" stroke="hsl(var(--destructive))" strokeWidth={1.5} dot={false} />
+                  <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                  <Line type="monotone" dataKey="enviadas" stroke="var(--primary)" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="falhas" stroke="var(--destructive)" strokeWidth={1.5} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -987,7 +987,7 @@ function AdminPlatformDashboard() {
                   <Pie data={tempData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={4}>
                     {tempData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
                   </Pie>
-                  <ChartTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                  <ChartTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
