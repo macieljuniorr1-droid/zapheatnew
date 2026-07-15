@@ -70,7 +70,6 @@ function AuthPage() {
           full_name: fullName.trim(),
           phone: phone.trim(),
           company: company.trim(),
-          company: company.trim(),
 
         },
       },
