@@ -84,12 +84,32 @@ export const Route = createFileRoute("/api/public/hooks/campaign-tick")({
               continue;
             }
 
-            const msg = String((c as any).message).replace(/\{nome\}/gi, (target as any).name ?? "");
+            const rawName = ((target as any).name ?? "").toString().trim();
+            const firstName = rawName ? rawName.split(/\s+/)[0] : "";
             const toNumber = String((target as any).phone).replace(/\D/g, "");
+            const substitute = (t: string) =>
+              String(t)
+                .replace(/\{nome\}/gi, rawName)
+                .replace(/\{primeiro_?nome\}/gi, firstName)
+                .replace(/\{telefone\}/gi, toNumber);
+            const msg = substitute((c as any).message);
+            const mediaUrl = (c as any).media_url as string | null;
+            const mediaType = (c as any).media_type as "image" | "video" | "document" | null;
+            const mediaFilename = (c as any).media_filename as string | null;
             let status = "sent";
             let errMsg: string | null = null;
             try {
-              await evolution.sendText(inst.evolution_instance, toNumber, msg);
+              if (mediaUrl && mediaType) {
+                // Envia mídia com legenda (a mensagem vira caption)
+                await evolution.sendMedia(inst.evolution_instance, toNumber, {
+                  mediatype: mediaType,
+                  media: mediaUrl,
+                  caption: msg,
+                  fileName: mediaFilename ?? undefined,
+                });
+              } else {
+                await evolution.sendText(inst.evolution_instance, toNumber, msg);
+              }
             } catch (e: any) {
               status = "failed";
               errMsg = e?.message ?? "erro";
