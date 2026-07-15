@@ -46,13 +46,16 @@ export const Route = createFileRoute("/api/public/hooks/pagarme-webhook")({
           .maybeSingle();
         if (existing) return new Response("ok (dup)");
 
-        // Descobre a number_subscription pelo metadata ou code
-        const metadata = data?.metadata ?? data?.order?.metadata ?? {};
-        const nsId: string | null =
+        // Descobre a number_subscription pelo metadata, subscription_id ou code
+        const metadata = data?.metadata ?? data?.order?.metadata ?? data?.subscription?.metadata ?? {};
+        const pagarmeSubId: string | null =
+          data?.subscription?.id ?? data?.subscription_id ?? null;
+
+        let nsId: string | null =
           metadata.number_subscription_id ??
-          // fallback: data.code = zh_ns_<uuid> ou data.order.code
           extractNsIdFromCode(data?.code) ??
           extractNsIdFromCode(data?.order?.code) ??
+          extractNsIdFromCode(data?.subscription?.code) ??
           null;
 
         let userId: string | null = metadata.user_id ?? null;
@@ -60,6 +63,7 @@ export const Route = createFileRoute("/api/public/hooks/pagarme-webhook")({
           data?.amount ?? data?.order?.amount ?? data?.paid_amount ?? null;
 
         let ns: any = null;
+        // Tenta por id direto
         if (nsId) {
           const { data: row } = await supabaseAdmin
             .from("number_subscriptions")
@@ -67,7 +71,19 @@ export const Route = createFileRoute("/api/public/hooks/pagarme-webhook")({
             .eq("id", nsId)
             .maybeSingle();
           ns = row;
-          if (!userId && ns?.user_id) userId = ns.user_id;
+        }
+        // Fallback: casa pelo pagarme_subscription_id
+        if (!ns && pagarmeSubId) {
+          const { data: row } = await supabaseAdmin
+            .from("number_subscriptions")
+            .select("*")
+            .eq("pagarme_subscription_id", pagarmeSubId)
+            .maybeSingle();
+          ns = row;
+        }
+        if (ns) {
+          nsId = ns.id;
+          if (!userId && ns.user_id) userId = ns.user_id;
         }
 
         // Processa por tipo de evento
