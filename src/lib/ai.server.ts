@@ -56,7 +56,7 @@ function pickByHash<T>(arr: T[], seed: string): T {
 
 export async function generateReply(
   history: { from: string; content: string }[],
-  opts?: { pairSeed?: string },
+  opts?: { pairSeed?: string; fromName?: string | null; toName?: string | null },
 ): Promise<string> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY ausente");
@@ -69,9 +69,12 @@ export async function generateReply(
   // Frequência de troca de assunto: a cada ~8 mensagens, sugere drift natural.
   const shouldDrift = !isStart && history.length >= 6 && Math.random() < 0.25;
 
+  const myName = opts?.fromName ?? "Você";
+  const otherName = opts?.toName ?? "a outra pessoa";
+
   const system = `Você é essa pessoa: ${persona}
 
-Você está em uma conversa REAL de WhatsApp com um(a) amigo(a) próximo(a). NUNCA quebre o personagem.
+Você está em uma conversa REAL de WhatsApp com um(a) amigo(a) próximo(a). Seu chip é "${myName}" e você está respondendo "${otherName}". NUNCA quebre o personagem.
 
 REGRAS ABSOLUTAS (nunca viole):
 - Português brasileiro, coloquial, do jeito que essa pessoa realmente fala.
@@ -86,10 +89,13 @@ REGRAS ABSOLUTAS (nunca viole):
 - NUNCA use hashtags, URLs, @mentions, números longos.
 - Responda de forma que CONTINUE a conversa: faça pergunta, comente, reaja, provoque leve — mantenha o pingue-pongue vivo.
 - Se a última mensagem for uma pergunta, responda ela E devolva algo (pergunta ou comentário) pra pessoa ter o que responder.
+- Se existir histórico, responda OBRIGATORIAMENTE à última mensagem recebida. Não comece outro assunto aleatório.
+- Mantenha o mesmo assunto por vários turnos. Só mude de tema se o assunto morrer naturalmente.
+- Não mande emoji puro como resposta, exceto se a última mensagem foi muito emocional/engraçada e ainda assim prefira texto curto.
 - Varie: às vezes só reage curtinho ("kkkk sério?"), às vezes conta algo, às vezes pergunta.
 
 ${isStart ? `INÍCIO DE CONVERSA: ${topicHint}. Manda uma mensagem natural, curta, como se tivesse acabado de lembrar dessa pessoa.` : ""}
-${shouldDrift ? "DICA: a conversa tá longa no mesmo assunto — puxe um gancho pra outro tema do dia a dia de forma natural (\"mudando de assunto\", \"ah esqueci de te falar\", \"e aí, viu que...\")." : ""}
+${shouldDrift ? "DICA: se a última mensagem permitir, puxe um gancho leve pra um tema relacionado. Não ignore o que foi dito." : ""}
 
 Devolva SOMENTE o texto da mensagem, sem aspas, sem prefixo, sem nome.`;
 
