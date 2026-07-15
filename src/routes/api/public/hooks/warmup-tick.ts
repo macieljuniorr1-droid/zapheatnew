@@ -894,9 +894,9 @@ async function normalizeQr(payload: any): Promise<string | null> {
 }
 
 async function waitForOpen(evolution: any, instanceName: string) {
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 2; i++) {
     if (await isOpen(evolution, instanceName)) return true;
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 750));
   }
   return false;
 }
@@ -915,14 +915,8 @@ async function ensureOpenSession(evolution: any, instanceName: string, forceRest
   try { await evolution.restart(instanceName); } catch {}
   if (await waitForOpen(evolution, instanceName)) return true;
 
-  // Rodada 3: nova tentativa de connect após o restart estabilizar.
-  try { await evolution.connect(instanceName); } catch {}
-  if (await waitForOpen(evolution, instanceName)) return true;
-
-  // Rodada 4 (apenas para o remetente, que pediu forceRestart): mais um ciclo
-  // completo de restart+connect antes de desistir deste tick.
+  // Rodada final (apenas para o remetente): um connect extra depois do restart.
   if (forceRestart) {
-    try { await evolution.restart(instanceName); } catch {}
     try { await evolution.connect(instanceName); } catch {}
     if (await waitForOpen(evolution, instanceName)) return true;
   }
