@@ -352,7 +352,7 @@ function InstancesTab() {
     onError: (e: any) => toast.error(e.message),
   });
   const refresh = useMutation({
-    mutationFn: (id: string) => refreshFn({ data: { id } }),
+    mutationFn: ({ id, force = false }: { id: string; force?: boolean }) => refreshFn({ data: { id, force } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instances-health"] });
       qc.invalidateQueries({ queryKey: ["instances"] });
@@ -445,7 +445,7 @@ function InstancesTab() {
           <ChipCard
             key={i.id}
             chip={i}
-            onQR={() => { refresh.mutate(i.id); setQrOpen(i.id); }}
+            onQR={() => { refresh.mutate({ id: i.id }); setQrOpen(i.id); }}
             onReport={() => setReportId(i.id)}
             onDelete={() => { if (confirm(`Remover ${i.name}?`)) del.mutate(i.id); }}
           />
@@ -471,7 +471,7 @@ function InstancesTab() {
             <div className="text-center py-8 text-muted-foreground">Gerando QR...</div>
           )}
           <DialogFooter>
-            <Button variant="secondary" onClick={() => current && refresh.mutate(current.id)} disabled={refresh.isPending}>
+            <Button variant="secondary" onClick={() => current && refresh.mutate({ id: current.id, force: true })} disabled={refresh.isPending}>
               <RefreshCw className="h-4 w-4 mr-1" />Atualizar
             </Button>
           </DialogFooter>
