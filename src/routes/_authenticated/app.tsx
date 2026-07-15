@@ -136,11 +136,13 @@ export const Route = createFileRoute("/_authenticated/app")({
 
 function AppPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { tab } = Route.useSearch();
   const [activeTab, setActiveTab] = useState(tab || "dashboard");
   const fetchMe = useServerFn(getMe);
   const me = useQuery({ queryKey: ["me"], queryFn: () => fetchMe() });
   const beatFn = useServerFn(heartbeat);
+  const lastDeliveryToast = useRef(0);
 
   useEffect(() => {
     setActiveTab(tab || "dashboard");
@@ -161,6 +163,37 @@ function AppPage() {
     const iv = setInterval(() => beatFn().catch(() => {}), 60_000);
     return () => clearInterval(iv);
   }, [me.data, beatFn]);
+
+  useEffect(() => {
+    if (!me.data) return;
+    const invalidateWarmup = () => {
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["daily-series"] });
+      queryClient.invalidateQueries({ queryKey: ["logs"] });
+      queryClient.invalidateQueries({ queryKey: ["live-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["ai-live-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      queryClient.invalidateQueries({ queryKey: ["engine-status"] });
+      queryClient.invalidateQueries({ queryKey: ["instances-health"] });
+      queryClient.invalidateQueries({ queryKey: ["instances"] });
+      queryClient.invalidateQueries({ queryKey: ["group-instances"] });
+    };
+    const channel = supabase
+      .channel("warmup-platform-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "warmup_logs" }, (payload) => {
+        invalidateWarmup();
+        const row = (payload as any).new;
+        if (row?.status === "sent" && Date.now() - lastDeliveryToast.current > 5000) {
+          lastDeliveryToast.current = Date.now();
+          toast.success("✅ Envio confirmado no WhatsApp", { duration: 1800 });
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_instances" }, invalidateWarmup)
+      .on("postgres_changes", { event: "*", schema: "public", table: "warmup_groups" }, invalidateWarmup)
+      .on("postgres_changes", { event: "*", schema: "public", table: "warmup_group_members" }, invalidateWarmup)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [me.data, queryClient]);
 
   async function signOut() {
     await supabase.auth.signOut();
