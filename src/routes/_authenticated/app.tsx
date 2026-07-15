@@ -342,6 +342,31 @@ function InstancesTab() {
   }
   const total = q.data?.length ?? 0;
 
+  // Polling rápido enquanto o modal do QR está aberto: chama Evolution a cada 2s
+  // para detectar a conexão imediatamente após o celular escanear.
+  useEffect(() => {
+    if (!qrOpen) return;
+    const iv = setInterval(() => {
+      refreshFn({ data: { id: qrOpen } })
+        .then(() => qc.invalidateQueries({ queryKey: ["instances-health"] }))
+        .catch(() => {});
+    }, 2000);
+    return () => clearInterval(iv);
+  }, [qrOpen, refreshFn, qc]);
+
+  // Fecha o modal e notifica assim que o número aparece como conectado
+  const connectedNotified = useRef<string | null>(null);
+  useEffect(() => {
+    if (!qrOpen || !current) return;
+    if (current.status === "connected" && connectedNotified.current !== current.id) {
+      connectedNotified.current = current.id;
+      toast.success(`✅ ${current.name} conectado com sucesso!`, {
+        description: current.phone ? `Número: ${current.phone}` : undefined,
+      });
+      setTimeout(() => setQrOpen(null), 800);
+    }
+  }, [current?.status, current?.id, qrOpen]);
+
   return (
     <div className="mt-4 space-y-4">
       <Card>
@@ -434,7 +459,13 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
   const maskedPhone = chip.phone ? chip.phone.replace(/(\d{4})\d+(\d{4})/, "$1****$2") : "—";
 
   return (
-    <Card className={`overflow-hidden ${chip.is_ready ? "border-emerald-500/60 ring-1 ring-emerald-500/40 bg-emerald-500/5" : ""}`}>
+    <Card className={`overflow-hidden transition-colors ${
+      chip.status === "connected"
+        ? "border-green-500/60 ring-1 ring-green-500/40 bg-green-500/5"
+        : chip.is_ready
+          ? "border-emerald-500/60 ring-1 ring-emerald-500/40 bg-emerald-500/5"
+          : ""
+    }`}>
 
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
@@ -453,16 +484,29 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
           </span>
         </div>
 
-        <div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {chip.status === "connected" ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-700 dark:text-green-400 border border-green-500/40">
+              <CheckCircle2 className="h-3 w-3" />CONECTADO
+            </span>
+          ) : chip.status === "qr" || chip.status === "connecting" ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30">
+              Aguardando QR
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
+              Desconectado
+            </span>
+          )}
           {chip.is_ready ? (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
               ✓ Pronto para disparo
             </span>
-          ) : (
+          ) : chip.status === "connected" ? (
             <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
               Em aquecimento · {chip.days_remaining ?? 3}d restantes
             </span>
-          )}
+          ) : null}
         </div>
 
         <div className="grid grid-cols-3 gap-2 text-center pt-1">
