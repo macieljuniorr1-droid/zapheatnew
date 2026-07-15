@@ -245,7 +245,7 @@ function AppPage() {
             {isAdmin && <TabsTrigger value="admin"><Settings className="h-4 w-4 mr-1" />Admin</TabsTrigger>}
           </TabsList>
           <TabsContent value="dashboard"><Dashboard /></TabsContent>
-          <TabsContent value="tutorial"><TutorialTab /></TabsContent>
+          
           <TabsContent value="instances"><InstancesTab /></TabsContent>
           <TabsContent value="groups"><GroupsTab changeTab={changeTab} /></TabsContent>
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
