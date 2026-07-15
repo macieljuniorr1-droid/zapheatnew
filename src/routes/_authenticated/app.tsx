@@ -122,7 +122,7 @@ function AppPage() {
         </div>
       </header>
       <main className="relative z-10 max-w-7xl mx-auto px-4 py-6">
-        <Tabs defaultValue="dashboard">
+        <Tabs defaultValue={tab || "dashboard"}>
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="dashboard"><Flame className="h-4 w-4 mr-1" />Dashboard</TabsTrigger>
             <TabsTrigger value="tutorial"><BookOpen className="h-4 w-4 mr-1" />Tutorial</TabsTrigger>
