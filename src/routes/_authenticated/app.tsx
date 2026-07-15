@@ -981,6 +981,7 @@ function CheckoutView({
     pix_qr_code: string | null;
     pix_qr_code_url: string | null;
     payment_url: string | null;
+    is_automatic_pix?: boolean;
   };
   onClose: () => void;
 }) {
