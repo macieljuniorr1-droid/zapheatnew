@@ -33,31 +33,69 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               continue;
             }
 
-            // check daily limit + plan limit
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const { count: sentToday } = await supabaseAdmin
+            // Determine each member's conversational state within this group.
+            // Rule: a number can only be in ONE active conversation at a time.
+            // If A sent to B and B hasn't replied yet, A is "waiting" and B "owes reply to A".
+            // Only "idle" numbers can start a new conversation. "Owes reply" numbers MUST reply first.
+            const { data: recentLogs } = await supabaseAdmin
               .from("warmup_logs")
-              .select("id", { count: "exact", head: true })
-              .eq("user_id", (g as any).user_id)
+              .select("from_instance_id, to_instance_id, status, created_at")
+              .eq("group_id", (g as any).id)
               .eq("status", "sent")
-              .gte("created_at", today.toISOString());
+              .order("created_at", { ascending: false })
+              .limit(200);
 
-            const { data: sub } = await supabaseAdmin
-              .from("subscriptions")
-              .select("plans(max_messages_per_day)")
-              .eq("user_id", (g as any).user_id)
-              .maybeSingle();
-            const planLimit = (sub as any)?.plans?.max_messages_per_day ?? 20;
-            const limit = Math.min((g as any).daily_limit, planLimit);
-            if ((sentToday ?? 0) >= limit) {
+            // For each instance, find the most recent log it participated in.
+            const lastByInstance = new Map<string, any>();
+            for (const log of recentLogs ?? []) {
+              if (!lastByInstance.has(log.from_instance_id)) lastByInstance.set(log.from_instance_id, log);
+              if (!lastByInstance.has(log.to_instance_id)) lastByInstance.set(log.to_instance_id, log);
+            }
+
+            // Timeout: if waiting > 30 min, free the number to start a new conversation.
+            const REPLY_TIMEOUT_MS = 30 * 60 * 1000;
+            const nowMs = Date.now();
+
+            type State = { kind: "idle" } | { kind: "waiting"; peerId: string } | { kind: "owes"; peerId: string };
+            const stateOf = (id: string): State => {
+              const last = lastByInstance.get(id);
+              if (!last) return { kind: "idle" };
+              const age = nowMs - new Date(last.created_at).getTime();
+              if (age > REPLY_TIMEOUT_MS) return { kind: "idle" };
+              if (last.from_instance_id === id) return { kind: "waiting", peerId: last.to_instance_id };
+              return { kind: "owes", peerId: last.from_instance_id };
+            };
+
+            // First priority: any instance that owes a reply and its peer is expecting one.
+            let from: any = null;
+            let to: any = null;
+            const shuffled = [...members].sort(() => Math.random() - 0.5);
+            for (const m of shuffled) {
+              const s = stateOf(m.id);
+              if (s.kind === "owes") {
+                const peer = members.find((x: any) => x.id === s.peerId);
+                if (peer) {
+                  from = m;
+                  to = peer;
+                  break;
+                }
+              }
+            }
+
+            // Second: pick two idle instances to start a fresh conversation.
+            if (!from) {
+              const idle = shuffled.filter((m: any) => stateOf(m.id).kind === "idle");
+              if (idle.length >= 2) {
+                from = idle[0];
+                to = idle[1];
+              }
+            }
+
+            if (!from || !to) {
               await scheduleNext(supabaseAdmin, g);
               continue;
             }
 
-            const shuffled = members.sort(() => Math.random() - 0.5);
-            const from = shuffled[0];
-            const to = shuffled[1];
 
             // Fetch recent conversation history between this pair (both directions)
             const { data: recent } = await supabaseAdmin
