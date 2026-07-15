@@ -9,7 +9,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 15_000;
+const DELIVERY_ACK_WAIT_MS = 25_000;
 const MAX_BURST_ROUNDS = 1;
 const BURST_BUDGET_MS = 20_000;
 const REPLY_GAP_MS = 500;
@@ -74,7 +74,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             // aberta no painel, mas dessincronizada para envio.
             await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
 
-            const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone));
+            const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone && !i.temporarily_unavailable));
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
               results.push({
@@ -520,20 +520,26 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     return { group: group.id, from: from.id, to: to.id, status: "skipped", reason: "números duplicados" };
   }
 
-  // Não bloqueia o envio só porque o endpoint de estado não respondeu "open".
-  // Em algumas instalações a Evolution aceita /sendText mesmo quando
-  // /connectionState oscila; o próprio envio é o teste real da sessão.
-  if (!(await isOpen(evolution, from.evolution_instance))) {
-    await recoverOpenSession(evolution, from.evolution_instance, true);
-    await markInstance(supabaseAdmin, from.id, "connected");
-  }
-  if (!(await isOpen(evolution, to.evolution_instance))) {
-    await recoverOpenSession(evolution, to.evolution_instance, false);
-    await markInstance(supabaseAdmin, to.id, "connected");
-  }
-
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
   const messageContent = await generateMessage(supabaseAdmin, group.user_id, from.id, to.id, history);
+  const cleanMessage = String(messageContent ?? "").trim();
+  if (!cleanMessage) {
+    return await logPairResult(supabaseAdmin, group, from, to, "mensagem vazia", "failed", "mensagem vazia: Evolution exige o campo text");
+  }
+
+  const senderOpen = await ensureOpenSession(evolution, from.evolution_instance, true);
+  if (!senderOpen) {
+    const error = "falha temporária: remetente não abriu sessão";
+    await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, error);
+    return await logPairResult(supabaseAdmin, group, from, to, cleanMessage, "failed", error);
+  }
+
+  const recipientOpen = await ensureOpenSession(evolution, to.evolution_instance, false);
+  if (!recipientOpen) {
+    const error = "falha temporária: destinatário não confirmou sessão aberta";
+    return await logPairResult(supabaseAdmin, group, from, to, cleanMessage, "failed", error);
+  }
+
   const typingMs = Math.min(900, Math.max(250, messageContent.length * 10));
   const toNumber = normalizePhone(to.phone);
   const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, toNumber);
@@ -554,12 +560,13 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     for (const target of sendTargets) {
       try {
         await markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid);
+        await primeChatSession(evolution, from.evolution_instance, target.number);
         await evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs);
         await new Promise((r) => setTimeout(r, typingMs));
         const sentAtMs = Date.now();
-        const sendResp = await evolution.sendText(from.evolution_instance, target.number, messageContent);
+        const sendResp = await evolution.sendText(from.evolution_instance, target.number, cleanMessage);
         const ackJid = extractRemoteJid(sendResp) ?? target.remoteJid;
-        return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, extractMessageId(sendResp), messageContent, sentAtMs);
+        return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, extractMessageId(sendResp), cleanMessage, sentAtMs);
       } catch (sendErr: any) {
         lastErr = sendErr;
         if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
@@ -573,7 +580,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     let ack = await attemptSend();
     // ERROR explícito indica sessão dessincronizada. Força recuperação e tenta
     // várias vezes antes de registrar falha, porque resposta recebida é prioridade.
-    for (let retry = 0; ack.explicitError && retry < 3; retry++) {
+    for (let retry = 0; ack.explicitError && retry < 1; retry++) {
       try {
         await recoverOpenSession(evolution, from.evolution_instance, true);
         await new Promise((r) => setTimeout(r, 750));
@@ -613,7 +620,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     group_id: group.id,
     from_instance_id: from.id,
     to_instance_id: to.id,
-    content: messageContent,
+    content: cleanMessage,
     status,
     error: errMsg,
   });
@@ -835,7 +842,7 @@ async function isOpen(evolution: any, instanceName: string) {
 }
 
 function isClosedSessionError(message: string | null | undefined) {
-  return /connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
+  return /remetente n[aã]o abriu sess[aã]o|sender has not opened session|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
 }
 
 function isDeliverySyncFailure(message: string | null | undefined) {
@@ -843,7 +850,7 @@ function isDeliverySyncFailure(message: string | null | undefined) {
 }
 
 function isRepairableSessionFailure(message: string | null | undefined) {
-  return isDeliverySyncFailure(message) || /remetente n[aã]o abriu sess[aã]o|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
+  return isDeliverySyncFailure(message) || /remetente n[aã]o abriu sess[aã]o|destinat[aá]rio n[aã]o confirmou sess[aã]o aberta|sender has not opened session|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
 }
 
 async function normalizeQr(payload: any): Promise<string | null> {
@@ -875,6 +882,33 @@ async function waitForOpen(evolution: any, instanceName: string) {
     await new Promise((r) => setTimeout(r, 1500));
   }
   return false;
+}
+
+async function ensureOpenSession(evolution: any, instanceName: string, forceRestart = false) {
+  if (await isOpen(evolution, instanceName)) return true;
+  const recovered = await recoverOpenSession(evolution, instanceName, forceRestart);
+  if (recovered) return true;
+
+  // Última tentativa curta: algumas instalações retornam `connect` antes do
+  // socket ficar efetivamente aberto. Sem essa espera, o próximo sendText cai em
+  // "sender has not opened session" mesmo com o painel mostrando conectado.
+  try {
+    await evolution.connect(instanceName);
+  } catch {}
+  return await waitForOpen(evolution, instanceName);
+}
+
+async function primeChatSession(evolution: any, instanceName: string, number: string) {
+  // Faz uma leitura leve do contato antes do envio. Isso força a Evolution/
+  // Baileys a resolver o JID do destinatário e reduz o erro temporário de sessão
+  // ainda não aberta no primeiro envio entre dois chips.
+  try {
+    await evolution.whatsappNumbers(instanceName, [normalizePhone(number)]);
+  } catch {}
+  try {
+    await evolution.sendPresence(instanceName, number, "paused", 300);
+  } catch {}
+  await new Promise((r) => setTimeout(r, 700));
 }
 
 async function recoverOpenSession(evolution: any, instanceName: string, forceRestart = false) {

@@ -81,34 +81,43 @@ export const evolution = {
     }).catch(() => null), // presença é cosmética; não deixa a mensagem quebrar
   sendText: async (instanceName: string, number: string, text: string, delayMs = 0) => {
     const path = `/message/sendText/${encodeURIComponent(instanceName)}`;
-    let firstError: any = null;
-    try {
-      // A rota sendText da Evolution v2 valida `text` no topo do payload. O
-      // formato aninhado fica só como compatibilidade com instalações alteradas.
-      return await evoFetch(path, {
-        method: "POST",
-        body: JSON.stringify({ number, text, delay: delayMs, linkPreview: false }),
-      });
-    } catch (e: any) {
-      firstError = e;
-      // Compatibilidade com forks/versões que aceitam `textMessage.text`.
+    const cleanNumber = String(number ?? "").trim();
+    const cleanText = String(text ?? "").trim();
+
+    if (!cleanNumber) throw new Error("Destinatário sem número válido");
+    if (!cleanText) throw new Error("Mensagem vazia: Evolution exige o campo text");
+
+    // Todas as tentativas mantêm `text` no topo do payload. O erro reportado
+    // pelo usuário vinha do fallback antigo, que enviava apenas
+    // `textMessage.text`; algumas versões da Evolution validam o schema antes
+    // de encaminhar ao Baileys e rejeitam quando `text` não está no topo.
+    const payloads = [
+      { number: cleanNumber, text: cleanText, delay: delayMs, linkPreview: false },
+      { number: cleanNumber, text: cleanText, options: { delay: delayMs, linkPreview: false } },
+      { number: cleanNumber, text: cleanText, textMessage: { text: cleanText }, delay: delayMs, linkPreview: false },
+    ];
+
+    const errors: any[] = [];
+    for (const payload of payloads) {
       try {
         return await evoFetch(path, {
           method: "POST",
-          body: JSON.stringify({ number, textMessage: { text }, delay: delayMs, linkPreview: false }),
+          body: JSON.stringify(payload),
         });
-      } catch (fallbackError: any) {
-        const firstMsg = String(firstError?.message ?? "");
-        const fallbackMsg = String(fallbackError?.message ?? "");
-        // Mantém a mensagem mais específica do Baileys/Evolution quando ela foi
-        // a causa real, mas não bloqueia o fallback para instalações que só
-        // aceitam o payload antigo.
-        if (/Cannot read properties of undefined|reading 'id'|reading "id"/i.test(firstMsg) && !/Cannot read properties of undefined|reading 'id'|reading "id"/i.test(fallbackMsg)) {
-          throw fallbackError;
+      } catch (e: any) {
+        errors.push(e);
+        const msg = String(e?.message ?? "");
+        // Problemas de sessão/JID não são resolvidos mudando o formato do
+        // payload. Parar aqui preserva a causa real em vez de mascarar com
+        // "instance requires property text" de uma tentativa posterior.
+        if (/remetente n[aã]o abriu sess[aã]o|sender has not opened session|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'|reading "id"/i.test(msg)) {
+          throw e;
         }
-        throw fallbackError ?? firstError;
       }
     }
+
+    const meaningful = errors.find((e) => !/requires property ["']?text|property \"text\"|mensagem vazia/i.test(String(e?.message ?? "")));
+    throw meaningful ?? errors[0];
   },
   whatsappNumbers: (instanceName: string, numbers: string[]) =>
     evoFetch(`/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`, {
