@@ -189,6 +189,38 @@ function uniqueSendableMembers(members: Chip[]) {
   return [...byPhone.values()];
 }
 
+async function pruneDuplicateGroupMembers(supabaseAdmin: any, group: any, members: Chip[]) {
+  const byPhone = new Map<string, Chip[]>();
+  for (const member of members) {
+    const phone = normalizePhone(member.phone);
+    if (!phone) continue;
+    const list = byPhone.get(phone) ?? [];
+    list.push(member);
+    byPhone.set(phone, list);
+  }
+
+  const removeIds = new Set<string>();
+  for (const duplicates of byPhone.values()) {
+    if (duplicates.length < 2) continue;
+    duplicates.sort((a, b) => {
+      const aStarted = a.warmup_started_at ? new Date(a.warmup_started_at).getTime() : 0;
+      const bStarted = b.warmup_started_at ? new Date(b.warmup_started_at).getTime() : 0;
+      return bStarted - aStarted;
+    });
+    for (const duplicate of duplicates.slice(1)) removeIds.add(duplicate.id);
+  }
+
+  if (!removeIds.size) return members;
+
+  await supabaseAdmin
+    .from("warmup_group_members")
+    .delete()
+    .eq("group_id", group.id)
+    .in("instance_id", [...removeIds]);
+
+  return members.filter((member) => !removeIds.has(member.id));
+}
+
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(
     members.map(async (m) => {
