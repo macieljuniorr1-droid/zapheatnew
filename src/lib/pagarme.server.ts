@@ -75,6 +75,35 @@ export const pagarme = {
     });
   },
 
+  updateCustomer: (customer_id: string, payload: {
+    name: string;
+    email: string;
+    document: string;
+    phone: string;
+  }) => {
+    const digits = payload.phone.replace(/\D/g, "");
+    let country_code = "55";
+    let rest = digits;
+    if (digits.length >= 12 && digits.startsWith("55")) { rest = digits.slice(2); }
+    else if (digits.length >= 12 && digits.length <= 13) {
+      country_code = digits.slice(0, digits.length - 11);
+      rest = digits.slice(-11);
+    }
+    const area_code = rest.slice(0, 2);
+    const number = rest.slice(2);
+    return pmFetch(`/customers/${encodeURIComponent(customer_id)}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: payload.name,
+        email: payload.email,
+        document: payload.document.replace(/\D/g, ""),
+        document_type: "cpf",
+        type: "individual",
+        phones: { mobile_phone: { country_code, area_code, number } },
+      }),
+    });
+  },
+
   /**
    * Cria uma order com pagamento único (PIX ou boleto/cartão via checkout hospedado).
    * Retorna a order com charges[0] contendo o PIX QR code ou o payment_url do checkout.
