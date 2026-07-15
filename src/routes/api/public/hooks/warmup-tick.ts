@@ -299,10 +299,13 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     await evolution.sendPresence(from.evolution_instance, toNumber, "composing", typingMs);
     await new Promise((r) => setTimeout(r, typingMs));
     const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
+    // sendText retornou sem erro — a Evolution aceitou o envio. Só marcamos
+    // como "failed" se o ACK vier explicitamente como ERROR. PENDING/ausente
+    // é normal em redes lentas e não deve poluir o painel com falso-negativo.
     const ack = await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
-    if (!ack.delivered) {
+    if (ack.explicitError) {
       status = "failed";
-      errMsg = ack.error ?? "Mensagem aceita pela Evolution, mas não confirmada como entregue";
+      errMsg = ack.error ?? "WhatsApp retornou erro na entrega";
     }
   } catch (e: any) {
     const firstError = e?.message ?? "erro";
@@ -313,7 +316,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
         await markLatestIncomingAsRead(evolution, from.evolution_instance, remoteJid);
         const sendResp = await evolution.sendText(from.evolution_instance, toNumber, messageContent);
         const ack = await waitForDeliveryAck(evolution, from.evolution_instance, remoteJid, sendResp?.key?.id);
-        if (!ack.delivered) {
+        if (ack.explicitError) {
           status = "failed";
           errMsg = ack.error ?? firstError;
         }
