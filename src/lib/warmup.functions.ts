@@ -854,7 +854,6 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
         phone = extractPhone(rec?.ownerJid, rec?.owner, rec?.wuid, rec?.number);
       } catch {}
     }
-    const lastQrAgeMs = (inst as any).updated_at ? Date.now() - new Date((inst as any).updated_at).getTime() : Infinity;
     const canRegenerateQr = !isPaired && !triedSoftReconnect && (!(inst as any).last_qr || status === "disconnected");
     if (status !== "connected" && canRegenerateQr) {
       try {
