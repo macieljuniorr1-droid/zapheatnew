@@ -127,6 +127,7 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
 
   await supabaseAdmin.from("warmup_group_members").insert(
     missing.map((chip: Chip) => ({ group_id: group.id, instance_id: chip.id })),
+    { ignoreDuplicates: true },
   );
 
   rawMembers.push(...missing);
