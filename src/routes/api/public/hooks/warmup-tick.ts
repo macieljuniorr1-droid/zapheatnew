@@ -3,7 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 // Cron endpoint. Called by pg_cron every minute. It processes every active
 // warmup group whose next_run_at <= now(), creates as many independent pairs
 // as possible, and only stores a log as "sent" after Evolution confirms the
-// WhatsApp delivery ACK. A plain 201/PENDING response is not considered sent.
+// WhatsApp device delivery ACK. A plain 201/PENDING/SERVER_ACK response is not
+// considered sent, because SERVER_ACK only means WhatsApp's server accepted the
+// message — not that it reached the recipient's phone.
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -278,6 +280,17 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     if (nowMs - new Date(log.created_at).getTime() >= FAILING_PAIR_COOLDOWN_MS) continue;
     senderFailures.set(log.from_instance_id, (senderFailures.get(log.from_instance_id) ?? 0) + 1);
   }
+  const lastOutboundStatus = new Map<string, string>();
+  for (const log of recentLogs) {
+    if (!log.from_instance_id || lastOutboundStatus.has(log.from_instance_id)) continue;
+    lastOutboundStatus.set(log.from_instance_id, log.status);
+  }
+  // Se o último envio real de um chip falhou, ele não pode continuar recebendo
+  // novas mensagens. Ele só entra em novas duplas como remetente até provar que
+  // voltou a entregar; assim nenhum número fica acumulando mensagens sem resposta.
+  const blockedRecipients = new Set(
+    [...lastOutboundStatus.entries()].filter(([, status]) => status === "failed").map(([id]) => id),
+  );
 
   // Última mensagem trocada POR PAR (não por instância). Assim uma dívida de
   // resposta entre A↔B não é apagada porque A depois falou com C.
@@ -324,6 +337,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     const from = chipById.get(debt.instanceId);
     const to = chipById.get(debt.peerId);
     if (!from || !to) continue;
+    if (blockedRecipients.has(to.id)) continue;
     pairs.push({ from, to });
     selected.add(from.id);
     selected.add(to.id);
@@ -350,6 +364,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
         const b = idle[j];
         if (selected.has(a.id) || selected.has(b.id)) continue;
         if (recentFailedPairs.has(pairKey(a.id, b.id))) continue;
+        if (blockedRecipients.has(a.id) && blockedRecipients.has(b.id)) continue;
         const count = pairCount.get(pairKey(a.id, b.id)) ?? 0;
         if (!best || count < best.count) best = { a, b, count };
       }
@@ -357,7 +372,13 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     if (!best) break;
     const aFailures = senderFailures.get(best.a.id) ?? 0;
     const bFailures = senderFailures.get(best.b.id) ?? 0;
-    pairs.push(aFailures > bFailures ? { from: best.b, to: best.a } : { from: best.a, to: best.b });
+    const aBlocked = blockedRecipients.has(best.a.id);
+    const bBlocked = blockedRecipients.has(best.b.id);
+    if (aBlocked || bBlocked) {
+      pairs.push(aBlocked ? { from: best.a, to: best.b } : { from: best.b, to: best.a });
+    } else {
+      pairs.push(aFailures > bFailures ? { from: best.b, to: best.a } : { from: best.a, to: best.b });
+    }
     selected.add(best.a.id);
     selected.add(best.b.id);
     for (let i = idle.length - 1; i >= 0; i--) {
@@ -674,7 +695,7 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
       }
       const updates = rec?.MessageUpdate ?? rec?.messageUpdate ?? [];
       lastStatus = updates?.[updates.length - 1]?.status ?? rec?.status ?? lastStatus;
-      if (["SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) {
+      if (["DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) {
         return { delivered: true, explicitError: false, ack: lastStatus };
       }
       if (String(lastStatus) === "ERROR") {
@@ -685,12 +706,13 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  // Sem ACK explícito do servidor dentro da janela: a sessão Baileys provavelmente
-  // está dessincronizada (Evolution aceitou o sendText mas WhatsApp real não confirmou).
-  // Nunca marcar como entregue nesse caso — força retry/recover e, se persistir, falha.
+  // Sem ACK explícito de entrega no aparelho dentro da janela: a sessão Baileys
+  // provavelmente está dessincronizada ou o WhatsApp só aceitou no servidor.
+  // Nunca marcar como entregue com SERVER_ACK/PENDING — força retry/recover e,
+  // se persistir, falha.
   return {
     delivered: false,
     explicitError: true,
-    error: `Sem ACK de entrega em ${DELIVERY_ACK_WAIT_MS}ms (status=${lastStatus ?? "PENDING"})`,
+    error: `Sem confirmação real de entrega em ${DELIVERY_ACK_WAIT_MS}ms (status=${lastStatus ?? "PENDING"})`,
   };
 }
