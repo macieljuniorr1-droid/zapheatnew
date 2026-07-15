@@ -7,7 +7,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 7_000;
+const DELIVERY_ACK_WAIT_MS = 10_000;
 const MAX_BURST_ROUNDS = 6;
 const BURST_BUDGET_MS = 45_000;
 const REPLY_GAP_MS = 500;
