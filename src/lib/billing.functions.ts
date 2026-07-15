@@ -232,6 +232,25 @@ export const cancelNumberSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
+    // Busca a assinatura + pagarme_subscription_id
+    const { data: row } = await context.supabase
+      .from("number_subscriptions")
+      .select("id, pagarme_subscription_id")
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    if (!row) throw new Error("Assinatura não encontrada");
+
+    // Cancela recorrência no Pagar.me para parar as próximas cobranças automáticas
+    if (row.pagarme_subscription_id) {
+      try {
+        const { pagarme } = await import("@/lib/pagarme.server");
+        await pagarme.cancelSubscription(row.pagarme_subscription_id);
+      } catch (e) {
+        console.error("Falha ao cancelar subscription no Pagar.me:", e);
+      }
+    }
+
     const { error } = await context.supabase
       .from("number_subscriptions")
       .update({ status: "canceled", canceled_at: new Date().toISOString() })
