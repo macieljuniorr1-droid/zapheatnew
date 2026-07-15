@@ -16,6 +16,8 @@ type Chip = {
   status: string;
   phone: string | null;
   warmup_started_at?: string | null;
+  temporarily_unavailable?: boolean;
+  live_state?: string | null;
 };
 
 export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
@@ -53,10 +55,15 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             await backfillPhones(supabaseAdmin, evolution, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
 
-            const members = rawMembers.filter((i) => i.status === "connected" && i.phone);
+            const members = rawMembers.filter((i) => i.status === "connected" && i.phone && !i.temporarily_unavailable);
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
-              results.push({ group: (g as any).id, status: "paused", reason: "menos de 2 números conectados" });
+              results.push({
+                group: (g as any).id,
+                status: "waiting",
+                reason: "menos de 2 números disponíveis neste ciclo",
+                connected_in_platform: rawMembers.filter((i) => i.status === "connected").length,
+              });
               continue;
             }
 
@@ -92,13 +99,34 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
       try {
         const state = await evolution.connectionState(m.evolution_instance);
         const s = state?.instance?.state ?? state?.state;
-        if (s !== "open") {
+        m.live_state = s ?? null;
+
+        if (s === "open") {
+          m.status = "connected";
+          await markInstance(supabaseAdmin, m.id, "connected");
+          return;
+        }
+
+        const recovered = await recoverOpenSession(evolution, m.evolution_instance);
+        if (recovered) {
+          m.status = "connected";
+          await markInstance(supabaseAdmin, m.id, "connected");
+          return;
+        }
+
+        // Não derruba o chip na plataforma por uma leitura instável da Evolution.
+        // Chips já conectados ficam conectados no painel e só são ignorados neste ciclo.
+        m.temporarily_unavailable = true;
+        if (m.status !== "connected") {
           m.status = s === "connecting" ? "connecting" : "disconnected";
-          await markInstance(supabaseAdmin, m.id, m.status as any);
+          await markInstance(supabaseAdmin, m.id, m.status as "connecting" | "disconnected");
         }
       } catch {
-        m.status = "disconnected";
-        await markInstance(supabaseAdmin, m.id, "disconnected");
+        m.temporarily_unavailable = true;
+        if (m.status !== "connected") {
+          m.status = "disconnected";
+          await markInstance(supabaseAdmin, m.id, "disconnected");
+        }
       }
     }),
   );
@@ -218,12 +246,16 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   const fromOpen = await isOpen(evolution, from.evolution_instance);
   const toOpen = await isOpen(evolution, to.evolution_instance);
   if (!fromOpen) {
-    await markInstance(supabaseAdmin, from.id, "disconnected");
-    return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Remetente desconectado" };
+    const recovered = await recoverOpenSession(evolution, from.evolution_instance);
+    if (!recovered) {
+      return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Remetente indisponível neste ciclo" };
+    }
   }
   if (!toOpen) {
-    await markInstance(supabaseAdmin, to.id, "disconnected");
-    return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Destinatário desconectado" };
+    const recovered = await recoverOpenSession(evolution, to.evolution_instance);
+    if (!recovered) {
+      return { group: group.id, from: from.id, to: to.id, status: "failed", error: "Destinatário indisponível neste ciclo" };
+    }
   }
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
@@ -251,7 +283,6 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     if (!ack.delivered) {
       status = "failed";
       errMsg = ack.error ?? "Mensagem aceita pela Evolution, mas não confirmada como entregue";
-      await markInstance(supabaseAdmin, from.id, "disconnected");
     }
   } catch (e: any) {
     const firstError = e?.message ?? "erro";
@@ -264,12 +295,10 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
         if (!ack.delivered) {
           status = "failed";
           errMsg = ack.error ?? firstError;
-          await markInstance(supabaseAdmin, from.id, "disconnected");
         }
       } catch (retryErr: any) {
         status = "failed";
         errMsg = retryErr?.message ?? firstError;
-        await markInstance(supabaseAdmin, from.id, "disconnected");
       }
     } else {
       status = "failed";
@@ -282,8 +311,6 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   if (status === "sent") {
     await markInstance(supabaseAdmin, from.id, "connected");
     await markInstance(supabaseAdmin, to.id, "connected");
-  } else if (isClosedSessionError(errMsg)) {
-    await markInstance(supabaseAdmin, from.id, "disconnected");
   }
 
   await supabaseAdmin.from("warmup_logs").insert({
@@ -378,6 +405,14 @@ async function waitForOpen(evolution: any, instanceName: string) {
     await new Promise((r) => setTimeout(r, 2500));
   }
   return false;
+}
+
+async function recoverOpenSession(evolution: any, instanceName: string) {
+  if (await isOpen(evolution, instanceName)) return true;
+  try {
+    await evolution.restart(instanceName);
+  } catch {}
+  return await waitForOpen(evolution, instanceName);
 }
 
 async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJid: string, messageId?: string) {
