@@ -14,6 +14,7 @@ const MAX_BURST_ROUNDS = 6;
 const BURST_BUDGET_MS = 45_000;
 const REPLY_GAP_MS = 500;
 const FAILING_PAIR_COOLDOWN_MS = 90 * 1000;
+const SENDER_REPAIR_WINDOW_MS = 20 * 60 * 1000;
 
 type Chip = {
   id: string;
@@ -137,7 +138,8 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(
     members.map(async (m) => {
-      const isPaired = Boolean(m.phone || m.warmup_started_at);
+      const awaitingQr = m.status === "qr";
+      const isPaired = Boolean(m.phone || m.warmup_started_at) && !awaitingQr;
       try {
         const state = await evolution.connectionState(m.evolution_instance);
         const s = state?.instance?.state ?? state?.state;
@@ -146,6 +148,13 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         if (s === "open") {
           m.status = "connected";
           await markInstance(supabaseAdmin, m.id, "connected");
+          return;
+        }
+
+        if (awaitingQr) {
+          await refreshRepairQr(supabaseAdmin, evolution, m);
+          m.temporarily_unavailable = true;
+          m.status = "qr";
           return;
         }
 
@@ -171,6 +180,12 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           await markInstance(supabaseAdmin, m.id, "connecting");
         }
       } catch {
+        if (awaitingQr) {
+          await refreshRepairQr(supabaseAdmin, evolution, m);
+          m.temporarily_unavailable = true;
+          m.status = "qr";
+          return;
+        }
         const recovered = await recoverOpenSession(evolution, m.evolution_instance);
         if (recovered) {
           m.status = "connected";
@@ -187,6 +202,19 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
       }
     }),
   );
+}
+
+async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
+  try {
+    const conn = await evolution.connect(m.evolution_instance);
+    const qr = normalizeQr(conn);
+    if (qr) {
+      await supabaseAdmin
+        .from("whatsapp_instances")
+        .update({ status: "qr", last_qr: qr, updated_at: new Date().toISOString() })
+        .eq("id", m.id);
+    }
+  } catch {}
 }
 
 
