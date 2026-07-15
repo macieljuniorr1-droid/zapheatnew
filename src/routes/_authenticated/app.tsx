@@ -1298,43 +1298,166 @@ function PlanTab() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Comprar 1 número extra — R$ 25/mês</DialogTitle></DialogHeader>
           {!checkoutData ? (
-            <div className="space-y-3">
-              <div>
-                <Label>Nome completo</Label>
-                <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Como está no seu CPF" />
+            <div className="space-y-4">
+              {/* Dados pessoais */}
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Dados pessoais</div>
+                <div>
+                  <Label>Nome completo</Label>
+                  <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Como está no seu CPF" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>CPF</Label>
+                    <Input value={doc} onChange={(e) => setDoc(e.target.value)} placeholder="000.000.000-00" />
+                  </div>
+                  <div>
+                    <Label>Celular</Label>
+                    <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-9999" />
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>CPF</Label>
-                <Input value={doc} onChange={(e) => setDoc(e.target.value)} placeholder="000.000.000-00" />
+
+              {/* Endereço de cobrança */}
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Endereço de cobrança</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-1">
+                    <Label>CEP</Label>
+                    <Input value={zip} onChange={(e) => setZip(e.target.value)} placeholder="00000-000" />
+                  </div>
+                  <div className="col-span-2">
+                    <Label>Rua</Label>
+                    <Input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua / Avenida" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label>Número</Label>
+                    <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="123" />
+                  </div>
+                  <div className="col-span-2">
+                    <Label>Complemento (opcional)</Label>
+                    <Input value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Apto 42" />
+                  </div>
+                </div>
+                <div>
+                  <Label>Bairro</Label>
+                  <Input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <Label>Cidade</Label>
+                    <Input value={city} onChange={(e) => setCity(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>UF</Label>
+                    <Input value={uf} onChange={(e) => setUf(e.target.value.toUpperCase())} maxLength={2} placeholder="SP" />
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>Celular (com DDD)</Label>
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-9999" />
+
+              {/* Método de pagamento */}
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pagamento</div>
+                <div>
+                  <Label>Método</Label>
+                  <Select value={method} onValueChange={(v) => setMethod(v as any)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pix">PIX (QR Code)</SelectItem>
+                      <SelectItem value="credit_card">Cartão de crédito</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {method === "credit_card" && (
+                  <div className="space-y-2 rounded-lg border p-3 bg-muted/40">
+                    <div>
+                      <Label>Número do cartão</Label>
+                      <Input
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(e.target.value.replace(/[^\d\s]/g, ""))}
+                        placeholder="0000 0000 0000 0000"
+                        inputMode="numeric"
+                        autoComplete="cc-number"
+                      />
+                    </div>
+                    <div>
+                      <Label>Nome impresso no cartão</Label>
+                      <Input
+                        value={cardHolder}
+                        onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
+                        placeholder="COMO ESTÁ NO CARTÃO"
+                        autoComplete="cc-name"
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label>Validade</Label>
+                        <Input
+                          value={cardExp}
+                          onChange={(e) => setCardExp(e.target.value)}
+                          placeholder="MM/AA"
+                          inputMode="numeric"
+                          autoComplete="cc-exp"
+                        />
+                      </div>
+                      <div>
+                        <Label>CVV</Label>
+                        <Input
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, ""))}
+                          placeholder="123"
+                          inputMode="numeric"
+                          maxLength={4}
+                          autoComplete="cc-csc"
+                        />
+                      </div>
+                      <div>
+                        <Label>Parcelas</Label>
+                        <Select value={String(installments)} onValueChange={(v) => setInstallments(Number(v))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1x sem juros</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      🔒 Os dados do cartão são tokenizados diretamente pelo Pagar.me. Nunca passam pelos nossos servidores.
+                    </div>
+                  </div>
+                )}
               </div>
-              <div>
-                <Label>Método de pagamento</Label>
-                <Select value={method} onValueChange={(v) => setMethod(v as any)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pix">PIX (QR Code)</SelectItem>
-                    <SelectItem value="credit_card">Cartão de crédito</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
               <DialogFooter>
                 <Button
+                  className="w-full"
                   onClick={() => purchase.mutate()}
                   disabled={
+                    purchase.isPending ||
                     !fullName ||
                     doc.replace(/\D/g, "").length !== 11 ||
                     phone.replace(/\D/g, "").length < 10 ||
-                    purchase.isPending
+                    zip.replace(/\D/g, "").length !== 8 ||
+                    !street || !number || !neighborhood || !city || uf.length !== 2 ||
+                    (method === "credit_card" && (
+                      cardNumber.replace(/\s/g, "").length < 13 ||
+                      !cardHolder ||
+                      !/^\d{2}\s*\/\s*\d{2,4}$/.test(cardExp) ||
+                      cardCvv.length < 3
+                    ))
                   }
                 >
-                  {purchase.isPending ? "Gerando..." : "Gerar cobrança"}
+                  {purchase.isPending
+                    ? "Processando..."
+                    : method === "pix"
+                      ? "Gerar PIX"
+                      : `Pagar R$ 25,00 no cartão`}
                 </Button>
               </DialogFooter>
             </div>
