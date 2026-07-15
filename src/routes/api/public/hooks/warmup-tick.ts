@@ -68,7 +68,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             // aberta no painel, mas dessincronizada para envio.
             await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
 
-            const members = rawMembers.filter((i) => i.status === "connected" && i.phone);
+            const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone));
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
               results.push({
@@ -118,6 +118,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
 
 async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, rawMembers: Chip[]) {
   const existing = new Set(rawMembers.map((m) => m.id));
+  const existingPhones = new Set(rawMembers.map((m) => normalizePhone(m.phone)).filter(Boolean));
   const { data: connected } = await supabaseAdmin
     .from("whatsapp_instances")
       .select("id, name, evolution_instance, status, phone, last_qr, warmup_started_at")
@@ -125,7 +126,13 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
     .eq("status", "connected")
     .not("phone", "is", null);
 
-  const missing = (connected ?? []).filter((chip: Chip) => !existing.has(chip.id));
+  const missing = (connected ?? []).filter((chip: Chip) => {
+    if (existing.has(chip.id)) return false;
+    const phone = normalizePhone(chip.phone);
+    if (phone && existingPhones.has(phone)) return false;
+    if (phone) existingPhones.add(phone);
+    return true;
+  });
   if (!missing.length) return;
 
   await supabaseAdmin.from("warmup_group_members").insert(
@@ -134,6 +141,30 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
   );
 
   rawMembers.push(...missing);
+}
+
+function normalizePhone(phone: string | null | undefined) {
+  return String(phone ?? "").replace(/\D/g, "");
+}
+
+function uniqueSendableMembers(members: Chip[]) {
+  const byPhone = new Map<string, Chip>();
+  for (const member of members) {
+    const phone = normalizePhone(member.phone);
+    if (!phone) continue;
+    const current = byPhone.get(phone);
+    if (!current) {
+      byPhone.set(phone, member);
+      continue;
+    }
+    const currentStarted = current.warmup_started_at ? new Date(current.warmup_started_at).getTime() : 0;
+    const memberStarted = member.warmup_started_at ? new Date(member.warmup_started_at).getTime() : 0;
+    // Se o mesmo WhatsApp foi conectado em duas instâncias, só uma pode entrar
+    // no rodízio. Mantém a conexão mais recente para não gerar conversa consigo
+    // mesmo nem quebrar o cache de contatos da Evolution/Baileys.
+    if (memberStarted > currentStarted) byPhone.set(phone, member);
+  }
+  return [...byPhone.values()];
 }
 
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
@@ -395,6 +426,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
         const a = idle[i];
         const b = idle[j];
         if (selected.has(a.id) || selected.has(b.id)) continue;
+        if (normalizePhone(a.phone) === normalizePhone(b.phone)) continue;
         if (recentFailedPairs.has(pairKey(a.id, b.id))) continue;
         if (blockedRecipients.has(a.id) && blockedRecipients.has(b.id)) continue;
         const count = pairCount.get(pairKey(a.id, b.id)) ?? 0;
