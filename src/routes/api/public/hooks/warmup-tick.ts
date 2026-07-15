@@ -962,6 +962,35 @@ async function recoverOpenSession(evolution: any, instanceName: string, forceRes
   return false;
 }
 
+async function repairSenderSession(evolution: any, instanceName: string, peerNumber?: string | null) {
+  // Recuperação mais agressiva para o caso "recebe mas não envia". A sessão
+  // pode estar aberta para receber push do WhatsApp, porém sem chaves válidas
+  // para criptografar o envio; connect/restart + resolução do contato ajuda a
+  // reconstruir a sessão antes da próxima tentativa.
+  try {
+    await evolution.connect(instanceName);
+  } catch {}
+  await new Promise((r) => setTimeout(r, SESSION_SETTLE_MS));
+
+  try {
+    await evolution.restart(instanceName);
+  } catch {}
+  await new Promise((r) => setTimeout(r, SESSION_SETTLE_MS));
+
+  try {
+    await evolution.connect(instanceName);
+  } catch {}
+
+  const normalizedPeer = normalizePhone(peerNumber);
+  if (normalizedPeer) {
+    try {
+      await evolution.whatsappNumbers(instanceName, [normalizedPeer]);
+    } catch {}
+  }
+
+  return await waitForOpen(evolution, instanceName);
+}
+
 function extractMessageId(sendResp: any) {
   return sendResp?.key?.id ?? sendResp?.message?.key?.id ?? sendResp?.data?.key?.id ?? sendResp?.id ?? sendResp?.messageId;
 }
