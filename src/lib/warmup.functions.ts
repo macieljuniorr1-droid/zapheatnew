@@ -76,16 +76,18 @@ export const createInstance = createServerFn({ method: "POST" })
 
     const { evolution } = await import("@/lib/evolution.server");
     const resp = await evolution.createInstance(evolutionInstance);
-    let qr: string | null = resp?.qrcode?.base64 ?? null;
-    // Se a criação não devolveu uma imagem base64 pronta, força um /instance/connect
-    // para obter um QR novo e válido (evita mostrar código EMV como se fosse imagem,
-    // o que provoca "não foi possível conectar" no celular ao escanear).
-    if (!qr || !qr.startsWith("data:")) {
+    // Evolution v2 pode devolver o QR em campos diferentes e sem o prefixo data:.
+    // Usamos o QR devolvido pelo create quando ele já veio pronto; só chamamos
+    // /instance/connect quando o create não entregou um QR utilizável — porque
+    // um connect após um create com QR válido invalida o primeiro código e é a
+    // causa do "não foi possível conectar" no celular a partir do 2º número.
+    let qr: string | null = normalizeQr(resp);
+    if (!qr) {
       try {
         const conn = await evolution.connect(evolutionInstance);
-        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? qr;
+        qr = normalizeQr(conn);
       } catch {
-        // mantém o QR inicial se o connect falhar; usuário pode clicar em Atualizar
+        // mantém null; usuário pode clicar em Atualizar
       }
     }
 
