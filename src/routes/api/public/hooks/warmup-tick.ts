@@ -377,7 +377,7 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     if (aBlocked || bBlocked) {
       pairs.push(aBlocked ? { from: best.a, to: best.b } : { from: best.b, to: best.a });
     } else {
-      pairs.push(aFailures > bFailures ? { from: best.a, to: best.b } : { from: best.b, to: best.a });
+      pairs.push(aFailures > bFailures ? { from: best.b, to: best.a } : { from: best.a, to: best.b });
     }
     selected.add(best.a.id);
     selected.add(best.b.id);
