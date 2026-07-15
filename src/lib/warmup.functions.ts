@@ -300,7 +300,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
           ? { warmup_started_at: new Date().toISOString() }
           : {}),
       } as any)
-      .eq("id", data.id)
+      .eq("id", input.id)
       .select()
       .single();
     if (error) throw new Error(error.message);
