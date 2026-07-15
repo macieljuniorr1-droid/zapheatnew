@@ -225,6 +225,89 @@ export const pagarme = {
       method: "PATCH",
       body: JSON.stringify({ status: "canceled" }),
     }),
+
+  /**
+   * Cria uma assinatura recorrente no Pagar.me v5.
+   *
+   * - method="automatic_pix": Pix Automático do Bacen. Cliente autoriza UMA
+   *   única vez no app do banco (usando o QR retornado na primeira cobrança).
+   *   Cobranças seguintes são debitadas automaticamente pelo banco, sem QR novo.
+   * - method="credit_card": recorrência de cartão (usa card_id salvo ou card_token).
+   */
+  createSubscription: (payload: {
+    code: string;
+    customer_id: string;
+    amount_cents: number;
+    description: string;
+    method: "automatic_pix" | "credit_card";
+    interval?: "month" | "week" | "year";
+    interval_count?: number;
+    card_id?: string;
+    card_token?: string;
+    installments?: number;
+    billing_address?: Address;
+    metadata?: Record<string, string>;
+  }) => {
+    const interval = payload.interval ?? "month";
+    const interval_count = payload.interval_count ?? 1;
+
+    const body: any = {
+      code: payload.code,
+      customer_id: payload.customer_id,
+      billing_type: "prepaid",
+      interval,
+      interval_count,
+      pricing_scheme: { scheme_type: "unit", price: payload.amount_cents },
+      quantity: 1,
+      items: [
+        {
+          description: payload.description,
+          quantity: 1,
+          pricing_scheme: { scheme_type: "unit", price: payload.amount_cents },
+        },
+      ],
+      payment_method: payload.method,
+      metadata: payload.metadata ?? {},
+    };
+
+    if (payload.method === "automatic_pix") {
+      body.automatic_pix = {
+        expires_in: 3600,
+        additional_information: [{ name: "Servico", value: "ZapHeat" }],
+      };
+    } else {
+      // credit_card
+      const cc: any = {
+        installments: payload.installments ?? 1,
+        statement_descriptor: "ZAPHEAT",
+      };
+      if (payload.card_id) cc.card_id = payload.card_id;
+      else if (payload.card_token) {
+        cc.card_token = payload.card_token;
+        if (payload.billing_address) {
+          cc.card = { billing_address: normalizeAddress(payload.billing_address) };
+        }
+      } else {
+        throw new Error("card_id ou card_token requerido para assinatura de cartão");
+      }
+      body.card = cc;
+    }
+
+    return pmFetch("/subscriptions", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  cancelSubscription: (subscription_id: string) =>
+    pmFetch(`/subscriptions/${encodeURIComponent(subscription_id)}`, {
+      method: "DELETE",
+    }),
+
+  getSubscription: (subscription_id: string) =>
+    pmFetch(`/subscriptions/${encodeURIComponent(subscription_id)}`, {
+      method: "GET",
+    }),
 };
 
 /**
