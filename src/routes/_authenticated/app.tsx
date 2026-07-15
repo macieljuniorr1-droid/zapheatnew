@@ -1097,6 +1097,7 @@ function PlanTab() {
   const [open, setOpen] = useState(false);
   const [fullName, setFullName] = useState("");
   const [doc, setDoc] = useState("");
+  const [phone, setPhone] = useState("");
   const [method, setMethod] = useState<"pix" | "credit_card">("pix");
   const [checkoutData, setCheckoutData] = useState<null | {
     number_subscription_id: string;
@@ -1106,7 +1107,7 @@ function PlanTab() {
   }>(null);
 
   const purchase = useMutation({
-    mutationFn: () => purchaseFn({ data: { full_name: fullName, document: doc, payment_method: method } }),
+    mutationFn: () => purchaseFn({ data: { full_name: fullName, document: doc, phone, payment_method: method } }),
     onSuccess: (res: any) => {
       setCheckoutData({
         number_subscription_id: res.number_subscription_id,
@@ -1225,6 +1226,10 @@ function PlanTab() {
                 <Input value={doc} onChange={(e) => setDoc(e.target.value)} placeholder="000.000.000-00" />
               </div>
               <div>
+                <Label>Celular (com DDD)</Label>
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-9999" />
+              </div>
+              <div>
                 <Label>Método de pagamento</Label>
                 <Select value={method} onValueChange={(v) => setMethod(v as any)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1235,7 +1240,15 @@ function PlanTab() {
                 </Select>
               </div>
               <DialogFooter>
-                <Button onClick={() => purchase.mutate()} disabled={!fullName || doc.replace(/\D/g, "").length !== 11 || purchase.isPending}>
+                <Button
+                  onClick={() => purchase.mutate()}
+                  disabled={
+                    !fullName ||
+                    doc.replace(/\D/g, "").length !== 11 ||
+                    phone.replace(/\D/g, "").length < 10 ||
+                    purchase.isPending
+                  }
+                >
                   {purchase.isPending ? "Gerando..." : "Gerar cobrança"}
                 </Button>
               </DialogFooter>

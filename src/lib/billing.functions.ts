@@ -53,6 +53,7 @@ export const purchaseNumber = createServerFn({ method: "POST" })
       .object({
         full_name: z.string().min(3).max(120),
         document: z.string().min(11).max(14), // CPF
+        phone: z.string().min(10).max(15), // telefone com DDD
         payment_method: z.enum(["pix", "credit_card"]),
       })
       .parse(i),
@@ -61,7 +62,7 @@ export const purchaseNumber = createServerFn({ method: "POST" })
     const { supabase, userId, claims } = context;
     const { pagarme } = await import("@/lib/pagarme.server");
 
-    // 1. Pega/cria customer no Pagar.me
+    // 1. Pega/cria/atualiza customer no Pagar.me
     const { data: sub } = await supabase
       .from("subscriptions")
       .select("pagarme_customer_id")
@@ -77,6 +78,7 @@ export const purchaseNumber = createServerFn({ method: "POST" })
         name: data.full_name,
         email,
         document: data.document,
+        phone: data.phone,
         code: `zh_user_${userId}`,
       });
       customer_id = customer.id;
@@ -84,6 +86,14 @@ export const purchaseNumber = createServerFn({ method: "POST" })
         .from("subscriptions")
         .update({ pagarme_customer_id: customer_id })
         .eq("user_id", userId);
+    } else {
+      // Garante que o customer tem telefone (Pagar.me exige para PIX)
+      await pagarme.updateCustomer(customer_id, {
+        name: data.full_name,
+        email,
+        document: data.document,
+        phone: data.phone,
+      });
     }
 
     // 2. Cria linha de number_subscription pendente
@@ -111,6 +121,19 @@ export const purchaseNumber = createServerFn({ method: "POST" })
         user_id: userId,
       },
     });
+
+    // 3.1 Se a order/charge veio falhada, propaga o erro do gateway pro cliente
+    const chargeFailed = order?.charges?.[0];
+    const gwErr = chargeFailed?.last_transaction?.gateway_response?.errors?.[0]?.message;
+    if (order?.status === "failed" || chargeFailed?.status === "failed") {
+      await supabase
+        .from("number_subscriptions")
+        .update({ status: "canceled", canceled_at: new Date().toISOString() })
+        .eq("id", nsRow.id);
+      throw new Error(gwErr ?? "Pagar.me recusou a cobrança. Verifique seus dados.");
+    }
+
+
 
     // 4. Extrai QR PIX (texto EMV + imagem) ou URL de checkout do cartão
     const charge = order?.charges?.[0];

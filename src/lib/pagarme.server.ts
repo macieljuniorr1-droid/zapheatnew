@@ -43,9 +43,23 @@ export const pagarme = {
     email: string;
     document: string; // CPF só números
     code: string;
+    phone: string; // DDI+DDD+numero, só dígitos, ex: 5511999999999
     type?: "individual" | "company";
-  }) =>
-    pmFetch("/customers", {
+  }) => {
+    const digits = payload.phone.replace(/\D/g, "");
+    // Pagar.me espera country_code, area_code, number separados
+    let country_code = "55";
+    let rest = digits;
+    if (digits.length >= 12 && digits.startsWith("55")) {
+      country_code = "55";
+      rest = digits.slice(2);
+    } else if (digits.length >= 12 && digits.length <= 13) {
+      country_code = digits.slice(0, digits.length - 11);
+      rest = digits.slice(-11);
+    }
+    const area_code = rest.slice(0, 2);
+    const number = rest.slice(2);
+    return pmFetch("/customers", {
       method: "POST",
       body: JSON.stringify({
         name: payload.name,
@@ -54,8 +68,41 @@ export const pagarme = {
         document: payload.document.replace(/\D/g, ""),
         document_type: "cpf",
         code: payload.code,
+        phones: {
+          mobile_phone: { country_code, area_code, number },
+        },
       }),
-    }),
+    });
+  },
+
+  updateCustomer: (customer_id: string, payload: {
+    name: string;
+    email: string;
+    document: string;
+    phone: string;
+  }) => {
+    const digits = payload.phone.replace(/\D/g, "");
+    let country_code = "55";
+    let rest = digits;
+    if (digits.length >= 12 && digits.startsWith("55")) { rest = digits.slice(2); }
+    else if (digits.length >= 12 && digits.length <= 13) {
+      country_code = digits.slice(0, digits.length - 11);
+      rest = digits.slice(-11);
+    }
+    const area_code = rest.slice(0, 2);
+    const number = rest.slice(2);
+    return pmFetch(`/customers/${encodeURIComponent(customer_id)}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: payload.name,
+        email: payload.email,
+        document: payload.document.replace(/\D/g, ""),
+        document_type: "cpf",
+        type: "individual",
+        phones: { mobile_phone: { country_code, area_code, number } },
+      }),
+    });
+  },
 
   /**
    * Cria uma order com pagamento único (PIX ou boleto/cartão via checkout hospedado).
