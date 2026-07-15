@@ -342,6 +342,31 @@ function InstancesTab() {
   }
   const total = q.data?.length ?? 0;
 
+  // Polling rápido enquanto o modal do QR está aberto: chama Evolution a cada 2s
+  // para detectar a conexão imediatamente após o celular escanear.
+  useEffect(() => {
+    if (!qrOpen) return;
+    const iv = setInterval(() => {
+      refreshFn({ data: { id: qrOpen } })
+        .then(() => qc.invalidateQueries({ queryKey: ["instances-health"] }))
+        .catch(() => {});
+    }, 2000);
+    return () => clearInterval(iv);
+  }, [qrOpen, refreshFn, qc]);
+
+  // Fecha o modal e notifica assim que o número aparece como conectado
+  const connectedNotified = useRef<string | null>(null);
+  useEffect(() => {
+    if (!qrOpen || !current) return;
+    if (current.status === "connected" && connectedNotified.current !== current.id) {
+      connectedNotified.current = current.id;
+      toast.success(`✅ ${current.name} conectado com sucesso!`, {
+        description: current.phone ? `Número: ${current.phone}` : undefined,
+      });
+      setTimeout(() => setQrOpen(null), 800);
+    }
+  }, [current?.status, current?.id, qrOpen]);
+
   return (
     <div className="mt-4 space-y-4">
       <Card>
