@@ -419,7 +419,8 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
   const maskedPhone = chip.phone ? chip.phone.replace(/(\d{4})\d+(\d{4})/, "$1****$2") : "—";
 
   return (
-    <Card className="overflow-hidden">
+    <Card className={`overflow-hidden ${chip.is_ready ? "border-emerald-500/60 ring-1 ring-emerald-500/40 bg-emerald-500/5" : ""}`}>
+
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
