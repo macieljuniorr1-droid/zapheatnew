@@ -36,10 +36,10 @@ function Landing() {
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[700px] forge-halo" aria-hidden />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,transparent_60%,var(--background)_100%)]" aria-hidden />
 
-      <header className="relative z-20 border-b border-border/40 backdrop-blur-md bg-background/40 sticky top-0">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+      <header className="fixed top-4 inset-x-0 z-50 px-4">
+        <div className="max-w-6xl mx-auto rounded-2xl border border-border/50 bg-background/70 backdrop-blur-xl shadow-lg shadow-black/20 px-4 md:px-6 py-2.5 flex items-center justify-between gap-4">
           <Link to="/" className="flex items-center">
-            <img src={zapheatLogo.url} alt="ZapHeat" className="h-9 md:h-10 w-auto" />
+            <img src={zapheatLogo.url} alt="ZapHeat" className="h-8 md:h-9 w-auto" />
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#how" className="hover:text-foreground transition">Como funciona</a>
@@ -53,13 +53,14 @@ function Landing() {
               </Button>
             </Link>
             <Link to="/auth">
-              <Button size="sm" className="gradient-ember-bg glow-ember hover:opacity-90">
+              <Button size="sm" className="gradient-ember-bg glow-ember hover:opacity-90 rounded-full">
                 Cadastrar
               </Button>
             </Link>
           </div>
         </div>
       </header>
+      <div aria-hidden className="h-20" />
 
       <main className="relative z-10">
         {/* HERO */}
