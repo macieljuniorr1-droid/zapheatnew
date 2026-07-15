@@ -130,12 +130,21 @@ export const Route = createFileRoute("/api/public/hooks/pagarme-webhook")({
         } else if (
           eventType === "charge.refunded" ||
           eventType === "charge.chargedback" ||
-          eventType === "order.canceled"
+          eventType === "order.canceled" ||
+          eventType === "subscription.canceled"
         ) {
           if (ns) {
             await supabaseAdmin
               .from("number_subscriptions")
               .update({ status: "canceled", canceled_at: now.toISOString() })
+              .eq("id", ns.id);
+          }
+        } else if (eventType === "subscription.created" && ns) {
+          // Guarda o pagarme_subscription_id caso ainda não esteja salvo
+          if (pagarmeSubId && !ns.pagarme_subscription_id) {
+            await supabaseAdmin
+              .from("number_subscriptions")
+              .update({ pagarme_subscription_id: pagarmeSubId })
               .eq("id", ns.id);
           }
         }
