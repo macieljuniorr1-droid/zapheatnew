@@ -200,16 +200,24 @@ export const refreshInstance = createServerFn({ method: "POST" })
     const { evolution } = await import("@/lib/evolution.server");
     let status = (inst as any).status === "connected" ? "connected" : "disconnected";
     let qr: string | null = (inst as any).last_qr ?? null;
+    let qrAt: string | null = (inst as any).last_qr_at ?? null;
     let phone: string | null = (inst as any).phone ?? null;
     const awaitingQr = (inst as any).status === "qr";
     const isPaired = Boolean(phone || (inst as any).warmup_started_at || (inst as any).status === "connected") && !awaitingQr;
     let triedSoftReconnect = false;
+
+    // QRs do WhatsApp expiram em ~40s. Se o código atual está prestes a
+    // expirar (>25s), regeneramos antes que o usuário escaneie um QR morto
+    // e o celular mostre "não foi possível conectar o dispositivo".
+    const qrAgeMs = qrAt ? Date.now() - new Date(qrAt).getTime() : Number.POSITIVE_INFINITY;
+    const qrIsFresh = qr !== null && qrAgeMs < 25_000;
 
     const refreshQr = async () => {
       const conn = await evolution.connect(inst.evolution_instance);
       const nextQr = await normalizeQr(conn);
       if (nextQr) {
         qr = nextQr;
+        qrAt = new Date().toISOString();
         status = "qr";
       } else if (qr) {
         status = "qr";
