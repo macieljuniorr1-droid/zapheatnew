@@ -7,10 +7,12 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 15_000;
-const MAX_BURST_ROUNDS = 3;
-const BURST_BUDGET_MS = 24_000;
-const REPLY_GAP_MS = 1_500;
+const DELIVERY_ACK_WAIT_MS = 7_000;
+const MAX_BURST_ROUNDS = 2;
+const BURST_BUDGET_MS = 18_000;
+const REPLY_GAP_MS = 500;
+const FAILING_PAIR_COOLDOWN_MS = 90 * 1000;
+const PAIR_DOMINANCE_TURNS = 2;
 
 type Chip = {
   id: string;
@@ -54,6 +56,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
               .map((m: any) => m.whatsapp_instances)
               .filter((i: any) => i);
 
+            await syncConnectedUserChipsIntoGroup(supabaseAdmin, g, rawMembers);
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
             await backfillPhones(supabaseAdmin, evolution, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
@@ -109,6 +112,25 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
     },
   },
 });
+
+async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, rawMembers: Chip[]) {
+  const existing = new Set(rawMembers.map((m) => m.id));
+  const { data: connected } = await supabaseAdmin
+    .from("whatsapp_instances")
+    .select("id, name, evolution_instance, status, phone, warmup_started_at")
+    .eq("user_id", group.user_id)
+    .eq("status", "connected")
+    .not("phone", "is", null);
+
+  const missing = (connected ?? []).filter((chip: Chip) => !existing.has(chip.id));
+  if (!missing.length) return;
+
+  await supabaseAdmin.from("warmup_group_members").insert(
+    missing.map((chip: Chip) => ({ group_id: group.id, instance_id: chip.id })),
+  );
+
+  rawMembers.push(...missing);
+}
 
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(
@@ -221,7 +243,6 @@ async function fetchRecentLogs(supabaseAdmin: any, groupId: string) {
     .from("warmup_logs")
     .select("from_instance_id, to_instance_id, status, created_at")
     .eq("group_id", groupId)
-    .eq("status", "sent")
     .order("created_at", { ascending: false })
     .limit(200);
   return data ?? [];
@@ -229,8 +250,21 @@ async function fetchRecentLogs(supabaseAdmin: any, groupId: string) {
 
 function pickPairs(members: Chip[], recentLogs: any[]) {
   const memberIds = new Set(members.map((i) => i.id));
-  const lastByInstance = new Map<string, any>();
+  const sentLogs = recentLogs.filter((log) => log.status === "sent");
+  const recentFailedPairs = new Set(
+    recentLogs
+      .filter((log) => log.status === "failed" && Date.now() - new Date(log.created_at).getTime() < FAILING_PAIR_COOLDOWN_MS)
+      .map((log) => pairKey(log.from_instance_id, log.to_instance_id)),
+  );
+  const senderFailures = new Map<string, number>();
   for (const log of recentLogs) {
+    if (log.status !== "failed" || !log.from_instance_id) continue;
+    if (Date.now() - new Date(log.created_at).getTime() >= FAILING_PAIR_COOLDOWN_MS) continue;
+    senderFailures.set(log.from_instance_id, (senderFailures.get(log.from_instance_id) ?? 0) + 1);
+  }
+  const dominantPairs = findDominantPairs(sentLogs);
+  const lastByInstance = new Map<string, any>();
+  for (const log of sentLogs) {
     if (log.from_instance_id && !lastByInstance.has(log.from_instance_id)) lastByInstance.set(log.from_instance_id, log);
     if (log.to_instance_id && !lastByInstance.has(log.to_instance_id)) lastByInstance.set(log.to_instance_id, log);
   }
@@ -242,8 +276,11 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     if (!last) return { kind: "idle" };
     const peerId = last.from_instance_id === id ? last.to_instance_id : last.from_instance_id;
     if (!memberIds.has(peerId)) return { kind: "idle" };
+    if (recentFailedPairs.has(pairKey(id, peerId))) return { kind: "idle" };
     const age = nowMs - new Date(last.created_at).getTime();
     if (age > REPLY_TIMEOUT_MS) return { kind: "idle" };
+    const currentPairKey = pairKey(id, peerId);
+    if (dominantPairs.has(currentPairKey)) return { kind: "idle" };
     if (last.from_instance_id === id) return { kind: "waiting", peerId };
     return { kind: "owes", peerId };
   };
@@ -264,9 +301,8 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
     }
   }
 
-  const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
   const pairCount = new Map<string, number>();
-  for (const log of recentLogs) {
+  for (const log of sentLogs) {
     if (!log.from_instance_id || !log.to_instance_id) continue;
     const k = pairKey(log.from_instance_id, log.to_instance_id);
     pairCount.set(k, (pairCount.get(k) ?? 0) + 1);
@@ -280,12 +316,18 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
         const a = idle[i];
         const b = idle[j];
         if (selected.has(a.id) || selected.has(b.id)) continue;
+        if (recentFailedPairs.has(pairKey(a.id, b.id))) continue;
         const count = pairCount.get(pairKey(a.id, b.id)) ?? 0;
         if (!best || count < best.count) best = { a, b, count };
       }
     }
     if (!best) break;
-    pairs.push({ from: best.a, to: best.b });
+    const aFailures = senderFailures.get(best.a.id) ?? 0;
+    const bFailures = senderFailures.get(best.b.id) ?? 0;
+    // Se um número acabou de falhar enviando, ainda deixa ele participar como
+    // destinatário. Assim ele não some do aquecimento e os outros continuam
+    // puxando conversa com ele enquanto a sessão se estabiliza.
+    pairs.push(aFailures > bFailures ? { from: best.b, to: best.a } : { from: best.a, to: best.b });
     selected.add(best.a.id);
     selected.add(best.b.id);
     for (let i = idle.length - 1; i >= 0; i--) {
@@ -294,6 +336,29 @@ function pickPairs(members: Chip[], recentLogs: any[]) {
   }
 
   return pairs;
+}
+
+function pairKey(a: string, b: string) {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function findDominantPairs(sentLogs: any[]) {
+  const dominant = new Set<string>();
+  let currentKey: string | null = null;
+  let streak = 0;
+  for (const log of sentLogs) {
+    if (!log.from_instance_id || !log.to_instance_id) continue;
+    const key = pairKey(log.from_instance_id, log.to_instance_id);
+    if (key === currentKey) {
+      streak += 1;
+    } else {
+      if (currentKey && streak >= PAIR_DOMINANCE_TURNS) dominant.add(currentKey);
+      currentKey = key;
+      streak = 1;
+    }
+  }
+  if (currentKey && streak >= PAIR_DOMINANCE_TURNS) dominant.add(currentKey);
+  return dominant;
 }
 
 async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }: any) {
@@ -318,7 +383,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
   const messageContent = await generateMessage(supabaseAdmin, group.user_id, from.id, to.id, history);
-  const typingMs = Math.min(1600, Math.max(350, messageContent.length * 15));
+  const typingMs = Math.min(900, Math.max(250, messageContent.length * 10));
   const toNumber = String(to.phone).replace(/\D/g, "");
   const remoteJid = `${toNumber}@s.whatsapp.net`;
 
@@ -498,9 +563,9 @@ function isClosedSessionError(message: string | null | undefined) {
 }
 
 async function waitForOpen(evolution: any, instanceName: string) {
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 4; i++) {
     if (await isOpen(evolution, instanceName)) return true;
-    await new Promise((r) => setTimeout(r, 2500));
+    await new Promise((r) => setTimeout(r, 1500));
   }
   return false;
 }
@@ -532,7 +597,7 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
     } catch (e: any) {
       lastStatus = e?.message ?? lastStatus;
     }
-    await new Promise((r) => setTimeout(r, 2500));
+    await new Promise((r) => setTimeout(r, 1000));
   }
   // Sem ACK explícito dentro da janela: consideramos entregue (a Evolution
   // aceitou o envio) e apenas registramos o status observado.
