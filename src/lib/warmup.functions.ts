@@ -76,7 +76,18 @@ export const createInstance = createServerFn({ method: "POST" })
 
     const { evolution } = await import("@/lib/evolution.server");
     const resp = await evolution.createInstance(evolutionInstance);
-    const qr = resp?.qrcode?.base64 ?? resp?.qrcode?.code ?? null;
+    let qr: string | null = resp?.qrcode?.base64 ?? null;
+    // Se a criação não devolveu uma imagem base64 pronta, força um /instance/connect
+    // para obter um QR novo e válido (evita mostrar código EMV como se fosse imagem,
+    // o que provoca "não foi possível conectar" no celular ao escanear).
+    if (!qr || !qr.startsWith("data:")) {
+      try {
+        const conn = await evolution.connect(evolutionInstance);
+        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? qr;
+      } catch {
+        // mantém o QR inicial se o connect falhar; usuário pode clicar em Atualizar
+      }
+    }
 
     const { data: row, error } = await supabase
       .from("whatsapp_instances")
@@ -124,7 +135,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
     if (status !== "connected") {
       try {
         const conn = await evolution.connect(inst.evolution_instance);
-        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? conn?.code ?? null;
+        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? null;
         if (qr) status = "qr";
       } catch {}
     }
@@ -539,7 +550,7 @@ export const adminRefreshInstance = createServerFn({ method: "POST" })
     if (status !== "connected") {
       try {
         const conn = await evolution.connect((inst as any).evolution_instance);
-        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? conn?.code ?? null;
+        qr = conn?.base64 ?? conn?.qrcode?.base64 ?? null;
         if (qr) status = "qr";
       } catch {}
     }
