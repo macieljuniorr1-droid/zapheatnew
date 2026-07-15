@@ -121,6 +121,20 @@ function Landing() {
           </div>
         </section>
 
+        {/* NETWORK — 8 chips conversando */}
+        <section className="max-w-6xl mx-auto px-6 py-16">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">rede viva</div>
+            <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
+              Seus chips conversando entre si, 24 horas por dia
+            </h2>
+            <p className="mt-3 text-muted-foreground">
+              A IA orquestra pares aleatórios: enquanto um par troca mensagens, os outros aguardam sua vez — igual a um grupo de amigos no zap.
+            </p>
+          </div>
+          <NetworkGraph />
+        </section>
+
         {/* FEATURES */}
         <section className="max-w-6xl mx-auto px-6 py-20">
           <div className="text-center max-w-2xl mx-auto mb-14">
