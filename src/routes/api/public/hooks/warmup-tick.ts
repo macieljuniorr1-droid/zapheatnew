@@ -14,6 +14,7 @@ const MAX_BURST_ROUNDS = 6;
 const BURST_BUDGET_MS = 45_000;
 const REPLY_GAP_MS = 500;
 const FAILING_PAIR_COOLDOWN_MS = 90 * 1000;
+const SENDER_REPAIR_WINDOW_MS = 20 * 60 * 1000;
 
 type Chip = {
   id: string;
@@ -137,7 +138,8 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
 async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(
     members.map(async (m) => {
-      const isPaired = Boolean(m.phone || m.warmup_started_at);
+      const awaitingQr = m.status === "qr";
+      const isPaired = Boolean(m.phone || m.warmup_started_at) && !awaitingQr;
       try {
         const state = await evolution.connectionState(m.evolution_instance);
         const s = state?.instance?.state ?? state?.state;
@@ -146,6 +148,13 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
         if (s === "open") {
           m.status = "connected";
           await markInstance(supabaseAdmin, m.id, "connected");
+          return;
+        }
+
+        if (awaitingQr) {
+          await refreshRepairQr(supabaseAdmin, evolution, m);
+          m.temporarily_unavailable = true;
+          m.status = "qr";
           return;
         }
 
@@ -171,6 +180,12 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           await markInstance(supabaseAdmin, m.id, "connecting");
         }
       } catch {
+        if (awaitingQr) {
+          await refreshRepairQr(supabaseAdmin, evolution, m);
+          m.temporarily_unavailable = true;
+          m.status = "qr";
+          return;
+        }
         const recovered = await recoverOpenSession(evolution, m.evolution_instance);
         if (recovered) {
           m.status = "connected";
@@ -187,6 +202,19 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
       }
     }),
   );
+}
+
+async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
+  try {
+    const conn = await evolution.connect(m.evolution_instance);
+    const qr = normalizeQr(conn);
+    if (qr) {
+      await supabaseAdmin
+        .from("whatsapp_instances")
+        .update({ status: "qr", last_qr: qr, updated_at: new Date().toISOString() })
+        .eq("id", m.id);
+    }
+  } catch {}
 }
 
 
@@ -502,7 +530,48 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     error: errMsg,
   });
 
+  if (status === "failed") {
+    await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, errMsg);
+  }
+
   return { group: group.id, from: from.id, to: to.id, status, error: errMsg ?? undefined };
+}
+
+async function quarantineSenderForRepair(supabaseAdmin: any, evolution: any, groupId: string, from: Chip, errMsg: string | null) {
+  if (!isDeliverySyncFailure(errMsg)) return;
+  const { data: recent } = await supabaseAdmin
+    .from("warmup_logs")
+    .select("status, error, created_at")
+    .eq("group_id", groupId)
+    .eq("from_instance_id", from.id)
+    .gte("created_at", new Date(Date.now() - SENDER_REPAIR_WINDOW_MS).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  let consecutiveFailures = 0;
+  for (const log of recent ?? []) {
+    if (log.status === "sent") break;
+    if (log.status === "failed" && isDeliverySyncFailure(log.error)) consecutiveFailures++;
+  }
+  if (consecutiveFailures < 2) return;
+
+  // Quando uma sessão recebe mensagens mas não consegue enviar, restart/connect
+  // não é suficiente: ela precisa sair do aquecimento e gerar novo QR para
+  // sincronizar as credenciais Baileys com o WhatsApp real. Isso impede que um
+  // número quebrado continue recebendo mensagens sem responder.
+  let qr: string | null = null;
+  try {
+    await evolution.logout(from.evolution_instance);
+  } catch {}
+  try {
+    qr = normalizeQr(await evolution.connect(from.evolution_instance));
+  } catch {}
+  await supabaseAdmin
+    .from("whatsapp_instances")
+    .update({ status: "qr", last_qr: qr, updated_at: new Date().toISOString() })
+    .eq("id", from.id);
+  from.status = "qr";
+  from.temporarily_unavailable = true;
 }
 
 async function logPairResult(supabaseAdmin: any, group: any, from: Chip, to: Chip, content: string, status: "sent" | "failed", error?: string | null) {
@@ -630,6 +699,23 @@ async function isOpen(evolution: any, instanceName: string) {
 
 function isClosedSessionError(message: string | null | undefined) {
   return /connection closed|no sessions|sessionerror|stream errored|timed out|1006/i.test(String(message ?? ""));
+}
+
+function isDeliverySyncFailure(message: string | null | undefined) {
+  return /whatsapp retornou error|sem confirma[cç][aã]o real|sem ack|pending|server_ack/i.test(String(message ?? ""));
+}
+
+function normalizeQr(payload: any): string | null {
+  const raw: string | undefined =
+    payload?.base64 ??
+    payload?.qrcode?.base64 ??
+    payload?.qrcode ??
+    payload?.qr ??
+    undefined;
+  if (!raw || typeof raw !== "string") return null;
+  if (raw.startsWith("data:")) return raw;
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(raw) || raw.length < 200) return null;
+  return `data:image/png;base64,${raw.replace(/\s+/g, "")}`;
 }
 
 async function waitForOpen(evolution: any, instanceName: string) {
