@@ -293,9 +293,10 @@ export const refreshInstance = createServerFn({ method: "POST" })
       } catch {}
     }
 
-    // Só gera QR automaticamente se ainda não existe nenhum. QR existente fica
-    // estável durante o polling; o botão "Atualizar" força um novo código.
-    const canRegenerateQr = !isPaired && !triedSoftReconnect && !(inst as any).last_qr;
+    // Regenera QR se: (a) ainda não existe nenhum, ou (b) o atual já está
+    // velho (>25s) e prestes a ser rejeitado pelo WhatsApp com "não foi
+    // possível conectar o dispositivo".
+    const canRegenerateQr = !isPaired && !triedSoftReconnect && (!qr || !qrIsFresh);
     if (status !== "connected" && canRegenerateQr) {
       try {
         await refreshQr();
@@ -310,6 +311,7 @@ export const refreshInstance = createServerFn({ method: "POST" })
       .update({
         status,
         last_qr: status === "connected" ? null : qr,
+        last_qr_at: status === "connected" ? null : qrAt,
         phone,
         updated_at: new Date().toISOString(),
         // Marca início do aquecimento na primeira vez que conecta
