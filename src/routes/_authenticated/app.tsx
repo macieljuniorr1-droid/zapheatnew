@@ -211,7 +211,7 @@ function AppPage() {
           <TabsContent value="dashboard"><Dashboard /></TabsContent>
           <TabsContent value="tutorial"><TutorialTab /></TabsContent>
           <TabsContent value="instances"><InstancesTab /></TabsContent>
-          <TabsContent value="groups"><GroupsTab /></TabsContent>
+          <TabsContent value="groups"><GroupsTab changeTab={changeTab} /></TabsContent>
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
           <TabsContent value="dispatch"><DispatchTab /></TabsContent>
           <TabsContent value="live"><LiveChatTab /></TabsContent>
@@ -627,7 +627,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ---------------- Groups ----------------
-function GroupsTab() {
+function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
   const qc = useQueryClient();
   const listFn = useServerFn(listGroups);
   const listInst = useServerFn(listInstances);
