@@ -137,9 +137,24 @@ export const Route = createFileRoute("/_authenticated/app")({
 function AppPage() {
   const navigate = useNavigate();
   const { tab } = Route.useSearch();
+  const [activeTab, setActiveTab] = useState(tab || "dashboard");
   const fetchMe = useServerFn(getMe);
   const me = useQuery({ queryKey: ["me"], queryFn: () => fetchMe() });
   const beatFn = useServerFn(heartbeat);
+
+  useEffect(() => {
+    setActiveTab(tab || "dashboard");
+  }, [tab]);
+
+  const changeTab = (value: string) => {
+    setActiveTab(value);
+    navigate({
+      to: "/_authenticated/app",
+      search: { tab: value === "dashboard" ? undefined : value },
+      replace: true,
+    });
+  };
+
   useEffect(() => {
     if (!me.data) return;
     beatFn().catch(() => {});
@@ -179,7 +194,7 @@ function AppPage() {
         </div>
       </header>
       <main className="relative z-10 max-w-7xl mx-auto px-4 py-6">
-        <Tabs defaultValue={tab || "dashboard"}>
+        <Tabs value={activeTab} onValueChange={changeTab}>
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="dashboard"><Flame className="h-4 w-4 mr-1" />Dashboard</TabsTrigger>
             <TabsTrigger value="tutorial"><BookOpen className="h-4 w-4 mr-1" />Tutorial</TabsTrigger>
@@ -196,7 +211,7 @@ function AppPage() {
           <TabsContent value="dashboard"><Dashboard /></TabsContent>
           <TabsContent value="tutorial"><TutorialTab /></TabsContent>
           <TabsContent value="instances"><InstancesTab /></TabsContent>
-          <TabsContent value="groups"><GroupsTab /></TabsContent>
+          <TabsContent value="groups"><GroupsTab changeTab={changeTab} /></TabsContent>
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
           <TabsContent value="dispatch"><DispatchTab /></TabsContent>
           <TabsContent value="live"><LiveChatTab /></TabsContent>
@@ -612,7 +627,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ---------------- Groups ----------------
-function GroupsTab() {
+function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
   const qc = useQueryClient();
   const listFn = useServerFn(listGroups);
   const listInst = useServerFn(listInstances);
@@ -623,7 +638,7 @@ function GroupsTab() {
   const rmMember = useServerFn(removeGroupMember);
 
   const groups = useQuery({ queryKey: ["groups"], queryFn: () => listFn(), refetchInterval: 15000 });
-  const insts = useQuery({ queryKey: ["instances"], queryFn: () => listInst() });
+  const insts = useQuery({ queryKey: ["group-instances"], queryFn: () => listInst(), refetchInterval: 15000 });
 
   const [name, setName] = useState("");
   const [minD, setMinD] = useState(60);
@@ -681,6 +696,7 @@ function GroupsTab() {
                   used={new Set(g.warmup_group_members?.map((m: any) => m.instance_id))}
                   instances={insts.data ?? []}
                   onAdd={(instance_id) => addMember({ data: { group_id: g.id, instance_id } }).then(invalidate)}
+                  onCreateNumber={() => changeTab("instances")}
                 />
               </div>
               <GroupEnginePanel groupId={g.id} />
@@ -736,17 +752,21 @@ function GroupEnginePanel({ groupId }: { groupId: string }) {
 }
 
 
-function AddMemberSelect({ groupId, used, instances, onAdd }: { groupId: string; used: Set<string>; instances: any[]; onAdd: (id: string) => void }) {
+function AddMemberSelect({ groupId, used, instances, onAdd, onCreateNumber }: { groupId: string; used: Set<string>; instances: any[]; onAdd: (id: string) => void; onCreateNumber: () => void }) {
   const available = instances.filter((i) => !used.has(i.id));
   if (!instances.length) {
-    return <span className="text-xs text-muted-foreground">Nenhum número criado. Vá em <b>Números</b> e conecte pelo menos 2 chips.</span>;
+    return (
+      <Button type="button" size="sm" className="h-8 gap-1" onClick={onCreateNumber}>
+        <Plus className="h-3.5 w-3.5" /> Criar número para adicionar
+      </Button>
+    );
   }
   if (!available.length) {
-    return <span className="text-xs text-muted-foreground">Todos os seus números já estão neste grupo.</span>;
+    return <Button type="button" size="sm" variant="secondary" className="h-8" disabled>Todos os números já estão no grupo</Button>;
   }
   return (
     <Select onValueChange={(v) => onAdd(v)}>
-      <SelectTrigger className="h-7 text-xs border-dashed border-primary/50 text-primary hover:bg-primary/5 gap-1 px-2 w-auto min-w-[160px]">
+      <SelectTrigger className="h-8 text-xs border-dashed border-primary/70 text-primary hover:bg-primary/10 gap-1 px-3 w-auto min-w-[190px] bg-primary/5">
         <SelectValue placeholder="+ Adicionar número" />
       </SelectTrigger>
       <SelectContent>
