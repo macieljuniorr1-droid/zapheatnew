@@ -1,4 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   Flame,
