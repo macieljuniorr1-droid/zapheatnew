@@ -159,9 +159,20 @@ export const refreshInstance = createServerFn({ method: "POST" })
       if (s === "open") status = "connected";
       else if (s === "connecting") status = "connecting";
       else status = "disconnected";
-      phone = state?.instance?.owner ?? phone;
+      phone = extractPhone(state?.instance?.owner, state?.instance?.wuid) ?? phone;
     } catch {
       status = "disconnected";
+    }
+
+    // Quando conectado, garante que o telefone (ownerJid) esteja salvo. A v2
+    // do Evolution costuma NÃO devolver owner em /connectionState, então
+    // buscamos via /instance/fetchInstances.
+    if (status === "connected" && !phone) {
+      try {
+        const fetched = await evolution.fetchInstance(inst.evolution_instance);
+        const rec = Array.isArray(fetched) ? fetched[0] : fetched?.instance ?? fetched;
+        phone = extractPhone(rec?.ownerJid, rec?.owner, rec?.wuid, rec?.number);
+      } catch {}
     }
 
     if (status !== "connected") {
