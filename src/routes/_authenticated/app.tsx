@@ -746,7 +746,9 @@ function AddMemberSelect({ groupId, used, instances, onAdd }: { groupId: string;
   }
   return (
     <Select onValueChange={(v) => onAdd(v)}>
-      <SelectTrigger className="w-auto h-7 text-xs"><SelectValue placeholder="+ Adicionar número" /></SelectTrigger>
+      <SelectTrigger className="h-7 text-xs border-dashed border-primary/50 text-primary hover:bg-primary/5 gap-1 px-2 w-auto min-w-[160px]">
+        <SelectValue placeholder="+ Adicionar número" />
+      </SelectTrigger>
       <SelectContent>
         {available.map((i) => (<SelectItem key={i.id} value={i.id}>{i.name} {i.phone ? `(${i.phone})` : ""}</SelectItem>))}
       </SelectContent>
