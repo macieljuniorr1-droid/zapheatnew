@@ -130,7 +130,8 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             let messageContent = "";
             try {
               const { generateReply } = await import("@/lib/ai.server");
-              messageContent = await generateReply(history);
+              const pairSeed = [from.id, to.id].sort().join(":");
+              messageContent = await generateReply(history, { pairSeed });
             } catch (aiErr: any) {
               const { data: templates } = await supabaseAdmin
                 .from("message_templates")
