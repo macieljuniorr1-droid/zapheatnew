@@ -57,6 +57,10 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
             await backfillPhones(supabaseAdmin, evolution, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
+            // Chips com histórico recente de ERROR de entrega recebem um restart
+            // preventivo antes de tentar enviar de novo. Sem isso a sessão da
+            // Evolution fica dessincronizada e todo envio falha em loop.
+            await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
 
             const members = rawMembers.filter((i) => i.status === "connected" && i.phone && !i.temporarily_unavailable);
             if (members.length < 2) {
