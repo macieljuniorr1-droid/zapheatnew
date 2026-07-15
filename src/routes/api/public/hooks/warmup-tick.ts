@@ -470,12 +470,18 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
       const rec = messageId ? records.find((r: any) => r?.key?.id === messageId) : records[0];
       const updates = rec?.MessageUpdate ?? rec?.messageUpdate ?? [];
       lastStatus = updates?.[updates.length - 1]?.status ?? rec?.status ?? lastStatus;
-      if (["SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) return { delivered: true };
-      if (String(lastStatus) === "ERROR") return { delivered: false, error: "Evolution retornou ERROR para a entrega no WhatsApp" };
+      if (["SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED"].includes(String(lastStatus))) {
+        return { delivered: true, explicitError: false, ack: lastStatus };
+      }
+      if (String(lastStatus) === "ERROR") {
+        return { delivered: false, explicitError: true, error: "WhatsApp retornou ERROR para a entrega" };
+      }
     } catch (e: any) {
       lastStatus = e?.message ?? lastStatus;
     }
-    await new Promise((r) => setTimeout(r, 3000));
+    await new Promise((r) => setTimeout(r, 2500));
   }
-  return { delivered: false, error: lastStatus ? `Sem confirmação de entrega (${lastStatus})` : "Sem confirmação de entrega" };
+  // Sem ACK explícito dentro da janela: consideramos entregue (a Evolution
+  // aceitou o envio) e apenas registramos o status observado.
+  return { delivered: true, explicitError: false, ack: lastStatus ?? "PENDING" };
 }
