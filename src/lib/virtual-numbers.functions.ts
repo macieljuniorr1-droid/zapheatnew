@@ -186,7 +186,7 @@ export const purchaseVirtualNumber = createServerFn({ method: "POST" })
         price_cents: price,
         provider_cost_cents: c.provider_cost_cents,
         status: "waiting",
-        expires_at: new Date(Date.now() + 20 * 60_000).toISOString(),
+        expires_at: new Date(Date.now() + 2 * 60_000).toISOString(),
       })
       .select("id")
       .single();
@@ -268,7 +268,7 @@ export const pollVirtualNumber = createServerFn({ method: "POST" })
       return updated ?? order;
     }
 
-    // Se expirou (>20min sem código), cancela e reembolsa
+    // Se expirou (>2min sem código), cancela e reembolsa
     if (order.expires_at && new Date(order.expires_at).getTime() < Date.now()) {
       await refundOrder(order, "expired");
       const { data: refunded } = await supabaseAdmin
