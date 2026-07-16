@@ -897,7 +897,7 @@ function normalizeEvolutionRecords(payload: any): any[] {
   return [];
 }
 
-function createBroadcast() {
+function createBroadcast(userId: string) {
   return async (event: string, payload: any) => {
     try {
       await fetch(`${process.env.SUPABASE_URL}/realtime/v1/api/broadcast`, {
@@ -907,7 +907,7 @@ function createBroadcast() {
           apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
           Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
         },
-        body: JSON.stringify({ messages: [{ topic: "ai-engine-live", event, payload }] }),
+        body: JSON.stringify({ messages: [{ topic: `ai-engine-live:${userId}`, event, payload: { ...payload, user_id: userId } }] }),
       });
     } catch {}
   };
