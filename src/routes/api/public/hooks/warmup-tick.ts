@@ -337,20 +337,21 @@ async function deactivateOlderDuplicatePhones(supabaseAdmin: any, evolution: any
       .from("whatsapp_instances")
       .select("id, name, evolution_instance, phone, status, created_at, updated_at")
       .eq("phone", phone)
-      .eq("status", "connected")
       .order("created_at", { ascending: false });
 
-    const connected = (duplicates ?? []) as Chip[];
-    if (connected.length <= 1) continue;
+    const samePhone = (duplicates ?? []) as Chip[];
+    const connected = samePhone.filter((item) => item.status === "connected");
+    if (samePhone.length <= 1 && connected.length <= 1) continue;
 
     // O mesmo WhatsApp conectado em duas instâncias deixa uma sessão recebendo,
     // mas sem enviar de forma confiável. Mantemos a conexão mais nova e tiramos
     // as antigas do rodízio, encerrando a sessão duplicada no Evolution.
-    const [keeper, ...stale] = connected.sort((a, b) => {
+    const [keeper] = (connected.length ? connected : samePhone).sort((a, b) => {
       const byCreated = new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
       if (byCreated !== 0) return byCreated;
       return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime();
     });
+    const stale = samePhone.filter((item) => item.id !== keeper.id);
 
     for (const old of stale) {
       if (old.evolution_instance) {
