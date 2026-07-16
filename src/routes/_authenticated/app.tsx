@@ -9,6 +9,7 @@ import {
   createInstance,
   refreshInstance,
   deleteInstance,
+  resetInstance,
   listGroups,
   createGroup,
   toggleGroup,
@@ -336,6 +337,7 @@ function InstancesTab() {
   const createFn = useServerFn(createInstance);
   const refreshFn = useServerFn(refreshInstance);
   const deleteFn = useServerFn(deleteInstance);
+  const resetFn = useServerFn(resetInstance);
   const q = useQuery({ queryKey: ["instances-health"], queryFn: () => listFn(), refetchInterval: 15000 });
   const [name, setName] = useState("");
   const [qrOpen, setQrOpen] = useState<string | null>(null);
@@ -364,6 +366,15 @@ function InstancesTab() {
     mutationFn: (id: string) => deleteFn({ data: { id } }),
     onSuccess: () => {
       toast.success("Removido");
+      qc.invalidateQueries({ queryKey: ["instances-health"] });
+      qc.invalidateQueries({ queryKey: ["instances"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const reset = useMutation({
+    mutationFn: (id: string) => resetFn({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Sessão recriada. Escaneie o novo QR.");
       qc.invalidateQueries({ queryKey: ["instances-health"] });
       qc.invalidateQueries({ queryKey: ["instances"] });
     },
@@ -468,12 +479,22 @@ function InstancesTab() {
               />
               <p className="text-sm text-muted-foreground mt-3">Abra o WhatsApp → Aparelhos conectados → Conectar aparelho</p>
               <p className="text-xs text-muted-foreground mt-1">Se demorar mais de 1 minuto, toque em Atualizar e escaneie o novo QR.</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Se o WhatsApp mostrar <b>"não é possível conectar mais dispositivos no momento"</b>, toque em <b>Recriar sessão</b>. Também verifique em <i>WhatsApp → Aparelhos conectados</i> se há sessões antigas para desconectar (o limite do WhatsApp é 4 aparelhos por conta).
+              </p>
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">Gerando QR...</div>
           )}
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => current && refresh.mutate({ id: current.id, force: true })} disabled={refresh.isPending}>
+          <DialogFooter className="gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => current && confirm("Recriar a sessão apaga a instância no servidor e gera um QR totalmente novo. Continuar?") && reset.mutate(current.id)}
+              disabled={reset.isPending || refresh.isPending}
+            >
+              {reset.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}Recriar sessão
+            </Button>
+            <Button variant="secondary" onClick={() => current && refresh.mutate({ id: current.id, force: true })} disabled={refresh.isPending || reset.isPending}>
               <RefreshCw className="h-4 w-4 mr-1" />Atualizar
             </Button>
           </DialogFooter>

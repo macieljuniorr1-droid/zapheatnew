@@ -383,6 +383,70 @@ export const deleteInstance = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Reset "duro": apaga a instância no Evolution e recria uma nova do zero, com
+// nome novo. Serve quando o WhatsApp responde "não é possível conectar mais
+// dispositivos no momento" — geralmente causado por sessão órfã no Evolution
+// ou por múltiplas tentativas de pareamento que o WhatsApp começou a bloquear.
+// Uma instância totalmente nova zera o histórico e devolve um QR limpo.
+export const resetInstance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("id, name, evolution_instance, phone")
+      .eq("id", data.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!inst) throw new Error("Instância não encontrada");
+
+    const { evolution } = await import("@/lib/evolution.server");
+
+    // 1) Encerra sessão e apaga instância antiga no Evolution
+    if (inst.evolution_instance) {
+      try { await evolution.logout(inst.evolution_instance); } catch {}
+      try { await evolution.deleteInstance(inst.evolution_instance); } catch {}
+    }
+
+    // 2) Cria instância nova com nome único (WhatsApp vê como dispositivo
+    //    novo em vez de retomada de sessão anterior).
+    const slug = (inst.name || "chip").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20) || "chip";
+    const evolutionInstance = `${userId.slice(0, 8)}_${slug}_${Date.now().toString(36)}`;
+
+    let createResp: any = null;
+    try {
+      createResp = await evolution.createInstance(evolutionInstance);
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      if (!/already in use|already exists|409/i.test(msg)) throw e;
+    }
+
+    let qr: string | null = createResp ? await normalizeQr(createResp) : null;
+    if (!qr) {
+      try {
+        const conn = await evolution.connect(evolutionInstance);
+        qr = await normalizeQr(conn);
+      } catch {}
+    }
+
+    const { data: updated, error } = await supabase
+      .from("whatsapp_instances")
+      .update({
+        evolution_instance: evolutionInstance,
+        status: qr ? "qr" : "connecting",
+        last_qr: qr,
+        last_qr_at: qr ? new Date().toISOString() : null,
+        phone: null,
+        updated_at: new Date().toISOString(),
+      } as any)
+      .eq("id", inst.id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return updated;
+  });
+
 // ---------------- Groups ----------------
 
 export const listGroups = createServerFn({ method: "GET" })
