@@ -78,6 +78,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             await syncConnectedUserChipsIntoGroup(supabaseAdmin, g, rawMembers);
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
             await refreshConnectedPhones(supabaseAdmin, evolution, rawMembers);
+            await deactivateOlderDuplicatePhones(supabaseAdmin, evolution, rawMembers);
             rawMembers = await pruneDuplicateGroupMembers(supabaseAdmin, g, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
             // Chips com histórico recente de ERROR de entrega recebem recuperação
@@ -326,6 +327,54 @@ async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, member
         await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone, updated_at: new Date().toISOString() }).eq("id", m.id);
       }
     } catch {}
+  }
+}
+
+async function deactivateOlderDuplicatePhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
+  const phones = [...new Set(members.map((m) => normalizePhone(m.phone)).filter(Boolean))];
+  for (const phone of phones) {
+    const { data: duplicates } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("id, name, evolution_instance, phone, status, created_at, updated_at")
+      .eq("phone", phone)
+      .eq("status", "connected")
+      .order("created_at", { ascending: false });
+
+    const connected = (duplicates ?? []) as Chip[];
+    if (connected.length <= 1) continue;
+
+    // O mesmo WhatsApp conectado em duas instâncias deixa uma sessão recebendo,
+    // mas sem enviar de forma confiável. Mantemos a conexão mais nova e tiramos
+    // as antigas do rodízio, encerrando a sessão duplicada no Evolution.
+    const [keeper, ...stale] = connected.sort((a, b) => {
+      const byCreated = new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
+      if (byCreated !== 0) return byCreated;
+      return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime();
+    });
+
+    for (const old of stale) {
+      if (old.evolution_instance) {
+        try { await evolution.logout(old.evolution_instance); } catch {}
+        try { await evolution.deleteInstance(old.evolution_instance); } catch {}
+      }
+      await supabaseAdmin
+        .from("whatsapp_instances")
+        .update({ status: "disconnected", updated_at: new Date().toISOString() })
+        .eq("id", old.id);
+      await supabaseAdmin.from("warmup_group_members").delete().eq("instance_id", old.id);
+
+      const local = members.find((m) => m.id === old.id);
+      if (local) {
+        local.status = "disconnected";
+        local.temporarily_unavailable = true;
+      }
+    }
+
+    const active = members.find((m) => m.id === keeper.id);
+    if (active) {
+      active.status = "connected";
+      active.temporarily_unavailable = false;
+    }
   }
 }
 
