@@ -114,7 +114,9 @@ import {
   Zap,
   UsersRound,
   Circle,
+  AlertTriangle,
 } from "lucide-react";
+
 import {
   LineChart,
   Line,
@@ -518,12 +520,17 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
 
   return (
     <Card className={`overflow-hidden transition-colors ${
-      chip.status === "connected"
-        ? "border-green-500/60 ring-1 ring-green-500/40 bg-green-500/5"
-        : chip.is_ready
-          ? "border-emerald-500/60 ring-1 ring-emerald-500/40 bg-emerald-500/5"
-          : ""
+      chip.status !== "connected" && chip.status !== "qr" && chip.status !== "connecting"
+        ? "border-red-500/60 ring-1 ring-red-500/40 bg-red-500/5"
+        : chip.last_error && chip.last_error_at && (Date.now() - new Date(chip.last_error_at).getTime() < 30 * 60 * 1000)
+          ? "border-red-500/60 ring-1 ring-red-500/40 bg-red-500/5"
+          : chip.status === "connected"
+            ? "border-green-500/60 ring-1 ring-green-500/40 bg-green-500/5"
+            : chip.is_ready
+              ? "border-emerald-500/60 ring-1 ring-emerald-500/40 bg-emerald-500/5"
+              : ""
     }`}>
+
 
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
@@ -552,10 +559,11 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
               {chip.status === "connecting" ? "Reconectando" : "Aguardando QR"}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
-              Desconectado
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-700 dark:text-red-400 border border-red-500/40">
+              <AlertTriangle className="h-3 w-3" />DESCONECTADO
             </span>
           )}
+
           {chip.is_ready ? (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
               ✓ Pronto para disparo
@@ -586,13 +594,28 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
           <Activity className="h-3 w-3" />última atividade {lastSeen}
         </div>
 
-        {chip.last_error && chip.last_error_at && (Date.now() - new Date(chip.last_error_at).getTime() < 30 * 60 * 1000) ? (
+        {chip.status !== "connected" && chip.status !== "qr" && chip.status !== "connecting" ? (
           <div className="rounded-md border border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400 px-2 py-1.5 text-[11px] leading-snug">
-            <div className="font-semibold mb-0.5">Problema detectado no envio</div>
+            <div className="font-semibold mb-0.5 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />Número desconectado
+            </div>
+            <div className="opacity-90">
+              {chip.last_error
+                ? chip.last_error
+                : "O WhatsApp deste número caiu ou foi desvinculado. Clique em QR / Status para reconectar."}
+            </div>
+            {chip.last_error_at ? <div className="opacity-60 mt-0.5">{timeAgo(chip.last_error_at)}</div> : null}
+          </div>
+        ) : chip.last_error && chip.last_error_at && (Date.now() - new Date(chip.last_error_at).getTime() < 30 * 60 * 1000) ? (
+          <div className="rounded-md border border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400 px-2 py-1.5 text-[11px] leading-snug">
+            <div className="font-semibold mb-0.5 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />Problema detectado no envio
+            </div>
             <div className="opacity-90">{chip.last_error}</div>
             <div className="opacity-60 mt-0.5">{timeAgo(chip.last_error_at)}</div>
           </div>
         ) : null}
+
 
         <div className="flex gap-1 pt-1">
           <Button size="sm" variant="secondary" className="flex-1" onClick={onQR}>
