@@ -9,7 +9,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 9_000;
+const DELIVERY_ACK_WAIT_MS = 18_000;
 const MAX_BURST_ROUNDS = 2;
 const BURST_BUDGET_MS = 24_000;
 const REPLY_GAP_MS = 500;
@@ -32,6 +32,13 @@ type Chip = {
   updated_at?: string | null;
   temporarily_unavailable?: boolean;
   live_state?: string | null;
+};
+
+type DeliveryAck = {
+  delivered: boolean;
+  explicitError: boolean;
+  ack?: string | null;
+  error?: string | null;
 };
 
 export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
@@ -71,6 +78,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             await syncConnectedUserChipsIntoGroup(supabaseAdmin, g, rawMembers);
             await refreshLiveStatuses(supabaseAdmin, evolution, rawMembers);
             await refreshConnectedPhones(supabaseAdmin, evolution, rawMembers);
+            await deactivateOlderDuplicatePhones(supabaseAdmin, evolution, rawMembers);
             rawMembers = await pruneDuplicateGroupMembers(supabaseAdmin, g, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
             // Chips com histórico recente de ERROR de entrega recebem recuperação
@@ -319,6 +327,55 @@ async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, member
         await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone, updated_at: new Date().toISOString() }).eq("id", m.id);
       }
     } catch {}
+  }
+}
+
+async function deactivateOlderDuplicatePhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
+  const phones = [...new Set(members.map((m) => normalizePhone(m.phone)).filter(Boolean))];
+  for (const phone of phones) {
+    const { data: duplicates } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("id, name, evolution_instance, phone, status, created_at, updated_at")
+      .eq("phone", phone)
+      .order("created_at", { ascending: false });
+
+    const samePhone = (duplicates ?? []) as Chip[];
+    const connected = samePhone.filter((item) => item.status === "connected");
+    if (samePhone.length <= 1 && connected.length <= 1) continue;
+
+    // O mesmo WhatsApp conectado em duas instâncias deixa uma sessão recebendo,
+    // mas sem enviar de forma confiável. Mantemos a conexão mais nova e tiramos
+    // as antigas do rodízio, encerrando a sessão duplicada no Evolution.
+    const [keeper] = (connected.length ? connected : samePhone).sort((a, b) => {
+      const byCreated = new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
+      if (byCreated !== 0) return byCreated;
+      return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime();
+    });
+    const stale = samePhone.filter((item) => item.id !== keeper.id);
+
+    for (const old of stale) {
+      if (old.evolution_instance) {
+        try { await evolution.logout(old.evolution_instance); } catch {}
+        try { await evolution.deleteInstance(old.evolution_instance); } catch {}
+      }
+      await supabaseAdmin
+        .from("whatsapp_instances")
+        .update({ status: "disconnected", updated_at: new Date().toISOString() })
+        .eq("id", old.id);
+      await supabaseAdmin.from("warmup_group_members").delete().eq("instance_id", old.id);
+
+      const local = members.find((m) => m.id === old.id);
+      if (local) {
+        local.status = "disconnected";
+        local.temporarily_unavailable = true;
+      }
+    }
+
+    const active = members.find((m) => m.id === keeper.id);
+    if (active) {
+      active.status = "connected";
+      active.temporarily_unavailable = false;
+    }
   }
 }
 
@@ -572,7 +629,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     to_name: to.name ?? "Chip",
   });
 
-  const attemptSend = async () => {
+  const attemptSend = async (): Promise<DeliveryAck> => {
     let lastErr: any = null;
     for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS_PER_PAIR; attempt++) {
       for (const target of sendTargets) {
@@ -584,8 +641,9 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
           await new Promise((r) => setTimeout(r, typingMs));
           const sentAtMs = Date.now();
           const sendResp = await evolution.sendText(from.evolution_instance, target.number, cleanMessage);
+          const messageId = extractMessageId(sendResp);
           const ackJid = extractRemoteJid(sendResp) ?? target.remoteJid;
-          return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, extractMessageId(sendResp), cleanMessage, sentAtMs);
+          return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, messageId, cleanMessage, sentAtMs);
         } catch (sendErr: any) {
           lastErr = sendErr;
           if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
@@ -756,10 +814,16 @@ async function resolveSendTargets(evolution: any, instanceName: string, phone: s
     const digits = normalizePhone(raw);
     if (!isJid && digits !== phone) return;
     const remoteJid = isJid ? raw : `${digits}@s.whatsapp.net`;
-    const number = /@lid$/i.test(remoteJid) ? remoteJid : digits;
+    // O endpoint sendText espera número internacional em dígitos. Enviar para
+    // @lid pode ser aceito pela Evolution, mas ficar preso sem chegar no celular.
+    const number = /@lid$/i.test(remoteJid) ? phone : digits;
     if (!number || targets.some((t) => t.number === number || t.remoteJid === remoteJid)) return;
     targets.push({ number, remoteJid });
   };
+
+  // Primeiro tenta sempre o número normal. JIDs @lid ficam apenas como fallback
+  // de consulta/ACK quando o WhatsApp alterna o identificador internamente.
+  addTarget(fallback.remoteJid);
 
   try {
     const resolved = await evolution.whatsappNumbers(instanceName, [phone]);
@@ -868,7 +932,7 @@ function isClosedSessionError(message: string | null | undefined) {
 }
 
 function isDeliverySyncFailure(message: string | null | undefined) {
-  return /whatsapp retornou error/i.test(String(message ?? ""));
+  return /whatsapp retornou error|sem confirma[cç][aã]o|n[aã]o entregue|sess[aã]o pode estar dessincronizada/i.test(String(message ?? ""));
 }
 
 function isRepairableSessionFailure(message: string | null | undefined) {
@@ -1009,14 +1073,13 @@ function messageTimestampMs(record: any) {
   return raw > 1_000_000_000_000 ? raw : raw * 1000;
 }
 
-async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJid: string, messageId?: string, text?: string, sentAtMs?: number) {
+async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJid: string, messageId?: string, text?: string, sentAtMs?: number): Promise<DeliveryAck> {
   const deadline = Date.now() + DELIVERY_ACK_WAIT_MS;
   let lastStatus: string | null = null;
   let sawRecord = false;
   while (Date.now() < deadline) {
     try {
-      const found = await evolution.findMessages(instanceName, remoteJid);
-      const records = found?.messages?.records ?? found?.records ?? [];
+      const records = await findOutgoingMessageRecords(evolution, instanceName, remoteJid, messageId);
       const rec = messageId
         ? records.find((r: any) => r?.key?.id === messageId)
         : records.find((r: any) => {
@@ -1030,8 +1093,7 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
         continue;
       }
       sawRecord = true;
-      const updates = rec?.MessageUpdate ?? rec?.messageUpdate ?? [];
-      lastStatus = updates?.[updates.length - 1]?.status ?? rec?.status ?? lastStatus;
+      lastStatus = canonicalDeliveryStatus(extractDeliveryStatus(rec)) ?? lastStatus;
       const s = String(lastStatus ?? "").toUpperCase();
       // Entrega real: dispositivo do destinatário confirmou recebimento.
       if (s === "DELIVERY_ACK" || s === "READ" || s === "PLAYED") {
@@ -1060,12 +1122,74 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
       error: `mensagem não entregue ao destinatário (${lastStatus}) — sessão pode estar dessincronizada`,
     };
   }
-  // Nenhum registro apareceu no findMessages dentro da janela. Algumas versões
-  // da Evolution simplesmente não expõem o histórico; mantemos como enviado
-  // para não punir builds que não retornam ACK, mas sinalizamos no log.
+  if (!sawRecord) {
+    return {
+      delivered: false,
+      explicitError: true,
+      error: "mensagem aceita pela Evolution, mas sem confirmação real no WhatsApp — sessão pode estar dessincronizada",
+    };
+  }
   return {
-    delivered: true,
-    explicitError: false,
-    ack: lastStatus ?? "ACCEPTED",
+    delivered: false,
+    explicitError: true,
+    error: `mensagem sem confirmação de entrega (${lastStatus ?? "status desconhecido"}) — sessão pode estar dessincronizada`,
   };
+}
+
+async function findOutgoingMessageRecords(evolution: any, instanceName: string, remoteJid: string, messageId?: string) {
+  const searches: any[] = [];
+
+  // O findStatusMessage é a fonte correta do Evolution para status/ACK. Usar
+  // apenas findMessages fazia alguns envios ficarem como "sent" mesmo presos em
+  // PENDING/SERVER_ACK, principalmente quando o WhatsApp alterna @s.whatsapp.net
+  // e @lid para o mesmo contato.
+  if (messageId) {
+    try {
+      searches.push(await evolution.findStatusMessage(instanceName, { id: messageId, fromMe: true }, 50));
+    } catch {}
+  }
+  if (remoteJid) {
+    try {
+      searches.push(await evolution.findStatusMessage(instanceName, { remoteJid, fromMe: true }, 50));
+    } catch {}
+  }
+  try {
+    searches.push(await evolution.findMessages(instanceName, remoteJid));
+  } catch {}
+
+  const records: any[] = [];
+  for (const payload of searches) records.push(...normalizeEvolutionRecords(payload));
+  return records;
+}
+
+function extractDeliveryStatus(record: any) {
+  const updates = [
+    ...(Array.isArray(record?.MessageUpdate) ? record.MessageUpdate : []),
+    ...(Array.isArray(record?.messageUpdate) ? record.messageUpdate : []),
+    ...(Array.isArray(record?.updates) ? record.updates : []),
+  ];
+  const lastUpdate = updates[updates.length - 1];
+  return (
+    lastUpdate?.status ??
+    record?.status ??
+    record?.ack ??
+    record?.message?.status ??
+    record?.message?.ack ??
+    record?.data?.status ??
+    null
+  );
+}
+
+function canonicalDeliveryStatus(raw: any) {
+  if (raw == null) return null;
+  const value = String(raw).toUpperCase();
+  // Baileys/Evolution pode devolver número em vez de texto:
+  // 0 ERROR, 1 PENDING, 2 SERVER_ACK, 3 DELIVERY_ACK, 4 READ, 5 PLAYED.
+  if (value === "0") return "ERROR";
+  if (value === "1") return "PENDING";
+  if (value === "2") return "SERVER_ACK";
+  if (value === "3") return "DELIVERY_ACK";
+  if (value === "4") return "READ";
+  if (value === "5") return "PLAYED";
+  return value;
 }

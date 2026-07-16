@@ -130,6 +130,11 @@ export const evolution = {
       method: "POST",
       body: JSON.stringify({ where: { key: { remoteJid } } }),
     }),
+  findStatusMessage: (instanceName: string, where: { id?: string; remoteJid?: string; fromMe?: boolean }, limit = 20) =>
+    evoFetch(`/chat/findStatusMessage/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({ where, limit, offset: limit, page: 1 }),
+    }),
   findChats: (instanceName: string) =>
     evoFetch(`/chat/findChats/${encodeURIComponent(instanceName)}`, {
       method: "POST",
