@@ -558,9 +558,9 @@ function NetworkGraph() {
         <span className="h-1.5 w-1.5 rounded-full bg-ember animate-ember" />
         rede · 8 whatsapps ativos
       </div>
-      <div className="grid md:grid-cols-[1fr_1.2fr] gap-6 items-center">
+      <div className="grid md:grid-cols-[1fr_1.2fr] gap-6 items-center min-w-0">
         <div className="relative aspect-square max-w-[420px] mx-auto w-full text-ember">
-          <svg viewBox="0 0 420 420" className="w-full h-full">
+          <svg viewBox="0 0 420 420" className="w-full h-full" style={{ overflow: "visible" }}>
             {/* mesh lines */}
             {positions.map((p1, i) =>
               positions.slice(i + 1).map((p2, j) => (
@@ -629,7 +629,7 @@ function NetworkGraph() {
             })}
           </svg>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0 w-full">
           <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-3">
             conversas ao vivo
           </div>
@@ -638,15 +638,17 @@ function NetworkGraph() {
             return (
               <div
                 key={i}
-                className={`flex items-center gap-2 text-sm font-mono transition-all duration-500 ${
+                className={`flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm font-mono transition-all duration-500 ${
                   isNow ? "bg-ember/5 border border-ember/30" : "border border-transparent opacity-60"
                 } rounded-lg px-3 py-2`}
               >
-                <span className="text-gold shrink-0">{WHATSAPPS[c.from].name}</span>
-                <span className="text-muted-foreground/40 shrink-0">→</span>
-                <span className="text-ember shrink-0">{WHATSAPPS[c.to].name}</span>
-                <span className="text-foreground/80 truncate min-w-0">{c.text}</span>
-                {isNow && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-ember animate-ember shrink-0" />}
+                <div className="flex items-center gap-2 text-xs sm:text-sm shrink-0">
+                  <span className="text-gold shrink-0">{WHATSAPPS[c.from].name}</span>
+                  <span className="text-muted-foreground/40 shrink-0">→</span>
+                  <span className="text-ember shrink-0">{WHATSAPPS[c.to].name}</span>
+                </div>
+                <span className="text-foreground/80 truncate min-w-0 flex-1">{c.text}</span>
+                {isNow && <span className="hidden sm:inline-block h-1.5 w-1.5 rounded-full bg-ember animate-ember shrink-0" />}
               </div>
             );
           })}
