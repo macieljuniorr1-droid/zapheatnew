@@ -773,6 +773,43 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ---------------- Groups ----------------
+const WARMUP_SPEED_PROFILES = [
+  {
+    id: "safe",
+    label: "Seguro",
+    min: 180,
+    max: 300,
+    risk: "Baixo risco",
+    pace: "Aquecimento mais natural e estável",
+    className: "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400",
+  },
+  {
+    id: "balanced",
+    label: "Balanceado",
+    min: 60,
+    max: 180,
+    risk: "Risco médio",
+    pace: "Boa velocidade sem forçar demais",
+    className: "border-yellow-500/40 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
+  },
+  {
+    id: "turbo",
+    label: "Turbo",
+    min: 15,
+    max: 60,
+    risk: "Alto risco",
+    pace: "Aquece mais rápido, mas aumenta chance de queda",
+    className: "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400",
+  },
+];
+
+function warmupRiskFor(min: number, max: number) {
+  const avg = (Number(min) + Number(max)) / 2;
+  if (avg <= 45) return { label: "Alto risco de queda", percent: 88, className: "text-red-700 dark:text-red-400 bg-red-500" };
+  if (avg <= 120) return { label: "Risco médio de queda", percent: 55, className: "text-yellow-700 dark:text-yellow-400 bg-yellow-500" };
+  return { label: "Baixo risco de queda", percent: 22, className: "text-green-700 dark:text-green-400 bg-green-500" };
+}
+
 function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
   const qc = useQueryClient();
   const listFn = useServerFn(listGroups);
@@ -793,6 +830,7 @@ function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
   const [minD, setMinD] = useState(60);
   const [maxD, setMaxD] = useState(300);
   const [dl, setDl] = useState(40);
+  const risk = warmupRiskFor(minD, maxD);
 
   const create = useMutation({
     mutationFn: () => createFn({ data: { name, min_delay_seconds: minD, max_delay_seconds: maxD, daily_limit: dl } }),
@@ -805,12 +843,44 @@ function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
   return (
     <div className="mt-4 space-y-4">
       <Card>
-        <CardHeader><CardTitle>Novo grupo de aquecimento</CardTitle><CardDescription>Adicione 2 ou mais números. Eles conversam entre si 24h por dia, sem limite de mensagens. Cada número só participa de uma conversa por vez — aguarda a resposta antes de iniciar outra.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Novo grupo de aquecimento</CardTitle><CardDescription>Escolha a velocidade antes de criar: quanto mais rápido, mais rápido o número aquece — e maior o risco de queda/bloqueio. Cada número só participa de uma conversa por vez.</CardDescription></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div><Label>Nome</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
           <div><Label>Intervalo mín (s)</Label><Input type="number" value={minD} onChange={(e) => setMinD(+e.target.value)} /></div>
           <div><Label>Intervalo máx (s)</Label><Input type="number" value={maxD} onChange={(e) => setMaxD(+e.target.value)} /></div>
           <div><Label>Limite/dia (0 = ilimitado)</Label><Input type="number" value={dl} onChange={(e) => setDl(+e.target.value)} /></div>
+          <div className="col-span-2 md:col-span-4 grid gap-3 rounded-xl border border-border/70 bg-muted/25 p-3">
+            <div className="flex flex-wrap gap-2">
+              {WARMUP_SPEED_PROFILES.map((profile) => {
+                const active = minD === profile.min && maxD === profile.max;
+                return (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    onClick={() => { setMinD(profile.min); setMaxD(profile.max); }}
+                    className={`flex-1 min-w-[180px] rounded-lg border p-3 text-left transition ${active ? profile.className : "border-border bg-background hover:bg-muted/60"}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">{profile.label}</span>
+                      <span className="text-[10px] font-medium uppercase tracking-wide">{profile.min}s–{profile.max}s</span>
+                    </div>
+                    <div className="mt-1 text-xs opacity-90">{profile.risk}</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">{profile.pace}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium">Velocidade do aquecimento</span>
+                <span className={risk.className.replace("bg-", "text-")}>{risk.label}</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div className={`h-full rounded-full ${risk.className.split(" ").find((c) => c.startsWith("bg-")) ?? "bg-green-500"}`} style={{ width: `${risk.percent}%` }} />
+              </div>
+              <p className="text-[11px] text-muted-foreground">Recomendação: use Seguro ou Balanceado para números novos. O modo Turbo deve ser usado só quando você aceitar maior chance de instabilidade.</p>
+            </div>
+          </div>
           <div className="col-span-2 md:col-span-4"><Button onClick={() => name && create.mutate()} disabled={!name || create.isPending}><Plus className="h-4 w-4 mr-1" />Criar</Button></div>
         </CardContent>
       </Card>

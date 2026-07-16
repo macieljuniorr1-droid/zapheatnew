@@ -7,9 +7,9 @@ import { createFileRoute } from "@tanstack/react-router";
 // private chat; treating missing ACK as failure was taking healthy chips out of
 // the rotation.
 
-const MAX_DELAY_SECONDS = 4;
+const FALLBACK_MAX_DELAY_SECONDS = 300;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 1_200;
+const DELIVERY_ACK_WAIT_MS = 3_500;
 const MAX_BURST_ROUNDS = 1;
 const BURST_BUDGET_MS = 6_000;
 const REPLY_GAP_MS = 150;
@@ -191,7 +191,9 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
 }
 
 function normalizePhone(phone: string | null | undefined) {
-  return String(phone ?? "").replace(/\D/g, "");
+  const raw = String(phone ?? "").trim();
+  const jidUser = raw.match(/(\d{8,20})(?::\d+)?@(s\.whatsapp\.net|lid)/i)?.[1];
+  return jidUser ?? raw.replace(/\D/g, "");
 }
 
 function uniqueSendableMembers(members: Chip[]) {
@@ -302,7 +304,6 @@ async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
 async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(members.map(async (m) => {
     if (m.status !== "connected") return;
-    if (normalizePhone(m.phone)) return;
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
       const records = Array.isArray(fetched) ? fetched : Array.isArray(fetched?.instances) ? fetched.instances : [fetched?.instance ?? fetched];
@@ -321,7 +322,7 @@ async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, member
         rec?.phone,
         rec?.instance?.phone,
       ];
-      const phoneMatch = values.map((v) => String(v ?? "").match(/(\d{8,20})/)?.[1]).find(Boolean);
+      const phoneMatch = values.map((v) => normalizePhone(v)).find((v) => v.length >= 10 && v.length <= 15);
       if (phoneMatch && phoneMatch !== normalizePhone(m.phone)) {
         m.phone = phoneMatch;
         await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone, updated_at: new Date().toISOString() }).eq("id", m.id);
@@ -600,7 +601,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const typingMs = Math.min(250, Math.max(80, cleanMessage.length * 3));
   const toNumber = normalizePhone(to.phone);
-  const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, toNumber);
+  const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, to);
 
   let status = "sent";
   let errMsg: string | null = null;
@@ -616,32 +617,14 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const discoverLidTarget = async () => {
     if (lidTargetCache !== undefined) return lidTargetCache;
-    const pickJid = (raw: unknown): { number: string; remoteJid: string } | null => {
-      const jid = String(raw ?? "").trim();
-      const m = jid.match(/(\d+@lid)/i);
-      if (!m) return null;
-      const clean = m[1];
-      return { number: clean, remoteJid: clean };
-    };
     const scanRecord = (rec: any): { number: string; remoteJid: string } | null => {
-      // Evolution retorna o mapeamento @lid em campos diferentes dependendo da
-      // versão: `lid`, `jid`, `id`, `remoteJid`, `owner`. Como fallback, procura
-      // qualquer `\d+@lid` no JSON serializado do registro para não perder o
-      // destino quando o campo é aninhado.
-      const direct =
-        pickJid(rec?.lid) ??
-        pickJid(rec?.jid) ??
-        pickJid(rec?.remoteJid) ??
-        pickJid(rec?.id) ??
-        pickJid(rec?.number) ??
-        pickJid(rec?.owner);
-      if (direct) return direct;
-      try {
-        const blob = JSON.stringify(rec ?? {});
-        return pickJid(blob);
-      } catch {
-        return null;
-      }
+      // O problema real não é "enviar para @lid"; é transformar o @lid no JID
+      // telefônico correto. Versões recentes da Evolution expõem esse par em
+      // remoteJidAlt/participantAlt. Quando encontrado, reenviamos usando
+      // phone@s.whatsapp.net — nunca o @lid como destino principal.
+      const real = extractRealPhoneJid(rec, toNumber);
+      if (real) return { number: real, remoteJid: real };
+      return null;
     };
     try {
       const resolved = await evolution.whatsappNumbers(from.evolution_instance, [toNumber]);
@@ -664,7 +647,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   };
 
   const isRecipientIdError = (message: string | null | undefined) =>
-    /cannot read properties of undefined \(reading ['"]id['"]\)|reading ['"]id['"]/i.test(String(message ?? ""));
+    /cannot read properties of undefined \(reading ['"]id['"]\)|reading ['"]id['"]|exists[^\n]*false[^\n]*@lid|@lid/i.test(String(message ?? ""));
 
   const attemptSend = async (): Promise<DeliveryAck> => {
     let lastErr: any = null;
@@ -687,7 +670,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
           // Evolution 400 "reading 'id'" = Baileys não conseguiu resolver o
           // destinatário porque o contato está no cache apenas como @lid.
           // Descobrimos o JID @lid uma única vez e reenviamos.
-          if (isRecipientIdError(sendErr?.message) && !targets.some((t) => /@lid$/i.test(t.number))) {
+          if (isRecipientIdError(sendErr?.message)) {
             const lid = await discoverLidTarget();
             if (lid && !targets.some((t) => t.number === lid.number)) {
               targets.push(lid);
@@ -885,38 +868,45 @@ async function markLatestIncomingAsRead(evolution: any, instanceName: string, re
   } catch {}
 }
 
-async function resolveSendTargets(evolution: any, instanceName: string, phone: string) {
-  const fallback = { number: phone, remoteJid: `${phone}@s.whatsapp.net` };
-  // Caminho rápido: para aquecimento entre números já conhecidos, enviar pelo
-  // telefone puro é mais estável e evita gastar vários segundos consultando
-  // contatos/@lid antes de cada mensagem.
-  return [fallback];
+async function resolveSendTargets(evolution: any, instanceName: string, chip: Chip) {
+  const phone = normalizePhone(chip.phone);
+  const phoneJid = `${phone}@s.whatsapp.net`;
+  const fallback = { number: phone, remoteJid: phoneJid };
   const targets: Array<{ number: string; remoteJid: string }> = [];
-  const addTarget = (value: unknown) => {
+  const addTarget = (value: unknown, sendAs?: unknown) => {
     const raw = String(value ?? "").trim();
     if (!raw) return;
     const isJid = /@(s\.whatsapp\.net|lid)$/i.test(raw);
     const digits = normalizePhone(raw);
     if (!isJid && digits !== phone) return;
     const remoteJid = isJid ? raw : `${digits}@s.whatsapp.net`;
-    // O endpoint sendText espera número internacional em dígitos. Enviar para
-    // @lid pode ser aceito pela Evolution, mas ficar preso sem chegar no celular.
-    const number = /@lid$/i.test(remoteJid) ? phone : digits;
-    if (!number || targets.some((t) => t.number === number || t.remoteJid === remoteJid)) return;
+    const sendRaw = String(sendAs ?? "").trim();
+    const sendDigits = normalizePhone(sendRaw);
+    const number = sendRaw && /@(s\.whatsapp\.net|lid)$/i.test(sendRaw)
+      ? sendRaw
+      : sendDigits || (/@lid$/i.test(remoteJid) ? phoneJid : digits);
+    if (!number || targets.some((t) => t.number === number)) return;
     targets.push({ number, remoteJid });
   };
 
-  // Primeiro tenta sempre o número normal. JIDs @lid ficam apenas como fallback
-  // de consulta/ACK quando o WhatsApp alterna o identificador internamente.
-  addTarget(fallback.remoteJid);
+  // Primeiro tenta sempre o formato real phone@s.whatsapp.net. Este é o JID
+  // correto que contorna o bug de algumas versões da Evolution/Baileys que
+  // resolvem o contato como @lid e quebram com "reading id".
+  addTarget(phoneJid, phoneJid);
+  addTarget(phone, phone);
 
   try {
     const resolved = await evolution.whatsappNumbers(instanceName, [phone]);
     for (const rec of normalizeEvolutionRecords(resolved)) {
-      if (rec?.exists === false && !String(rec?.jid ?? rec?.number ?? "").includes("@lid")) {
+      if (rec?.exists === false && !String(rec?.jid ?? rec?.number ?? rec?.remoteJid ?? "").includes("@lid")) {
         throw new Error(`Destinatário ${phone} não está no WhatsApp`);
       }
+      const real = extractRealPhoneJid(rec, phone);
+      if (real) addTarget(real, real);
       addTarget(rec?.jid);
+      addTarget(rec?.remoteJid);
+      addTarget(rec?.remoteJidAlt, rec?.remoteJidAlt);
+      addTarget(rec?.participantAlt, rec?.participantAlt);
       addTarget(rec?.number);
       addTarget(rec?.id);
     }
@@ -931,15 +921,48 @@ async function resolveSendTargets(evolution: any, instanceName: string, phone: s
     for (const rec of normalizeEvolutionRecords(contacts)) {
       const blob = JSON.stringify(rec ?? {});
       if (!blob.includes(phone)) continue;
+      const real = extractRealPhoneJid(rec, phone);
+      if (real) addTarget(real, real);
       addTarget(rec?.id);
       addTarget(rec?.jid);
       addTarget(rec?.remoteJid);
+      addTarget(rec?.remoteJidAlt, rec?.remoteJidAlt);
+      addTarget(rec?.participantAlt, rec?.participantAlt);
       addTarget(rec?.number);
     }
   } catch {}
 
-  addTarget(fallback.remoteJid);
+  addTarget(phoneJid, phoneJid);
   return targets.length ? targets : [fallback];
+}
+
+function extractRealPhoneJid(record: any, phone: string) {
+  const candidates = [
+    record?.remoteJidAlt,
+    record?.participantAlt,
+    record?.key?.remoteJidAlt,
+    record?.key?.participantAlt,
+    record?.message?.key?.remoteJidAlt,
+    record?.message?.key?.participantAlt,
+    record?.data?.key?.remoteJidAlt,
+    record?.data?.key?.participantAlt,
+    record?.jid,
+    record?.remoteJid,
+    record?.id,
+    record?.number,
+  ];
+  for (const value of candidates) {
+    const raw = String(value ?? "").trim();
+    if (/@s\.whatsapp\.net$/i.test(raw) && normalizePhone(raw) === phone) return raw;
+    if (normalizePhone(raw) === phone) return `${phone}@s.whatsapp.net`;
+  }
+  try {
+    const blob = JSON.stringify(record ?? {});
+    const explicit = blob.match(new RegExp(`(${phone}(?::\\d+)?@s\\.whatsapp\\.net)`, "i"))?.[1];
+    if (explicit) return explicit;
+    if (blob.includes(phone)) return `${phone}@s.whatsapp.net`;
+  } catch {}
+  return null;
 }
 
 function normalizeEvolutionRecords(payload: any): any[] {
@@ -970,10 +993,10 @@ function createBroadcast(userId: string) {
 }
 
 async function scheduleNext(supabaseAdmin: any, g: any) {
-  const configuredMin = Math.max(1, Number(g.min_delay_seconds ?? MAX_DELAY_SECONDS));
-  const min = Math.min(configuredMin, MAX_DELAY_SECONDS);
-  const configuredMax = Math.max(Number(g.max_delay_seconds ?? MAX_DELAY_SECONDS), configuredMin);
-  const max = Math.max(Math.min(configuredMax, MAX_DELAY_SECONDS), min);
+  const configuredMin = Math.max(1, Number(g.min_delay_seconds ?? 60));
+  const min = Math.min(configuredMin, FALLBACK_MAX_DELAY_SECONDS);
+  const configuredMax = Math.max(Number(g.max_delay_seconds ?? FALLBACK_MAX_DELAY_SECONDS), configuredMin);
+  const max = Math.max(Math.min(configuredMax, FALLBACK_MAX_DELAY_SECONDS), min);
   const delay = Math.floor(Math.random() * (max - min + 1)) + min;
   const next = new Date(Date.now() + delay * 1000).toISOString();
   await supabaseAdmin.from("warmup_groups").update({ next_run_at: next }).eq("id", g.id);
@@ -1215,29 +1238,10 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  // Ficou preso em SERVER_ACK/PENDING: mensagem saiu do remetente mas o
-  // destinatário nunca recebeu. Tratamos como falha para acionar a recuperação
-  // de sessão em vez de mentir que foi entregue.
-  const s = String(lastStatus ?? "").toUpperCase();
-  if (sawRecord && (s === "SERVER_ACK" || s === "PENDING")) {
-    return {
-      delivered: false,
-      explicitError: true,
-      error: `mensagem não entregue ao destinatário (${lastStatus}) — sessão pode estar dessincronizada`,
-    };
-  }
-  if (!sawRecord) {
-    return {
-      delivered: false,
-      explicitError: true,
-      error: "mensagem aceita pela Evolution, mas sem confirmação real no WhatsApp — sessão pode estar dessincronizada",
-    };
-  }
-  return {
-    delivered: false,
-    explicitError: true,
-    error: `mensagem sem confirmação de entrega (${lastStatus ?? "status desconhecido"}) — sessão pode estar dessincronizada`,
-  };
+  // Se a Evolution aceitou o envio e não retornou ERROR explícito, não marcamos
+  // como falha só porque o ACK demorou. Em Baileys/Evolution o status pode ficar
+  // PENDING/SERVER_ACK por alguns segundos/minutos, especialmente em contas LID.
+  return { delivered: true, explicitError: false, ack: lastStatus ?? (sawRecord ? "ACCEPTED" : "ACCEPTED_BY_EVOLUTION") };
 }
 
 async function findOutgoingMessageRecords(evolution: any, instanceName: string, remoteJid: string, messageId?: string) {
