@@ -7,18 +7,19 @@ import { createFileRoute } from "@tanstack/react-router";
 // private chat; treating missing ACK as failure was taking healthy chips out of
 // the rotation.
 
-const MAX_DELAY_SECONDS = 8;
+const MAX_DELAY_SECONDS = 4;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 18_000;
-const MAX_BURST_ROUNDS = 2;
-const BURST_BUDGET_MS = 24_000;
-const REPLY_GAP_MS = 500;
-const FAILING_PAIR_COOLDOWN_MS = 25 * 1000;
+const DELIVERY_ACK_WAIT_MS = 4_000;
+const MAX_BURST_ROUNDS = 3;
+const BURST_BUDGET_MS = 12_000;
+const REPLY_GAP_MS = 150;
+const FAILING_PAIR_COOLDOWN_MS = 8 * 1000;
 const SENDER_REPAIR_WINDOW_MS = 20 * 60 * 1000;
 const PAIR_STREAK_WINDOW_MS = 8 * 60 * 1000;
 const PAIR_STREAK_LIMIT = 4;
-const MAX_SEND_ATTEMPTS_PER_PAIR = 3;
-const SESSION_SETTLE_MS = 1_100;
+const MAX_SEND_ATTEMPTS_PER_PAIR = 1;
+const SESSION_SETTLE_MS = 250;
+const AI_GENERATION_TIMEOUT_MS = 2_200;
 
 type Chip = {
   id: string;
@@ -65,11 +66,11 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
           .limit(50);
         if (gErr) return Response.json({ error: gErr.message }, { status: 500 });
 
-        const results: any[] = [];
-        for (const g of groups ?? []) {
+        const dueGroups = pickOneDueGroupPerUser(groups ?? []);
+        const settled = await Promise.all(dueGroups.map(async (g: any) => {
           try {
             const claimed = await claimGroupForThisTick(supabaseAdmin, g, now);
-            if (!claimed) continue;
+            if (!claimed) return [];
 
             let rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
@@ -81,10 +82,10 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             await deactivateOlderDuplicatePhones(supabaseAdmin, evolution, rawMembers);
             rawMembers = await pruneDuplicateGroupMembers(supabaseAdmin, g, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
-            // Chips com histórico recente de ERROR de entrega recebem recuperação
-            // preventiva antes de tentar enviar de novo. Sem isso a sessão fica
-            // aberta no painel, mas dessincronizada para envio.
-            await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
+            // A recuperação pesada acontece apenas quando o remetente falha no
+            // envio. Fazer restart preventivo em todos os chips a cada tick
+            // deixava o motor "pensando" por muito tempo e misturava atrasos de
+            // um usuário no motor do outro.
 
             // Enquanto a instância estiver marcada como conectada e pareada no
             // painel, ela entra no rodízio. A checagem definitiva de sessão
@@ -93,16 +94,15 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone));
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
-              results.push({
+              return [{
                 group: (g as any).id,
                 status: "waiting",
                 reason: "menos de 2 números disponíveis neste ciclo",
                 connected_in_platform: rawMembers.filter((i) => i.status === "connected").length,
-              });
-              continue;
+              }];
             }
 
-            const broadcast = createBroadcast();
+            const broadcast = createBroadcast((g as any).user_id);
             const groupResults: any[] = [];
             const deadline = Date.now() + BURST_BUDGET_MS;
 
@@ -127,11 +127,13 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             }
 
             await scheduleNext(supabaseAdmin, g);
-            results.push(...groupResults);
+            return groupResults;
           } catch (e: any) {
-            results.push({ group: (g as any).id, error: e?.message ?? "erro" });
+            return [{ group: (g as any).id, user: (g as any).user_id, error: e?.message ?? "erro" }];
           }
-        }
+        }));
+
+        const results = settled.flat();
 
         return Response.json({ ok: true, processed: results.length, results });
       },
@@ -139,11 +141,24 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
   },
 });
 
+function pickOneDueGroupPerUser(groups: any[]) {
+  const byUser = new Map<string, any>();
+  for (const group of groups) {
+    const userId = String(group.user_id ?? "");
+    if (!userId) continue;
+    const current = byUser.get(userId);
+    if (!current || new Date(group.next_run_at ?? 0).getTime() < new Date(current.next_run_at ?? 0).getTime()) {
+      byUser.set(userId, group);
+    }
+  }
+  return [...byUser.values()];
+}
+
 async function claimGroupForThisTick(supabaseAdmin: any, group: any, nowIso: string) {
   // O cron chama este endpoint a cada ~30s. Um ciclo pode levar alguns segundos
   // esperando ACK real do WhatsApp; sem essa reserva, duas execuções pegam o
   // mesmo grupo ao mesmo tempo e criam envios duplicados/race na Evolution.
-  const holdUntil = new Date(Date.now() + 60_000).toISOString();
+  const holdUntil = new Date(Date.now() + 18_000).toISOString();
   const { data, error } = await supabaseAdmin
     .from("warmup_groups")
     .update({ next_run_at: holdUntil })
