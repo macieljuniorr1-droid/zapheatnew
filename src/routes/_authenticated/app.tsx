@@ -445,15 +445,6 @@ function InstancesTab() {
       </Card>
 
       {total > 0 && (
-        <Card className="border-primary/20">
-          <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3 text-sm">
-              <span className="font-semibold">{total} chips</span>
-              <span className="text-muted-foreground">·</span>
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" />{counts.connected} conectados</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-      {total > 0 && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
