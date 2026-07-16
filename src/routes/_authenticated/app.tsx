@@ -896,7 +896,7 @@ function AddMemberSelect({ groupId, used, instances, onAdd, onCreateNumber }: { 
 }
 
 // ---------------- Motor IA (antes: Templates) ----------------
-function TemplatesTab() {
+function TemplatesTab({ userId }: { userId?: string }) {
   const qc = useQueryClient();
   const listFn = useServerFn(listTemplates);
   const addFn = useServerFn(addTemplate);
