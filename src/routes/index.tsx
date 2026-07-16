@@ -517,9 +517,9 @@ function NetworkGraph() {
                   isNow ? "bg-ember/5 border border-ember/30" : "border border-transparent opacity-60"
                 } rounded-lg px-3 py-2`}
               >
-                <span className="text-gold shrink-0">{CHIPS[c.from].name}</span>
+                <span className="text-gold shrink-0">{WHATSAPPS[c.from].name}</span>
                 <span className="text-muted-foreground/40 shrink-0">→</span>
-                <span className="text-ember shrink-0">{CHIPS[c.to].name}</span>
+                <span className="text-ember shrink-0">{WHATSAPPS[c.to].name}</span>
                 <span className="text-foreground/80 truncate min-w-0">{c.text}</span>
                 {isNow && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-ember animate-ember shrink-0" />}
               </div>
