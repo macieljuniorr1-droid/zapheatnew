@@ -7,9 +7,9 @@ import { createFileRoute } from "@tanstack/react-router";
 // private chat; treating missing ACK as failure was taking healthy chips out of
 // the rotation.
 
-const MAX_DELAY_SECONDS = 4;
+const FALLBACK_MAX_DELAY_SECONDS = 300;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 1_200;
+const DELIVERY_ACK_WAIT_MS = 3_500;
 const MAX_BURST_ROUNDS = 1;
 const BURST_BUDGET_MS = 6_000;
 const REPLY_GAP_MS = 150;
@@ -1011,10 +1011,10 @@ function createBroadcast(userId: string) {
 }
 
 async function scheduleNext(supabaseAdmin: any, g: any) {
-  const configuredMin = Math.max(1, Number(g.min_delay_seconds ?? MAX_DELAY_SECONDS));
-  const min = Math.min(configuredMin, MAX_DELAY_SECONDS);
+  const configuredMin = Math.max(1, Number(g.min_delay_seconds ?? 60));
+  const min = Math.min(configuredMin, FALLBACK_MAX_DELAY_SECONDS);
   const configuredMax = Math.max(Number(g.max_delay_seconds ?? MAX_DELAY_SECONDS), configuredMin);
-  const max = Math.max(Math.min(configuredMax, MAX_DELAY_SECONDS), min);
+  const max = Math.max(Math.min(configuredMax, FALLBACK_MAX_DELAY_SECONDS), min);
   const delay = Math.floor(Math.random() * (max - min + 1)) + min;
   const next = new Date(Date.now() + delay * 1000).toISOString();
   await supabaseAdmin.from("warmup_groups").update({ next_run_at: next }).eq("id", g.id);
