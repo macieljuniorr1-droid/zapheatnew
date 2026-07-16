@@ -518,12 +518,17 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
 
   return (
     <Card className={`overflow-hidden transition-colors ${
-      chip.status === "connected"
-        ? "border-green-500/60 ring-1 ring-green-500/40 bg-green-500/5"
-        : chip.is_ready
-          ? "border-emerald-500/60 ring-1 ring-emerald-500/40 bg-emerald-500/5"
-          : ""
+      chip.status !== "connected" && chip.status !== "qr" && chip.status !== "connecting"
+        ? "border-red-500/60 ring-1 ring-red-500/40 bg-red-500/5"
+        : chip.last_error && chip.last_error_at && (Date.now() - new Date(chip.last_error_at).getTime() < 30 * 60 * 1000)
+          ? "border-red-500/60 ring-1 ring-red-500/40 bg-red-500/5"
+          : chip.status === "connected"
+            ? "border-green-500/60 ring-1 ring-green-500/40 bg-green-500/5"
+            : chip.is_ready
+              ? "border-emerald-500/60 ring-1 ring-emerald-500/40 bg-emerald-500/5"
+              : ""
     }`}>
+
 
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
