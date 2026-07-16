@@ -1030,7 +1030,7 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
         continue;
       }
       sawRecord = true;
-      lastStatus = extractDeliveryStatus(rec) ?? lastStatus;
+      lastStatus = canonicalDeliveryStatus(extractDeliveryStatus(rec)) ?? lastStatus;
       const s = String(lastStatus ?? "").toUpperCase();
       // Entrega real: dispositivo do destinatário confirmou recebimento.
       if (s === "DELIVERY_ACK" || s === "READ" || s === "PLAYED") {
@@ -1057,6 +1057,13 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
       delivered: false,
       explicitError: true,
       error: `mensagem não entregue ao destinatário (${lastStatus}) — sessão pode estar dessincronizada`,
+    };
+  }
+  if (messageId && !sawRecord) {
+    return {
+      delivered: false,
+      explicitError: true,
+      error: "mensagem aceita pela Evolution, mas sem confirmação no WhatsApp — sessão pode estar dessincronizada",
     };
   }
   // Nenhum registro apareceu no findMessages dentro da janela. Algumas versões
@@ -1111,4 +1118,18 @@ function extractDeliveryStatus(record: any) {
     record?.data?.status ??
     null
   );
+}
+
+function canonicalDeliveryStatus(raw: any) {
+  if (raw == null) return null;
+  const value = String(raw).toUpperCase();
+  // Baileys/Evolution pode devolver número em vez de texto:
+  // 0 ERROR, 1 PENDING, 2 SERVER_ACK, 3 DELIVERY_ACK, 4 READ, 5 PLAYED.
+  if (value === "0") return "ERROR";
+  if (value === "1") return "PENDING";
+  if (value === "2") return "SERVER_ACK";
+  if (value === "3") return "DELIVERY_ACK";
+  if (value === "4") return "READ";
+  if (value === "5") return "PLAYED";
+  return value;
 }
