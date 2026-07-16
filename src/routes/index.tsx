@@ -387,15 +387,15 @@ function Faq({ q, a }: { q: string; a: string }) {
   );
 }
 
-const CHIPS = [
-  { name: "Chip 01", phone: "+55 11 9•••• 4821" },
-  { name: "Chip 02", phone: "+55 21 9•••• 7392" },
-  { name: "Chip 03", phone: "+55 31 9•••• 2154" },
-  { name: "Chip 04", phone: "+55 41 9•••• 8867" },
-  { name: "Chip 05", phone: "+55 51 9•••• 3319" },
-  { name: "Chip 06", phone: "+55 61 9•••• 5502" },
-  { name: "Chip 07", phone: "+55 71 9•••• 6238" },
-  { name: "Chip 08", phone: "+55 85 9•••• 1147" },
+const WHATSAPPS = [
+  { name: "WhatsApp 01", phone: "+55 11 9•••• 4821" },
+  { name: "WhatsApp 02", phone: "+55 21 9•••• 7392" },
+  { name: "WhatsApp 03", phone: "+55 31 9•••• 2154" },
+  { name: "WhatsApp 04", phone: "+55 41 9•••• 8867" },
+  { name: "WhatsApp 05", phone: "+55 51 9•••• 3319" },
+  { name: "WhatsApp 06", phone: "+55 61 9•••• 5502" },
+  { name: "WhatsApp 07", phone: "+55 71 9•••• 6238" },
+  { name: "WhatsApp 08", phone: "+55 85 9•••• 1147" },
 ];
 
 const CONVO_SCRIPT: Array<{ from: number; to: number; text: string }> = [
