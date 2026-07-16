@@ -590,6 +590,129 @@ export type Database = {
         }
         Relationships: []
       }
+      virtual_number_orders: {
+        Row: {
+          activation_id: string | null
+          country_code: string
+          country_label: string
+          created_at: string
+          error_message: string | null
+          expires_at: string | null
+          finished_at: string | null
+          full_sms: string | null
+          id: string
+          phone_number: string | null
+          price_cents: number
+          provider: string
+          provider_cost_cents: number | null
+          received_at: string | null
+          service: string
+          sms_code: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          activation_id?: string | null
+          country_code: string
+          country_label: string
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string | null
+          finished_at?: string | null
+          full_sms?: string | null
+          id?: string
+          phone_number?: string | null
+          price_cents: number
+          provider?: string
+          provider_cost_cents?: number | null
+          received_at?: string | null
+          service?: string
+          sms_code?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          activation_id?: string | null
+          country_code?: string
+          country_label?: string
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string | null
+          finished_at?: string | null
+          full_sms?: string | null
+          id?: string
+          phone_number?: string | null
+          price_cents?: number
+          provider?: string
+          provider_cost_cents?: number | null
+          received_at?: string | null
+          service?: string
+          sms_code?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wallet_transactions: {
+        Row: {
+          amount_cents: number
+          balance_after_cents: number
+          created_at: string
+          description: string
+          id: string
+          kind: string
+          metadata: Json
+          reference_id: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          balance_after_cents: number
+          created_at?: string
+          description: string
+          id?: string
+          kind: string
+          metadata?: Json
+          reference_id?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          balance_after_cents?: number
+          created_at?: string
+          description?: string
+          id?: string
+          kind?: string
+          metadata?: Json
+          reference_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wallets: {
+        Row: {
+          balance_cents: number
+          created_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance_cents?: number
+          created_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance_cents?: number
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       warmup_group_members: {
         Row: {
           group_id: string
@@ -825,6 +948,20 @@ export type Database = {
       }
       messages_sent_today: { Args: { _user_id: string }; Returns: number }
       user_number_quota: { Args: { _user_id: string }; Returns: number }
+      wallet_apply: {
+        Args: {
+          _amount_cents: number
+          _description: string
+          _kind: string
+          _metadata?: Json
+          _reference_id?: string
+          _user_id: string
+        }
+        Returns: {
+          balance_cents: number
+          tx_id: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "seller"

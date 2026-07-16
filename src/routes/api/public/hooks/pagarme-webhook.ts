@@ -48,6 +48,47 @@ export const Route = createFileRoute("/api/public/hooks/pagarme-webhook")({
 
         // Descobre a number_subscription pelo metadata, subscription_id ou code
         const metadata = data?.metadata ?? data?.order?.metadata ?? data?.subscription?.metadata ?? {};
+
+        // ---- WALLET TOP-UP ----------------------------------------------------
+        // Recargas de carteira são orders com metadata.wallet_topup="true".
+        // São creditadas ao pagar e não têm number_subscription associada.
+        if (metadata?.wallet_topup === "true" || metadata?.wallet_topup === true) {
+          if (eventType === "order.paid" || eventType === "charge.paid") {
+            const uid: string | null = metadata.user_id ?? null;
+            const amt = Number(metadata.amount_cents ?? data?.amount ?? data?.order?.amount ?? 0);
+            const orderId: string = data?.id ?? data?.order?.id ?? eventId;
+
+            if (uid && amt > 0) {
+              // Idempotência: só credita se ainda não creditamos essa order
+              const { data: dup } = await supabaseAdmin
+                .from("wallet_transactions")
+                .select("id")
+                .eq("reference_id", orderId)
+                .eq("kind", "topup")
+                .maybeSingle();
+              if (!dup) {
+                await supabaseAdmin.rpc("wallet_apply", {
+                  _user_id: uid,
+                  _kind: "topup",
+                  _amount_cents: amt,
+                  _description: `Recarga via Pix • R$ ${(amt / 100).toFixed(2)}`,
+                  _reference_id: orderId,
+                  _metadata: { pagarme_event_id: eventId },
+                });
+              }
+            }
+          }
+          await supabaseAdmin.from("billing_events").insert({
+            pagarme_event_id: eventId,
+            event_type: eventType,
+            user_id: metadata.user_id ?? null,
+            number_subscription_id: null,
+            amount_cents: typeof data?.amount === "number" ? data.amount : null,
+            payload: event,
+          });
+          return new Response("ok (wallet)");
+        }
+
         const pagarmeSubId: string | null =
           data?.subscription?.id ?? data?.subscription_id ?? null;
 
