@@ -670,7 +670,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
           // Evolution 400 "reading 'id'" = Baileys não conseguiu resolver o
           // destinatário porque o contato está no cache apenas como @lid.
           // Descobrimos o JID @lid uma única vez e reenviamos.
-          if (isRecipientIdError(sendErr?.message) && !targets.some((t) => t.number === `${toNumber}@s.whatsapp.net`)) {
+          if (isRecipientIdError(sendErr?.message)) {
             const lid = await discoverLidTarget();
             if (lid && !targets.some((t) => t.number === lid.number)) {
               targets.push(lid);
