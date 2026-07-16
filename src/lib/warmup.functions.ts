@@ -1250,6 +1250,83 @@ export const getUserDailySeries = createServerFn({ method: "GET" })
     }));
   });
 
+// Relatório por data — filtra warmup_logs por período e escopo (user | instance | group)
+// e agrega por dia. Escopo "instance"/"group" só retorna dados se o alvo pertencer ao user.
+export const getWarmupReport = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((raw: unknown) =>
+    z
+      .object({
+        from: z.string(),
+        to: z.string(),
+        scope: z.enum(["user", "instance", "group"]).default("user"),
+        targetId: z.string().uuid().optional(),
+      })
+      .parse(raw),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const from = new Date(data.from);
+    const to = new Date(data.to);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) throw new Error("Datas inválidas");
+    // fim do dia inclusivo
+    to.setHours(23, 59, 59, 999);
+
+    const sel = (s: string): string => s;
+    let q = supabase
+      .from("warmup_logs")
+      .select(sel("created_at, status, from_instance_id, to_instance_id, group_id"))
+      .eq("user_id", userId)
+      .gte("created_at", from.toISOString())
+      .lte("created_at", to.toISOString())
+      .limit(50000);
+
+    if (data.scope === "instance" && data.targetId) {
+      q = q.or(`from_instance_id.eq.${data.targetId},to_instance_id.eq.${data.targetId}`);
+    } else if (data.scope === "group" && data.targetId) {
+      q = q.eq("group_id", data.targetId);
+    }
+
+    interface Row { created_at: string; status: string }
+    const { data: rows, error } = await q.returns<Row[]>();
+    if (error) throw error;
+
+    const map = new Map<string, { sent: number; failed: number }>();
+    // preencher todos os dias no intervalo
+    const day = new Date(from);
+    day.setHours(0, 0, 0, 0);
+    const end = new Date(to);
+    end.setHours(0, 0, 0, 0);
+    while (day <= end) {
+      map.set(day.toISOString().slice(0, 10), { sent: 0, failed: 0 });
+      day.setDate(day.getDate() + 1);
+    }
+    let totalSent = 0;
+    let totalFailed = 0;
+    for (const r of rows ?? []) {
+      const k = r.created_at.slice(0, 10);
+      const cur = map.get(k) ?? { sent: 0, failed: 0 };
+      if (r.status === "sent") { cur.sent++; totalSent++; }
+      else if (r.status === "failed") { cur.failed++; totalFailed++; }
+      map.set(k, cur);
+    }
+    const series = Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, v]) => ({ day, sent: v.sent, failed: v.failed }));
+    const total = totalSent + totalFailed;
+    return {
+      series,
+      totals: {
+        sent: totalSent,
+        failed: totalFailed,
+        total,
+        successRate: total > 0 ? Math.round((totalSent / total) * 100) : 0,
+      },
+    };
+  });
+
+
+
 // ---------------- Admin: platform-wide dashboards ----------------
 
 export const adminPlatformDashboard = createServerFn({ method: "GET" })
