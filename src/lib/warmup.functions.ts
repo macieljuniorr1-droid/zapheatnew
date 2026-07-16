@@ -1371,3 +1371,38 @@ export const adminPlatformDashboard = createServerFn({ method: "GET" })
       },
     };
   });
+
+// ---------------- IA (modelos disponíveis por grupo) ----------------
+
+export const AI_MODEL_CATALOG = [
+  { id: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (padrão)", vendor: "Google", note: "Rápido, natural em PT-BR" },
+  { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash", vendor: "Google", note: "Mais recente, boa fluidez" },
+  { id: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)", vendor: "Google", note: "Reasoning forte" },
+  { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", vendor: "Google", note: "Multimodal robusto" },
+  { id: "openai/gpt-5-mini", label: "GPT-5 Mini", vendor: "OpenAI", note: "Equilíbrio custo/qualidade" },
+  { id: "openai/gpt-5", label: "GPT-5", vendor: "OpenAI", note: "All-rounder de ponta" },
+  { id: "openai/gpt-5.4-mini", label: "GPT-5.4 Mini", vendor: "OpenAI", note: "Rápido e afiado" },
+  { id: "openai/gpt-5.5", label: "GPT-5.5", vendor: "OpenAI", note: "Máxima qualidade" },
+  { id: "openai/gpt-5.6-terra", label: "GPT-5.6 Terra", vendor: "OpenAI", note: "GPT-5.6 balanceado" },
+  { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", vendor: "OpenAI", note: "GPT-5.6 rápido" },
+] as const;
+
+const VALID_AI_MODEL_IDS = new Set<string>(AI_MODEL_CATALOG.map((m) => m.id));
+
+export const listAiModels = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => AI_MODEL_CATALOG.map((m) => ({ ...m })));
+
+export const setGroupAiModel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i) => z.object({ id: z.string().uuid(), ai_model: z.string().min(1).max(120) }).parse(i))
+  .handler(async ({ data, context }) => {
+    if (!VALID_AI_MODEL_IDS.has(data.ai_model)) throw new Error("Modelo de IA não suportado");
+    const { error } = await context.supabase
+      .from("warmup_groups")
+      .update({ ai_model: data.ai_model })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
