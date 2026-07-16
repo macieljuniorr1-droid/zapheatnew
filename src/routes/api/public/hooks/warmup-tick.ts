@@ -607,29 +607,13 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   }
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
-  const messageContent = await generateMessage(supabaseAdmin, group.user_id, from.id, to.id, history);
+  const messageContent = await generateMessageFast(supabaseAdmin, group.user_id, from.id, to.id, history);
   const cleanMessage = String(messageContent ?? "").trim();
   if (!cleanMessage) {
     return await logPairResult(supabaseAdmin, group, from, to, "mensagem vazia", "failed", "mensagem vazia: Evolution exige o campo text");
   }
 
-  const senderOpen = await ensureOpenSession(evolution, from.evolution_instance, true);
-  if (!senderOpen) {
-    // Não aborta o envio só porque a checagem preventiva não confirmou "open".
-    // Em sessões Baileys zumbis o WhatsApp ainda recebe push, mas o endpoint de
-    // estado oscila; o teste real é tentar enviar e, se falhar, recuperar e
-    // repetir. Antes daqui o motor registrava "remetente não abriu sessão" sem
-    // sequer chamar /message/sendText, deixando chips como o 2196 só recebendo.
-    await repairSenderSession(evolution, from.evolution_instance, normalizePhone(to.phone));
-  }
-
-  // O destinatário não precisa estar com o socket da Evolution aberto para
-  // RECEBER a mensagem no WhatsApp; só precisa quando chegar a vez dele enviar.
-  // Antes isso derrubava envios saudáveis porque uma checagem preventiva do
-  // destinatário falhava. Agora tentamos recuperar em background e seguimos.
-  ensureOpenSession(evolution, to.evolution_instance, false).catch(() => false);
-
-  const typingMs = Math.min(900, Math.max(250, cleanMessage.length * 10));
+  const typingMs = Math.min(250, Math.max(80, cleanMessage.length * 3));
   const toNumber = normalizePhone(to.phone);
   const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, toNumber);
 
@@ -649,9 +633,9 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS_PER_PAIR; attempt++) {
       for (const target of sendTargets) {
         try {
-          await ensureOpenSession(evolution, from.evolution_instance, attempt > 0);
-          await markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid);
-          await primeChatSession(evolution, from.evolution_instance, target.number);
+          if (attempt > 0) await ensureOpenSession(evolution, from.evolution_instance, true);
+          markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid).catch(() => null);
+          primeChatSession(evolution, from.evolution_instance, target.number).catch(() => null);
           await evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs);
           await new Promise((r) => setTimeout(r, typingMs));
           const sentAtMs = Date.now();
@@ -784,6 +768,14 @@ async function getPairHistory(supabaseAdmin: any, groupId: string, fromId: strin
   }));
 }
 
+async function generateMessageFast(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[]) {
+  return await withTimeout(
+    generateMessage(supabaseAdmin, userId, fromId, toId, history),
+    AI_GENERATION_TIMEOUT_MS,
+    () => fallbackMessage(history),
+  );
+}
+
 async function generateMessage(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[]) {
   try {
     const { generateReply } = await import("@/lib/ai.server");
@@ -805,6 +797,28 @@ async function generateMessage(supabaseAdmin: any, userId: string, fromId: strin
       .limit(200);
     return templates?.length ? templates[Math.floor(Math.random() * templates.length)].content : "oi";
   }
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback()), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function fallbackMessage(history: any[]) {
+  const last = String(history?.[history.length - 1]?.content ?? "").toLowerCase();
+  const replies = last.includes("?")
+    ? ["pior que sim kkk e vc?", "acho que sim viu, e por aí?", "demais kkk como tá aí?", "não sei não hein kkk e tu?"]
+    : ["kkkk sério?", "nossa mano kkk", "eita, aí é complicado", "pior que faz sentido", "tô ligado kkk", "aí sim hein"];
+  return replies[Math.floor(Math.random() * replies.length)];
 }
 
 async function markLatestIncomingAsRead(evolution: any, instanceName: string, remoteJid: string) {
