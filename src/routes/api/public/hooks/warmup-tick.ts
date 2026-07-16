@@ -1000,6 +1000,25 @@ function isRepairableSessionFailure(message: string | null | undefined) {
   return isDeliverySyncFailure(message) || /remetente n[aã]o abriu sess[aã]o|destinat[aá]rio n[aã]o confirmou sess[aã]o aberta|sender has not opened session|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
 }
 
+function friendlyErrorMessage(raw: string | null | undefined): string | null {
+  const msg = String(raw ?? "").trim();
+  if (!msg) return null;
+  if (/cannot read properties of undefined \(reading ['"]id['"]\)|reading ['"]id['"]/i.test(msg))
+    return "WhatsApp não conseguiu localizar o destinatário (contato @lid). O motor tentou reconciliar automaticamente.";
+  if (/whatsapp retornou error/i.test(msg))
+    return "WhatsApp recusou a entrega. A sessão do número pode estar dessincronizada — tente Recriar sessão.";
+  if (/sem confirma[cç][aã]o|n[aã]o entregue|dessincronizada/i.test(msg))
+    return "Mensagem enviada, mas o WhatsApp não confirmou a entrega. Sessão pode estar instável.";
+  if (/sender has not opened session|remetente n[aã]o abriu sess[aã]o|no sessions|sessionerror/i.test(msg))
+    return "Sessão do WhatsApp fechada no servidor. O motor está tentando reabrir.";
+  if (/connection closed|stream errored|1006|timed out/i.test(msg))
+    return "Conexão com o WhatsApp caiu. O motor está reconectando.";
+  if (/n[aã]o est[aá] no whatsapp/i.test(msg))
+    return "Destinatário não está no WhatsApp.";
+  if (msg.length > 160) return msg.slice(0, 157) + "…";
+  return msg;
+}
+
 async function normalizeQr(payload: any): Promise<string | null> {
   const firstString = (...values: any[]) => values.find((v) => typeof v === "string" && v.trim().length > 0)?.trim();
   const asImage = (raw?: string | null) => {
