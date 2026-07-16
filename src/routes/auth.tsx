@@ -16,7 +16,7 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Entrar — ZapHeat" },
-      { name: "description", content: "Acesse o ZapHeat para aquecer seus chips de WhatsApp com IA." },
+      { name: "description", content: "Acesse o ZapHeat para aquecer seus whatsapps com IA." },
     ],
   }),
   component: AuthPage,
