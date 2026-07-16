@@ -1230,6 +1230,49 @@ function TemplatesTab({ userId }: { userId?: string }) {
         </CardContent>
       </Card>
 
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Grupos ativos</div>
+              <Activity className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{activeGroups}<span className="text-sm text-muted-foreground font-normal ml-1">/ {gs.length}</span></div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">gerando mensagens agora</div>
+          </CardContent>
+        </Card>
+        <Card className="border-green-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Msgs geradas</div>
+              <Sparkles className="h-4 w-4 text-green-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{totalGenerated}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{msgsLastMinute} no último minuto</div>
+          </CardContent>
+        </Card>
+        <Card className="border-orange-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Modelos de IA</div>
+              <Zap className="h-4 w-4 text-orange-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{modelsInUse}<span className="text-sm text-muted-foreground font-normal ml-1">/ {totalModels}</span></div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">em uso · disponíveis no motor</div>
+          </CardContent>
+        </Card>
+        <Card className="border-sky-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Última msg</div>
+              <MessageSquare className="h-4 w-4 text-sky-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{lastAt ? timeAgo(lastAt) : "—"}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{thinking ? "IA pensando…" : "motor aguardando ciclo"}</div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Painel ao vivo */}
       <Card>
         <CardHeader className="pb-3">
