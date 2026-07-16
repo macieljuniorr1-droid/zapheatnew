@@ -268,7 +268,7 @@ export const pollVirtualNumber = createServerFn({ method: "POST" })
       return updated ?? order;
     }
 
-    // Se expirou (>20min sem código), cancela e reembolsa
+    // Se expirou (>2min sem código), cancela e reembolsa
     if (order.expires_at && new Date(order.expires_at).getTime() < Date.now()) {
       await refundOrder(order, "expired");
       const { data: refunded } = await supabaseAdmin
