@@ -106,14 +106,42 @@ export const listInstances = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     const now = Date.now();
+    const errorMap = await loadLatestErrorByInstance(context.supabase, (data ?? []).map((i: any) => i.id));
     return (data ?? []).map((i: any) => {
       const started = i.warmup_started_at ? new Date(i.warmup_started_at).getTime() : null;
       const days_warming = started ? Math.floor((now - started) / (1000 * 60 * 60 * 24)) : 0;
       const days_remaining = started ? Math.max(0, WARMUP_DAYS_REQUIRED - days_warming) : WARMUP_DAYS_REQUIRED;
       const is_ready = started !== null && days_warming >= WARMUP_DAYS_REQUIRED && i.status === "connected";
-      return { ...i, days_warming, days_remaining, is_ready };
+      const e = errorMap.get(i.id) ?? null;
+      return { ...i, days_warming, days_remaining, is_ready, last_error: e?.error ?? null, last_error_at: e?.created_at ?? null };
     });
   });
+
+async function loadLatestErrorByInstance(supabase: any, ids: string[]) {
+  const map = new Map<string, { error: string; created_at: string }>();
+  if (!ids.length) return map;
+  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: logs } = await supabase
+    .from("warmup_logs")
+    .select("from_instance_id, status, error, created_at")
+    .in("from_instance_id", ids)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  for (const row of logs ?? []) {
+    const key = row.from_instance_id as string;
+    if (!key) continue;
+    if (map.has(key)) continue; // já capturado o mais recente
+    // Se o mais recente foi um sucesso, o número está OK: não mostrar erro antigo
+    if (row.status === "sent") { map.set(key, { error: "", created_at: row.created_at }); continue; }
+    if (row.status === "failed" && row.error) {
+      map.set(key, { error: String(row.error), created_at: row.created_at });
+    }
+  }
+  // Remover entradas que representam sucesso (marcadas com error vazio)
+  for (const [k, v] of map) if (!v.error) map.delete(k);
+  return map;
+}
 
 export const createInstance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
