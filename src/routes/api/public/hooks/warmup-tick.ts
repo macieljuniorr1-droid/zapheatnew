@@ -10,8 +10,8 @@ import { createFileRoute } from "@tanstack/react-router";
 const MAX_DELAY_SECONDS = 4;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 const DELIVERY_ACK_WAIT_MS = 4_000;
-const MAX_BURST_ROUNDS = 3;
-const BURST_BUDGET_MS = 12_000;
+const MAX_BURST_ROUNDS = 1;
+const BURST_BUDGET_MS = 6_000;
 const REPLY_GAP_MS = 150;
 const FAILING_PAIR_COOLDOWN_MS = 8 * 1000;
 const SENDER_REPAIR_WINDOW_MS = 20 * 60 * 1000;
@@ -316,8 +316,9 @@ async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
 
 
 async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
-  for (const m of members) {
+  await Promise.all(members.map(async (m) => {
     if (m.status !== "connected") continue;
+    if (normalizePhone(m.phone)) return;
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
       const records = Array.isArray(fetched) ? fetched : Array.isArray(fetched?.instances) ? fetched.instances : [fetched?.instance ?? fetched];
@@ -342,7 +343,7 @@ async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, member
         await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone, updated_at: new Date().toISOString() }).eq("id", m.id);
       }
     } catch {}
-  }
+  }));
 }
 
 async function deactivateOlderDuplicatePhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
@@ -356,17 +357,17 @@ async function deactivateOlderDuplicatePhones(supabaseAdmin: any, evolution: any
 
     const samePhone = (duplicates ?? []) as Chip[];
     const connected = samePhone.filter((item) => item.status === "connected");
-    if (samePhone.length <= 1 && connected.length <= 1) continue;
+    if (connected.length <= 1) continue;
 
     // O mesmo WhatsApp conectado em duas instâncias deixa uma sessão recebendo,
     // mas sem enviar de forma confiável. Mantemos a conexão mais nova e tiramos
     // as antigas do rodízio, encerrando a sessão duplicada no Evolution.
-    const [keeper] = (connected.length ? connected : samePhone).sort((a, b) => {
+    const [keeper] = connected.sort((a, b) => {
       const byCreated = new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
       if (byCreated !== 0) return byCreated;
       return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime();
     });
-    const stale = samePhone.filter((item) => item.id !== keeper.id);
+    const stale = connected.filter((item) => item.id !== keeper.id);
 
     for (const old of stale) {
       if (old.evolution_instance) {
