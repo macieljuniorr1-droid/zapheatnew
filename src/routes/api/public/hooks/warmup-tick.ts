@@ -1066,6 +1066,11 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
       error: "mensagem aceita pela Evolution, mas sem confirmação real no WhatsApp — sessão pode estar dessincronizada",
     };
   }
+  return {
+    delivered: false,
+    explicitError: true,
+    error: `mensagem sem confirmação de entrega (${lastStatus ?? "status desconhecido"}) — sessão pode estar dessincronizada`,
+  };
 }
 
 async function findOutgoingMessageRecords(evolution: any, instanceName: string, remoteJid: string, messageId?: string) {
