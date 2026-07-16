@@ -592,7 +592,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   }
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
-  const messageContent = await generateMessageFast(supabaseAdmin, group.user_id, from.id, to.id, history);
+  const messageContent = await generateMessageFast(supabaseAdmin, group.user_id, from.id, to.id, history, group.ai_model ?? null);
   const cleanMessage = String(messageContent ?? "").trim();
   if (!cleanMessage) {
     return await logPairResult(supabaseAdmin, group, from, to, "mensagem vazia", "failed", "mensagem vazia: Evolution exige o campo text");
