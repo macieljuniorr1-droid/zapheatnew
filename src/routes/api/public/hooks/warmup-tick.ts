@@ -876,7 +876,7 @@ function isClosedSessionError(message: string | null | undefined) {
 }
 
 function isDeliverySyncFailure(message: string | null | undefined) {
-  return /whatsapp retornou error/i.test(String(message ?? ""));
+  return /whatsapp retornou error|sem confirma[cç][aã]o|n[aã]o entregue|sess[aã]o pode estar dessincronizada/i.test(String(message ?? ""));
 }
 
 function isRepairableSessionFailure(message: string | null | undefined) {
