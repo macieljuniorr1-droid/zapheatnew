@@ -165,7 +165,11 @@ function Landing() {
           </div>
         </section>
 
+        {/* MASS DISPATCH */}
+        <MassDispatchSection />
+
         {/* PLANS */}
+
         <section id="plans" className="max-w-6xl mx-auto px-6 py-20">
           <div className="text-center max-w-2xl mx-auto mb-14">
             <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">planos</div>
