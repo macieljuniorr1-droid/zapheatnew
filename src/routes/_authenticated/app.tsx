@@ -133,7 +133,9 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip as ChartTooltip,
+  Legend,
   ResponsiveContainer,
+
   PieChart,
   Pie,
   Cell,
