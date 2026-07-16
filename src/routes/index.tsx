@@ -500,17 +500,6 @@ function PlanCard({
   );
 }
 
-function Faq({ q, a }: { q: string; a: string }) {
-  return (
-    <details className="panel rounded-xl p-5 group">
-      <summary className="cursor-pointer font-medium flex items-center justify-between list-none">
-        <span>{q}</span>
-        <span className="text-ember font-mono text-xl group-open:rotate-45 transition-transform">+</span>
-      </summary>
-      <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{a}</p>
-    </details>
-  );
-}
 
 const WHATSAPPS = [
   { name: "WhatsApp 01", phone: "+55 11 9•••• 4821" },
