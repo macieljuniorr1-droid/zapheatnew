@@ -1059,21 +1059,13 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
       error: `mensagem não entregue ao destinatário (${lastStatus}) — sessão pode estar dessincronizada`,
     };
   }
-  if (messageId && !sawRecord) {
+  if (!sawRecord) {
     return {
       delivered: false,
       explicitError: true,
-      error: "mensagem aceita pela Evolution, mas sem confirmação no WhatsApp — sessão pode estar dessincronizada",
+      error: "mensagem aceita pela Evolution, mas sem confirmação real no WhatsApp — sessão pode estar dessincronizada",
     };
   }
-  // Nenhum registro apareceu no findMessages dentro da janela. Algumas versões
-  // da Evolution simplesmente não expõem o histórico; mantemos como enviado
-  // para não punir builds que não retornam ACK, mas sinalizamos no log.
-  return {
-    delivered: true,
-    explicitError: false,
-    ack: lastStatus ?? "ACCEPTED",
-  };
 }
 
 async function findOutgoingMessageRecords(evolution: any, instanceName: string, remoteJid: string, messageId?: string) {
