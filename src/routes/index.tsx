@@ -693,7 +693,7 @@ function SiteFooter() {
               <img src={zapheatLogo.url} alt="ZapHeat" className="h-9 w-auto" />
             </Link>
             <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
-              A plataforma brasileira para aquecer chips de WhatsApp com IA generativa e disparar em massa com rotação inteligente entre números.
+              A plataforma brasileira para aquecer whatsapps com IA generativa e disparar em massa com rotação inteligente entre números.
             </p>
             <a
               href="https://wa.me/212786573855"
