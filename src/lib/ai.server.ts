@@ -54,12 +54,32 @@ function pickByHash<T>(arr: T[], seed: string): T {
   return arr[h % arr.length];
 }
 
+// Catálogo de IAs disponíveis para o motor de aquecimento. Todas rodam via
+// Lovable AI Gateway (sem chave do usuário). Se o usuário selecionar um modelo
+// não catalogado, cai no default (Gemini 3 Flash).
+export const AI_MODELS = [
+  { id: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (padrão)", vendor: "Google", note: "Rápido, natural em PT-BR" },
+  { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash", vendor: "Google", note: "Mais recente, boa fluidez" },
+  { id: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)", vendor: "Google", note: "Reasoning forte" },
+  { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", vendor: "Google", note: "Multimodal robusto" },
+  { id: "openai/gpt-5-mini", label: "GPT-5 Mini", vendor: "OpenAI", note: "Equilíbrio custo/qualidade" },
+  { id: "openai/gpt-5", label: "GPT-5", vendor: "OpenAI", note: "All-rounder de ponta" },
+  { id: "openai/gpt-5.4-mini", label: "GPT-5.4 Mini", vendor: "OpenAI", note: "Rápido e afiado" },
+  { id: "openai/gpt-5.5", label: "GPT-5.5", vendor: "OpenAI", note: "Máxima qualidade" },
+  { id: "openai/gpt-5.6-terra", label: "GPT-5.6 Terra", vendor: "OpenAI", note: "GPT-5.6 balanceado" },
+  { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", vendor: "OpenAI", note: "GPT-5.6 rápido" },
+] as const;
+
+export const DEFAULT_AI_MODEL = "google/gemini-3-flash-preview";
+const VALID_MODEL_IDS = new Set(AI_MODELS.map((m) => m.id));
+
 export async function generateReply(
   history: { from: string; content: string }[],
-  opts?: { pairSeed?: string; fromName?: string | null; toName?: string | null },
+  opts?: { pairSeed?: string; fromName?: string | null; toName?: string | null; model?: string | null },
 ): Promise<string> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY ausente");
+  const requested = opts?.model && VALID_MODEL_IDS.has(opts.model) ? opts.model : DEFAULT_AI_MODEL;
 
   const seed = opts?.pairSeed ?? String(Math.random());
   const persona = pickByHash(PERSONAS, seed);
