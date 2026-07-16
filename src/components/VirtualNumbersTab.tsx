@@ -166,13 +166,20 @@ export function VirtualNumbersTab() {
               return (
                 <div
                   key={c.code}
-                  className="border rounded-lg p-3 flex items-center justify-between gap-3 hover:bg-muted/30 transition"
+                  className={`border rounded-lg p-3 flex items-center justify-between gap-3 hover:bg-muted/30 transition ${
+                    c.code === "73" ? "border-primary/50 bg-primary/5" : ""
+                  }`}
                 >
                   <div className="min-w-0">
                     <div className="font-medium flex items-center gap-2">
                       <span className="text-xl">{c.flag}</span>
                       <span className="truncate">{c.label}</span>
                     </div>
+                    {c.code === "73" && (
+                      <Badge variant="default" className="mt-1 text-[10px]">
+                        Exclusivo WhatsApp
+                      </Badge>
+                    )}
                     <div className="text-xs text-muted-foreground mt-1">
                       {c.available > 0 ? (
                         <>Disponível: <span className="text-foreground">{c.available}</span></>
