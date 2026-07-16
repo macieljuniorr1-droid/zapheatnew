@@ -389,12 +389,20 @@ function InstancesTab() {
   });
 
   const current = q.data?.find((i: any) => i.id === qrOpen);
-  const counts = { hot: 0, warm: 0, cold: 0, connected: 0 };
+  const counts = { hot: 0, warm: 0, cold: 0, connected: 0, ready: 0, msgs7d: 0, msgsTotal: 0 };
   for (const i of q.data ?? []) {
     counts[(i as any).temperature as "hot" | "warm" | "cold"]++;
     if (i.status === "connected") counts.connected++;
+    if ((i as any).is_ready) counts.ready++;
+    counts.msgs7d += Number((i as any).msgs_7d ?? 0);
+    counts.msgsTotal += Number((i as any).msgs_total ?? 0);
   }
   const total = q.data?.length ?? 0;
+  const disconnected = Math.max(0, total - counts.connected);
+  const readyPct = total ? Math.round((counts.ready / total) * 100) : 0;
+  const hotPct = total ? Math.round((counts.hot / total) * 100) : 0;
+  const warmPct = total ? Math.round((counts.warm / total) * 100) : 0;
+  const coldPct = total ? Math.max(0, 100 - hotPct - warmPct) : 0;
 
   // Polling rápido enquanto o modal do QR está aberto: chama Evolution a cada 2s
   // para detectar a conexão imediatamente após o celular escanear.
