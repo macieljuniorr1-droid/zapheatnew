@@ -27,9 +27,9 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
-      { name: "description", content: "Aqueça seus chips de WhatsApp com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
+      { name: "description", content: "Aqueça seus whatsapps com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
       { property: "og:title", content: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
-      { property: "og:description", content: "Aqueça seus chips de WhatsApp com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
+      { property: "og:description", content: "Aqueça seus whatsapps com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
       { property: "og:type", content: "website" },
     ],
   }),
@@ -81,7 +81,7 @@ function Landing() {
             <span className="gradient-ember-text">com conversas de verdade.</span>
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Uma IA gera diálogos naturais entre seus próprios chips — bate-papo do dia a dia, gírias, tempo de resposta humano. Seus números aquecem 24/7 sem parecer robôs.
+            Uma IA gera diálogos naturais entre seus próprios whatsapps — bate-papo do dia a dia, gírias, tempo de resposta humano. Seus números aquecem 24/7 sem parecer robôs.
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
             <Link to="/auth">
@@ -112,10 +112,10 @@ function Landing() {
               <Activity className="h-3.5 w-3.5 text-ember/70 ml-auto" />
             </div>
             <div className="mt-4 space-y-3 font-mono text-sm">
-              <ConsoleLine time="10:42" from="Chip 01" to="Chip 02" text="oi tudo bem?" />
-              <ConsoleLine time="10:44" from="Chip 02" to="Chip 01" text="tudo tranquilo e vc?" />
-              <ConsoleLine time="10:47" from="Chip 03" to="Chip 01" text="bora almoçar amanhã?" />
-              <ConsoleLine time="10:49" from="Chip 01" to="Chip 03" text="bora sim, que horas" fresh />
+              <ConsoleLine time="10:42" from="WhatsApp 01" to="WhatsApp 02" text="oi tudo bem?" />
+              <ConsoleLine time="10:44" from="WhatsApp 02" to="WhatsApp 01" text="tudo tranquilo e vc?" />
+              <ConsoleLine time="10:47" from="WhatsApp 03" to="WhatsApp 01" text="bora almoçar amanhã?" />
+              <ConsoleLine time="10:49" from="WhatsApp 01" to="WhatsApp 03" text="bora sim, que horas" fresh />
             </div>
           </div>
         </section>
@@ -130,12 +130,12 @@ function Landing() {
           </div>
         </section>
 
-        {/* NETWORK — 8 chips conversando */}
+        {/* NETWORK — 8 whatsapps conversando */}
         <section className="max-w-6xl mx-auto px-6 py-16">
           <div className="text-center max-w-2xl mx-auto mb-10">
             <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">rede viva</div>
             <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
-              Seus chips conversando entre si, 24 horas por dia
+              Seus whatsapps conversando entre si, 24 horas por dia
             </h2>
             <p className="mt-3 text-muted-foreground">
               A IA orquestra pares aleatórios: enquanto um par troca mensagens, os outros aguardam sua vez — igual a um grupo de amigos no zap.
@@ -157,7 +157,7 @@ function Landing() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Feature icon={<Bot />} title="IA em cada mensagem" desc="Gemini 3 gera cada resposta lendo as últimas 10 mensagens da conversa. Nada de textos pré-prontos." />
-            <Feature icon={<Users2 />} title="Múltiplos chips, um grupo" desc="Coloque 3, 5 ou 30 números. Pares aleatórios conversam entre si, criando fluxos orgânicos e cruzados." />
+            <Feature icon={<Users2 />} title="Múltiplos whatsapps, um grupo" desc="Coloque 3, 5 ou 30 números. Pares aleatórios conversam entre si, criando fluxos orgânicos e cruzados." />
             <Feature icon={<Shield />} title="Ritmo humano" desc="Delays randômicos, mensagens curtas, gírias, emojis raros. Reduz drasticamente a chance de banimento." />
             <Feature icon={<Smartphone />} title="Conexão via QR Code" desc="Escaneia com o WhatsApp e pronto. Sem apps extras, sem gambiarra." />
             <Feature icon={<Zap />} title="Chat ao vivo" desc="Acompanhe cada conversa em tempo real no painel, como se fosse um WhatsApp Web centralizado." />
@@ -177,7 +177,7 @@ function Landing() {
               Preço simples: pague por número
             </h2>
             <p className="mt-3 text-muted-foreground">
-              Teste grátis com 2 números. Quando escalar, é só <b className="text-foreground">R$ 25 por número/mês</b> — sem limite de quantos chips você conecta. Inclui IA generativa, chat ao vivo e delays humanos configuráveis (do segundo ao dia inteiro).
+              Teste grátis com 2 números. Quando escalar, é só <b className="text-foreground">R$ 25 por número/mês</b> — sem limite de quantos whatsapps você conecta. Inclui IA generativa, chat ao vivo e delays humanos configuráveis (do segundo ao dia inteiro).
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
@@ -202,7 +202,7 @@ function Landing() {
             />
           </div>
           <p className="text-center text-xs text-muted-foreground font-mono mt-8">
-            exemplo: 10 chips = R$ 250/mês · 30 chips = R$ 750/mês · <a className="text-ember underline decoration-dotted" href="https://wa.me/212786573855" target="_blank" rel="noopener noreferrer">fale com o suporte no WhatsApp</a>
+            exemplo: 10 whatsapps = R$ 250/mês · 30 whatsapps = R$ 750/mês · <a className="text-ember underline decoration-dotted" href="https://wa.me/212786573855" target="_blank" rel="noopener noreferrer">fale com o suporte no WhatsApp</a>
           </p>
         </section>
 
@@ -387,15 +387,15 @@ function Faq({ q, a }: { q: string; a: string }) {
   );
 }
 
-const CHIPS = [
-  { name: "Chip 01", phone: "+55 11 9•••• 4821" },
-  { name: "Chip 02", phone: "+55 21 9•••• 7392" },
-  { name: "Chip 03", phone: "+55 31 9•••• 2154" },
-  { name: "Chip 04", phone: "+55 41 9•••• 8867" },
-  { name: "Chip 05", phone: "+55 51 9•••• 3319" },
-  { name: "Chip 06", phone: "+55 61 9•••• 5502" },
-  { name: "Chip 07", phone: "+55 71 9•••• 6238" },
-  { name: "Chip 08", phone: "+55 85 9•••• 1147" },
+const WHATSAPPS = [
+  { name: "WhatsApp 01", phone: "+55 11 9•••• 4821" },
+  { name: "WhatsApp 02", phone: "+55 21 9•••• 7392" },
+  { name: "WhatsApp 03", phone: "+55 31 9•••• 2154" },
+  { name: "WhatsApp 04", phone: "+55 41 9•••• 8867" },
+  { name: "WhatsApp 05", phone: "+55 51 9•••• 3319" },
+  { name: "WhatsApp 06", phone: "+55 61 9•••• 5502" },
+  { name: "WhatsApp 07", phone: "+55 71 9•••• 6238" },
+  { name: "WhatsApp 08", phone: "+55 85 9•••• 1147" },
 ];
 
 const CONVO_SCRIPT: Array<{ from: number; to: number; text: string }> = [
@@ -422,8 +422,8 @@ function NetworkGraph() {
   const cx = 210;
   const cy = 210;
   const r = 160;
-  const positions = CHIPS.map((_, i) => {
-    const angle = (i / CHIPS.length) * Math.PI * 2 - Math.PI / 2;
+  const positions = WHATSAPPS.map((_, i) => {
+    const angle = (i / WHATSAPPS.length) * Math.PI * 2 - Math.PI / 2;
     return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
   });
 
@@ -431,7 +431,7 @@ function NetworkGraph() {
     <div className="panel rounded-2xl p-6 md:p-8 relative overflow-hidden">
       <div className="absolute top-4 left-4 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-ember z-10">
         <span className="h-1.5 w-1.5 rounded-full bg-ember animate-ember" />
-        rede · 8 chips ativos
+        rede · 8 whatsapps ativos
       </div>
       <div className="grid md:grid-cols-[1fr_1.2fr] gap-6 items-center">
         <div className="relative aspect-square max-w-[420px] mx-auto w-full text-ember">
@@ -517,9 +517,9 @@ function NetworkGraph() {
                   isNow ? "bg-ember/5 border border-ember/30" : "border border-transparent opacity-60"
                 } rounded-lg px-3 py-2`}
               >
-                <span className="text-gold shrink-0">{CHIPS[c.from].name}</span>
+                <span className="text-gold shrink-0">{WHATSAPPS[c.from].name}</span>
                 <span className="text-muted-foreground/40 shrink-0">→</span>
-                <span className="text-ember shrink-0">{CHIPS[c.to].name}</span>
+                <span className="text-ember shrink-0">{WHATSAPPS[c.to].name}</span>
                 <span className="text-foreground/80 truncate min-w-0">{c.text}</span>
                 {isNow && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-ember animate-ember shrink-0" />}
               </div>
@@ -555,13 +555,13 @@ function MassDispatchSection() {
             <span className="gradient-ember-text">rotação inteligente de números.</span>
           </h2>
           <p className="text-lg text-muted-foreground leading-relaxed max-w-xl">
-            Depois que seus chips estão aquecidos, a mesma plataforma dispara em escala — só que sem colocar todos os ovos na mesma cesta. Cada mensagem sai de um número diferente, com delays humanos e variação de texto.
+            Depois que seus whatsapps estão aquecidos, a mesma plataforma dispara em escala — só que sem colocar todos os ovos na mesma cesta. Cada mensagem sai de um número diferente, com delays humanos e variação de texto.
           </p>
           <ul className="space-y-4 pt-2">
             <DispatchBullet
               icon={<Shuffle className="h-4 w-4" />}
               title="Variação automática de números"
-              desc="A cada envio o sistema alterna entre os chips ativos — 3, 10 ou 50 números disparando como uma equipe."
+              desc="A cada envio o sistema alterna entre os whatsapps ativos — 3, 10 ou 50 números disparando como uma equipe."
             />
             <DispatchBullet
               icon={<Sparkles className="h-4 w-4" />}
@@ -654,7 +654,7 @@ function MassDispatchSection() {
                 <div className="font-display text-lg font-bold gradient-ember-text">12.482</div>
               </div>
               <div className="rounded-lg border border-border/50 bg-background/40 p-3">
-                <div className="text-[10px] font-mono uppercase text-muted-foreground">chips em rotação</div>
+                <div className="text-[10px] font-mono uppercase text-muted-foreground">whatsapps em rotação</div>
                 <div className="font-display text-lg font-bold">12</div>
               </div>
               <div className="rounded-lg border border-border/50 bg-background/40 p-3">
@@ -693,7 +693,7 @@ function SiteFooter() {
               <img src={zapheatLogo.url} alt="ZapHeat" className="h-9 w-auto" />
             </Link>
             <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
-              A plataforma brasileira para aquecer chips de WhatsApp com IA generativa e disparar em massa com rotação inteligente entre números.
+              A plataforma brasileira para aquecer whatsapps com IA generativa e disparar em massa com rotação inteligente entre números.
             </p>
             <a
               href="https://wa.me/212786573855"
