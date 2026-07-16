@@ -924,8 +924,9 @@ function TemplatesTab({ userId }: { userId?: string }) {
   // realtime: escuta broadcasts do cron ("typing_start" antes de gerar, "typing_end" ao enviar)
   // + insert em warmup_logs pra aparecer a mensagem já enviada
   useEffect(() => {
+    if (!userId) return;
     const channel = supabase
-      .channel("ai-engine-live")
+      .channel(`ai-engine-live:${userId}`)
       .on("broadcast", { event: "typing_start" }, ({ payload }) => {
         setThinking({ from: payload?.from_name ?? "Chip", to: payload?.to_name ?? "Chip" });
       })
@@ -953,7 +954,7 @@ function TemplatesTab({ userId }: { userId?: string }) {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [userId]);
 
   const totalGenerated = liveLogs.length;
   const lastAt = liveLogs[0]?.created_at ?? null;
