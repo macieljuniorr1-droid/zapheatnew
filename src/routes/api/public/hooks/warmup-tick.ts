@@ -720,6 +720,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     await markInstance(supabaseAdmin, to.id, "connected");
   }
 
+  const friendlyErr = friendlyErrorMessage(errMsg);
   await supabaseAdmin.from("warmup_logs").insert({
     user_id: group.user_id,
     group_id: group.id,
@@ -727,8 +728,9 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     to_instance_id: to.id,
     content: cleanMessage,
     status,
-    error: errMsg,
+    error: friendlyErr,
   });
+  if (status === "failed") errMsg = friendlyErr;
 
   if (status === "failed") {
     await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, errMsg);
