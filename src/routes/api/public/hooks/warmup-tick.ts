@@ -191,7 +191,9 @@ async function syncConnectedUserChipsIntoGroup(supabaseAdmin: any, group: any, r
 }
 
 function normalizePhone(phone: string | null | undefined) {
-  return String(phone ?? "").replace(/\D/g, "");
+  const raw = String(phone ?? "").trim();
+  const jidUser = raw.match(/(\d{8,20})(?::\d+)?@(s\.whatsapp\.net|lid)/i)?.[1];
+  return jidUser ?? raw.replace(/\D/g, "");
 }
 
 function uniqueSendableMembers(members: Chip[]) {
@@ -302,7 +304,6 @@ async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
 async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(members.map(async (m) => {
     if (m.status !== "connected") return;
-    if (normalizePhone(m.phone)) return;
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
       const records = Array.isArray(fetched) ? fetched : Array.isArray(fetched?.instances) ? fetched.instances : [fetched?.instance ?? fetched];
@@ -321,7 +322,7 @@ async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, member
         rec?.phone,
         rec?.instance?.phone,
       ];
-      const phoneMatch = values.map((v) => String(v ?? "").match(/(\d{8,20})/)?.[1]).find(Boolean);
+      const phoneMatch = values.map((v) => normalizePhone(v)).find((v) => v.length >= 10 && v.length <= 15);
       if (phoneMatch && phoneMatch !== normalizePhone(m.phone)) {
         m.phone = phoneMatch;
         await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone, updated_at: new Date().toISOString() }).eq("id", m.id);
@@ -600,7 +601,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const typingMs = Math.min(250, Math.max(80, cleanMessage.length * 3));
   const toNumber = normalizePhone(to.phone);
-  const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, toNumber);
+  const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, to);
 
   let status = "sent";
   let errMsg: string | null = null;
@@ -664,7 +665,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   };
 
   const isRecipientIdError = (message: string | null | undefined) =>
-    /cannot read properties of undefined \(reading ['"]id['"]\)|reading ['"]id['"]/i.test(String(message ?? ""));
+    /cannot read properties of undefined \(reading ['"]id['"]\)|reading ['"]id['"]|exists[^\n]*false[^\n]*@lid|@lid/i.test(String(message ?? ""));
 
   const attemptSend = async (): Promise<DeliveryAck> => {
     let lastErr: any = null;
