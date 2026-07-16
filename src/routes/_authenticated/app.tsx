@@ -117,6 +117,9 @@ import {
   UsersRound,
   Circle,
   AlertTriangle,
+  Search,
+  Filter,
+  TrendingDown,
 } from "lucide-react";
 
 import {
@@ -1787,11 +1790,13 @@ function AdminTab() {
   const getCfgFn = useServerFn(adminGetEvolutionConfig);
   const setCfgFn = useServerFn(adminUpdateEvolutionConfig);
   const statsFn = useServerFn(adminGetStats);
+  const summaryFn = useServerFn(adminFinancialSummary);
 
-  const stats = useQuery({ queryKey: ["admin-stats"], queryFn: () => statsFn(), refetchInterval: 30000 });
-  const users = useQuery({ queryKey: ["admin-users"], queryFn: () => usersFn() });
-  const plans = useQuery({ queryKey: ["plans"], queryFn: () => plansFn() });
-  const cfg = useQuery({ queryKey: ["evo-cfg"], queryFn: () => getCfgFn() });
+  const stats = useQuery({ queryKey: ["admin-stats"], queryFn: () => statsFn(), refetchInterval: 30000, staleTime: 15000 });
+  const users = useQuery({ queryKey: ["admin-users"], queryFn: () => usersFn(), staleTime: 30000 });
+  const plans = useQuery({ queryKey: ["plans"], queryFn: () => plansFn(), staleTime: 5 * 60000 });
+  const cfg = useQuery({ queryKey: ["evo-cfg"], queryFn: () => getCfgFn(), staleTime: 60000 });
+  const fin = useQuery({ queryKey: ["admin-fin-summary"], queryFn: () => summaryFn(), refetchInterval: 30000, staleTime: 15000 });
 
   const [url, setUrl] = useState("");
   const [key, setKey] = useState("");
@@ -1806,109 +1811,194 @@ function AdminTab() {
     onError: (e: any) => toast.error(e?.message ?? "Falha ao salvar configuração"),
   });
 
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientPlanFilter, setClientPlanFilter] = useState<string>("all");
+
   const s = stats.data;
+  const f = fin.data;
   const brl = (cents: number) => `R$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
+  // Derived insights
+  const activePaying = s?.revenue.activePaying ?? 0;
+  const mrr = s?.revenue.mrrCents ?? 0;
+  const arpu = activePaying > 0 ? mrr / activePaying : 0;
+  const msgsWeek = s?.messages.week ?? 0;
+  const failedWeek = s?.messages.failedWeek ?? 0;
+  const successRate = msgsWeek > 0 ? Math.round(((msgsWeek - failedWeek) / msgsWeek) * 100) : 0;
+  const canceled30 = f?.canceled_last_30d ?? 0;
+  const churnBase = activePaying + canceled30;
+  const churnRate = churnBase > 0 ? Math.round((canceled30 / churnBase) * 1000) / 10 : 0;
+
+  const filteredUsers = (users.data ?? []).filter((u: any) => {
+    if (clientPlanFilter !== "all") {
+      const pn = u.subscriptions?.[0]?.plan?.name ?? "—";
+      if (pn !== clientPlanFilter) return false;
+    }
+    if (!clientSearch.trim()) return true;
+    const q = clientSearch.toLowerCase();
+    return (
+      (u.email ?? "").toLowerCase().includes(q) ||
+      (u.full_name ?? "").toLowerCase().includes(q) ||
+      (u.phone ?? "").toLowerCase().includes(q) ||
+      (u.company ?? "").toLowerCase().includes(q)
+    );
+  });
+  const planNames = Array.from(new Set((users.data ?? []).map((u: any) => u.subscriptions?.[0]?.plan?.name ?? "—")));
+
   return (
-    <div className="mt-4 space-y-6">
-      <AdminPlatformDashboard />
+    <div className="mt-4">
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="flex flex-wrap h-auto">
+          <TabsTrigger value="overview"><BarChart3 className="h-4 w-4 mr-1" />Visão geral</TabsTrigger>
+          <TabsTrigger value="finance"><CreditCard className="h-4 w-4 mr-1" />Financeiro</TabsTrigger>
+          <TabsTrigger value="clients"><Users2 className="h-4 w-4 mr-1" />Clientes</TabsTrigger>
+          <TabsTrigger value="chips"><Smartphone className="h-4 w-4 mr-1" />Chips</TabsTrigger>
+          <TabsTrigger value="config"><Settings className="h-4 w-4 mr-1" />Configurações</TabsTrigger>
+        </TabsList>
 
+        {/* --- Visão geral --- */}
+        <TabsContent value="overview" className="space-y-6">
+          <AdminPlatformDashboard />
 
-      {/* KPIs de faturamento */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="MRR" value={s ? brl(s.revenue.mrrCents) as any : "—"} icon={<CreditCard />} />
-        <StatCard label="ARR estimado" value={s ? brl(s.revenue.arrCents) as any : "—"} icon={<TrendingUpIcon />} />
-        <StatCard label="Assinantes pagantes" value={s?.revenue.activePaying ?? 0} icon={<Users2 />} />
-        <StatCard label="Clientes totais" value={s?.users.total ?? 0} icon={<Users2 />} />
-      </div>
-
-      {/* Atividade */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Novos hoje" value={s?.users.today ?? 0} icon={<Sparkles />} />
-        <StatCard label="Novos 7d" value={s?.users.week ?? 0} icon={<Sparkles />} />
-        <StatCard label="Chips conectados" value={`${s?.instances.connected ?? 0} / ${s?.instances.total ?? 0}` as any} icon={<Smartphone />} />
-        <StatCard label="Grupos ativos" value={s?.groupsActive ?? 0} icon={<Users2 />} />
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard label="Mensagens hoje" value={s?.messages.today ?? 0} icon={<MessageSquare />} />
-        <StatCard label="Mensagens 7d" value={s?.messages.week ?? 0} icon={<MessageSquare />} />
-        <StatCard label="Falhas 7d" value={s?.messages.failedWeek ?? 0} icon={<ScrollText />} />
-      </div>
-
-      {/* Distribuição de planos */}
-      <Card>
-        <CardHeader><CardTitle>Distribuição por plano</CardTitle></CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {s && Object.entries(s.planBreakdown).map(([name, count]) => (
-              <Badge key={name} variant="secondary" className="text-sm">{name}: {count as number}</Badge>
-            ))}
-            {!s && <div className="text-sm text-muted-foreground">Carregando…</div>}
+          {/* KPIs principais + derivados */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard label="MRR" value={s ? (brl(mrr) as any) : "—"} icon={<CreditCard />} />
+            <StatCard label="ARR estimado" value={s ? (brl(s.revenue.arrCents) as any) : "—"} icon={<TrendingUp />} />
+            <StatCard label="ARPU" value={s ? (brl(Math.round(arpu)) as any) : "—"} icon={<TrendingUp />} />
+            <StatCard label="Churn 30d" value={f ? (`${churnRate}%` as any) : "—"} icon={<TrendingDown />} />
           </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader><CardTitle>Configuração da Evolution API</CardTitle><CardDescription>URL e chave do seu servidor Evolution API self-hosted.</CardDescription></CardHeader>
-        <CardContent className="space-y-3">
-          <div><Label>URL atual</Label><div className="text-xs text-muted-foreground">{cfg.data?.api_url || "(não configurada)"}</div></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div><Label>Nova URL</Label><Input placeholder="https://evo.seudominio.com" value={url} onChange={(e) => setUrl(e.target.value)} /></div>
-            <div><Label>API Key</Label><Input type="password" placeholder="********" value={key} onChange={(e) => setKey(e.target.value)} /></div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard label="Assinantes pagantes" value={activePaying} icon={<Users2 />} />
+            <StatCard label="Clientes totais" value={s?.users.total ?? 0} icon={<Users2 />} />
+            <StatCard label="Novos hoje" value={s?.users.today ?? 0} icon={<Sparkles />} />
+            <StatCard label="Novos 7d" value={s?.users.week ?? 0} icon={<Sparkles />} />
           </div>
-          <Button onClick={() => saveCfg.mutate()} disabled={!url || !key || saveCfg.isPending}>Salvar</Button>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader><CardTitle>Cadastros recentes (30d)</CardTitle></CardHeader>
-        <CardContent>
-          <div className="divide-y max-h-64 overflow-y-auto">
-            {s?.recentSignups.map((u: any) => (
-              <div key={u.id} className="py-2 flex items-center justify-between text-sm">
-                <span>{u.email}</span>
-                <span className="text-xs text-muted-foreground">{new Date(u.created_at).toLocaleString("pt-BR")}</span>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard label="Chips conectados" value={`${s?.instances.connected ?? 0} / ${s?.instances.total ?? 0}` as any} icon={<Smartphone />} />
+            <StatCard label="Grupos ativos" value={s?.groupsActive ?? 0} icon={<Users2 />} />
+            <StatCard label="Mensagens hoje" value={s?.messages.today ?? 0} icon={<MessageSquare />} />
+            <StatCard label="Taxa de sucesso 7d" value={`${successRate}%` as any} icon={<CheckCircle2 />} />
+          </div>
+
+          <Card>
+            <CardHeader><CardTitle>Distribuição por plano</CardTitle></CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {s && Object.entries(s.planBreakdown).map(([name, count]) => (
+                  <Badge key={name} variant="secondary" className="text-sm">{name}: {count as number}</Badge>
+                ))}
+                {!s && <div className="text-sm text-muted-foreground">Carregando…</div>}
               </div>
-            ))}
-            {s && s.recentSignups.length === 0 && <div className="py-4 text-sm text-muted-foreground text-center">Nenhum cadastro recente.</div>}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
 
-      <AdminInstancesCard />
-
-      <Card>
-        <CardHeader><CardTitle>Clientes</CardTitle><CardDescription>Gerencie planos e visualize dados de cada usuário.</CardDescription></CardHeader>
-        <CardContent>
-          <div className="divide-y">
-            {users.data?.map((u: any) => {
-              const sub = u.subscriptions?.[0];
-              const currentPlanName = sub?.plan?.name ?? "—";
-              const price = sub?.plan?.price_cents ?? 0;
-              return (
-                <div key={u.id} className="py-3 flex items-center justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="text-sm font-medium">{u.full_name || u.email}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {u.email}{u.phone ? ` · ${u.phone}` : ""}{u.company ? ` · ${u.company}` : ""}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Plano: {currentPlanName} {price > 0 && `· ${brl(price)}/mês`} · Desde {new Date(u.created_at).toLocaleDateString("pt-BR")}
-                    </div>
+          <Card>
+            <CardHeader><CardTitle>Cadastros recentes (30d)</CardTitle></CardHeader>
+            <CardContent>
+              <div className="divide-y max-h-64 overflow-y-auto">
+                {s?.recentSignups.map((u: any) => (
+                  <div key={u.id} className="py-2 flex items-center justify-between text-sm gap-2">
+                    <span className="truncate">{u.email}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">{new Date(u.created_at).toLocaleString("pt-BR")}</span>
                   </div>
-                  <Select onValueChange={(v) => updatePlanFn({ data: { user_id: u.id, plan_id: v } }).then(() => { toast.success("Plano atualizado"); qc.invalidateQueries({ queryKey: ["admin-users"] }); qc.invalidateQueries({ queryKey: ["admin-stats"] }); })}>
-                    <SelectTrigger className="w-40"><SelectValue placeholder="Alterar plano" /></SelectTrigger>
-                    <SelectContent>{plans.data?.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                ))}
+                {s && s.recentSignups.length === 0 && <div className="py-4 text-sm text-muted-foreground text-center">Nenhum cadastro recente.</div>}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <AdminBillingSection />
+        {/* --- Financeiro --- */}
+        <TabsContent value="finance">
+          <AdminBillingSection />
+        </TabsContent>
+
+        {/* --- Clientes --- */}
+        <TabsContent value="clients">
+          <Card>
+            <CardHeader>
+              <CardTitle>Clientes</CardTitle>
+              <CardDescription>Busque, filtre por plano e gerencie assinaturas.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-center">
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por email, nome, telefone…"
+                    className="pl-8"
+                    value={clientSearch}
+                    onChange={(e) => setClientSearch(e.target.value)}
+                  />
+                </div>
+                <Select value={clientPlanFilter} onValueChange={setClientPlanFilter}>
+                  <SelectTrigger className="w-40"><Filter className="h-3 w-3 mr-1" /><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os planos</SelectItem>
+                    {planNames.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div className="text-xs text-muted-foreground text-right sm:min-w-[100px]">
+                  {filteredUsers.length} de {users.data?.length ?? 0}
+                </div>
+              </div>
+
+              <div className="divide-y max-h-[600px] overflow-y-auto">
+                {filteredUsers.map((u: any) => {
+                  const sub = u.subscriptions?.[0];
+                  const currentPlanName = sub?.plan?.name ?? "—";
+                  const price = sub?.plan?.price_cents ?? 0;
+                  return (
+                    <div key={u.id} className="py-3 flex items-center justify-between gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{u.full_name || u.email}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {u.email}{u.phone ? ` · ${u.phone}` : ""}{u.company ? ` · ${u.company}` : ""}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Plano: <b>{currentPlanName}</b>{price > 0 && ` · ${brl(price)}/mês`} · Desde {new Date(u.created_at).toLocaleDateString("pt-BR")}
+                        </div>
+                      </div>
+                      <Select onValueChange={(v) => updatePlanFn({ data: { user_id: u.id, plan_id: v } }).then(() => { toast.success("Plano atualizado"); qc.invalidateQueries({ queryKey: ["admin-users"] }); qc.invalidateQueries({ queryKey: ["admin-stats"] }); })}>
+                        <SelectTrigger className="w-40"><SelectValue placeholder="Alterar plano" /></SelectTrigger>
+                        <SelectContent>{plans.data?.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })}
+                {filteredUsers.length === 0 && (
+                  <div className="py-8 text-sm text-muted-foreground text-center">Nenhum cliente encontrado.</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* --- Chips --- */}
+        <TabsContent value="chips">
+          <AdminInstancesCard />
+        </TabsContent>
+
+        {/* --- Configurações --- */}
+        <TabsContent value="config">
+          <Card>
+            <CardHeader>
+              <CardTitle>Configuração da Evolution API</CardTitle>
+              <CardDescription>URL e chave do seu servidor Evolution API self-hosted.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div><Label>URL atual</Label><div className="text-xs text-muted-foreground">{cfg.data?.api_url || "(não configurada)"}</div></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div><Label>Nova URL</Label><Input placeholder="https://evo.seudominio.com" value={url} onChange={(e) => setUrl(e.target.value)} /></div>
+                <div><Label>API Key</Label><Input type="password" placeholder="********" value={key} onChange={(e) => setKey(e.target.value)} /></div>
+              </div>
+              <Button onClick={() => saveCfg.mutate()} disabled={!url || !key || saveCfg.isPending}>Salvar</Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
