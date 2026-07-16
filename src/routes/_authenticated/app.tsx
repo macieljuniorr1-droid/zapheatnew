@@ -1187,8 +1187,20 @@ function TemplatesTab({ userId }: { userId?: string }) {
     return () => { supabase.removeChannel(channel); };
   }, [userId]);
 
+  const groupsFn = useServerFn(listGroups);
+  const modelsFn = useServerFn(listAiModels);
+  const groupsQ = useQuery({ queryKey: ["groups"], queryFn: () => groupsFn(), refetchInterval: 30000 });
+  const modelsQ = useQuery({ queryKey: ["ai-models"], queryFn: () => modelsFn(), staleTime: 60 * 60 * 1000 });
+
   const totalGenerated = liveLogs.length;
   const lastAt = liveLogs[0]?.created_at ?? null;
+  const gs = (groupsQ.data ?? []) as any[];
+  const activeGroups = gs.filter((g) => g.active).length;
+  const modelsInUse = new Set(gs.map((g) => g.ai_model).filter(Boolean)).size;
+  const totalModels = (modelsQ.data as any[] | undefined)?.length ?? 0;
+  const oneMinAgo = Date.now() - 60_000;
+  const msgsLastMinute = liveLogs.filter((l) => new Date(l.created_at).getTime() > oneMinAgo).length;
+
 
   return (
     <div className="mt-4 space-y-4">
