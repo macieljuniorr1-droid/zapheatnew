@@ -886,38 +886,45 @@ async function markLatestIncomingAsRead(evolution: any, instanceName: string, re
   } catch {}
 }
 
-async function resolveSendTargets(evolution: any, instanceName: string, phone: string) {
-  const fallback = { number: phone, remoteJid: `${phone}@s.whatsapp.net` };
-  // Caminho rápido: para aquecimento entre números já conhecidos, enviar pelo
-  // telefone puro é mais estável e evita gastar vários segundos consultando
-  // contatos/@lid antes de cada mensagem.
-  return [fallback];
+async function resolveSendTargets(evolution: any, instanceName: string, chip: Chip) {
+  const phone = normalizePhone(chip.phone);
+  const phoneJid = `${phone}@s.whatsapp.net`;
+  const fallback = { number: phone, remoteJid: phoneJid };
   const targets: Array<{ number: string; remoteJid: string }> = [];
-  const addTarget = (value: unknown) => {
+  const addTarget = (value: unknown, sendAs?: unknown) => {
     const raw = String(value ?? "").trim();
     if (!raw) return;
     const isJid = /@(s\.whatsapp\.net|lid)$/i.test(raw);
     const digits = normalizePhone(raw);
     if (!isJid && digits !== phone) return;
     const remoteJid = isJid ? raw : `${digits}@s.whatsapp.net`;
-    // O endpoint sendText espera número internacional em dígitos. Enviar para
-    // @lid pode ser aceito pela Evolution, mas ficar preso sem chegar no celular.
-    const number = /@lid$/i.test(remoteJid) ? phone : digits;
+    const sendRaw = String(sendAs ?? "").trim();
+    const sendDigits = normalizePhone(sendRaw);
+    const number = sendRaw && /@(s\.whatsapp\.net|lid)$/i.test(sendRaw)
+      ? sendRaw
+      : sendDigits || (/@lid$/i.test(remoteJid) ? phoneJid : digits);
     if (!number || targets.some((t) => t.number === number || t.remoteJid === remoteJid)) return;
     targets.push({ number, remoteJid });
   };
 
-  // Primeiro tenta sempre o número normal. JIDs @lid ficam apenas como fallback
-  // de consulta/ACK quando o WhatsApp alterna o identificador internamente.
-  addTarget(fallback.remoteJid);
+  // Primeiro tenta sempre o formato real phone@s.whatsapp.net. Este é o JID
+  // correto que contorna o bug de algumas versões da Evolution/Baileys que
+  // resolvem o contato como @lid e quebram com "reading id".
+  addTarget(phoneJid, phoneJid);
+  addTarget(phone, phone);
 
   try {
     const resolved = await evolution.whatsappNumbers(instanceName, [phone]);
     for (const rec of normalizeEvolutionRecords(resolved)) {
-      if (rec?.exists === false && !String(rec?.jid ?? rec?.number ?? "").includes("@lid")) {
+      if (rec?.exists === false && !String(rec?.jid ?? rec?.number ?? rec?.remoteJid ?? "").includes("@lid")) {
         throw new Error(`Destinatário ${phone} não está no WhatsApp`);
       }
+      const real = extractRealPhoneJid(rec, phone);
+      if (real) addTarget(real, real);
       addTarget(rec?.jid);
+      addTarget(rec?.remoteJid);
+      addTarget(rec?.remoteJidAlt, rec?.remoteJidAlt);
+      addTarget(rec?.participantAlt, rec?.participantAlt);
       addTarget(rec?.number);
       addTarget(rec?.id);
     }
@@ -932,15 +939,48 @@ async function resolveSendTargets(evolution: any, instanceName: string, phone: s
     for (const rec of normalizeEvolutionRecords(contacts)) {
       const blob = JSON.stringify(rec ?? {});
       if (!blob.includes(phone)) continue;
+      const real = extractRealPhoneJid(rec, phone);
+      if (real) addTarget(real, real);
       addTarget(rec?.id);
       addTarget(rec?.jid);
       addTarget(rec?.remoteJid);
+      addTarget(rec?.remoteJidAlt, rec?.remoteJidAlt);
+      addTarget(rec?.participantAlt, rec?.participantAlt);
       addTarget(rec?.number);
     }
   } catch {}
 
-  addTarget(fallback.remoteJid);
+  addTarget(phoneJid, phoneJid);
   return targets.length ? targets : [fallback];
+}
+
+function extractRealPhoneJid(record: any, phone: string) {
+  const candidates = [
+    record?.remoteJidAlt,
+    record?.participantAlt,
+    record?.key?.remoteJidAlt,
+    record?.key?.participantAlt,
+    record?.message?.key?.remoteJidAlt,
+    record?.message?.key?.participantAlt,
+    record?.data?.key?.remoteJidAlt,
+    record?.data?.key?.participantAlt,
+    record?.jid,
+    record?.remoteJid,
+    record?.id,
+    record?.number,
+  ];
+  for (const value of candidates) {
+    const raw = String(value ?? "").trim();
+    if (/@s\.whatsapp\.net$/i.test(raw) && normalizePhone(raw) === phone) return raw;
+    if (normalizePhone(raw) === phone) return `${phone}@s.whatsapp.net`;
+  }
+  try {
+    const blob = JSON.stringify(record ?? {});
+    const explicit = blob.match(new RegExp(`(${phone}(?::\\d+)?@s\\.whatsapp\\.net)`, "i"))?.[1];
+    if (explicit) return explicit;
+    if (blob.includes(phone)) return `${phone}@s.whatsapp.net`;
+  } catch {}
+  return null;
 }
 
 function normalizeEvolutionRecords(payload: any): any[] {
