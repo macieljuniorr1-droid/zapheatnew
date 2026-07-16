@@ -132,18 +132,23 @@ Devolva SOMENTE o texto da mensagem, sem aspas, sem prefixo, sem nome.`;
     messages.push({ role: "user", content: "(você inicia a conversa agora, mande a primeira mensagem)" });
   }
 
+  const body: Record<string, unknown> = {
+    model: requested,
+    messages,
+    temperature: 1.1,
+    top_p: 0.95,
+    frequency_penalty: 0.6,
+    presence_penalty: 0.6,
+    max_tokens: 120,
+  };
+  // GPT-5.6 rejeita chat completions com function tools se reasoning estiver
+  // ligado. Mesmo sem tools, mantemos "none" pra evitar latência extra.
+  if (requested.startsWith("openai/gpt-5.6")) body.reasoning_effort = "none";
+
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages,
-      temperature: 1.1,
-      top_p: 0.95,
-      frequency_penalty: 0.6,
-      presence_penalty: 0.6,
-      max_tokens: 120,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`AI ${res.status}: ${await res.text()}`);
   const data = await res.json();
