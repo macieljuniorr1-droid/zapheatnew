@@ -898,3 +898,321 @@ function SocialLink({ href, label, children }: { href: string; label: string; ch
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// LIVE TEMPERATURE — mostra a "temperatura" de cada chip subindo em tempo real
+// ─────────────────────────────────────────────────────────────
+function TemperatureSection() {
+  const chips = [
+    { name: "WhatsApp 01", phone: "+55 11 9•••• 4821", days: 12, target: 92 },
+    { name: "WhatsApp 02", phone: "+55 21 9•••• 7734", days: 8, target: 78 },
+    { name: "WhatsApp 03", phone: "+55 31 9•••• 1902", days: 5, target: 54 },
+    { name: "WhatsApp 04", phone: "+55 41 9•••• 6650", days: 2, target: 28 },
+  ];
+  const [temps, setTemps] = useState(chips.map(() => 0));
+  useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / 1400);
+      setTemps(chips.map((c) => Math.round(c.target * (t * t * (3 - 2 * t)))));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <section className="max-w-6xl mx-auto px-6 py-20">
+      <div className="text-center max-w-2xl mx-auto mb-12">
+        <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">termômetro ao vivo</div>
+        <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
+          Veja a temperatura de cada número em tempo real
+        </h2>
+        <p className="mt-3 text-muted-foreground">
+          O ZapHeat calcula um score de saúde para cada chip cruzando dias em operação, volume de mensagens, taxa de resposta e sinais de risco. Você sabe exatamente quando um número está pronto para disparar — ou precisa esfriar.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {chips.map((c, i) => (
+          <ChipTempCard key={c.name} name={c.name} phone={c.phone} days={c.days} temp={temps[i]} />
+        ))}
+      </div>
+
+      <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <TempLegend color="bg-red-500" label="0–30 · frio" desc="Ainda aquecendo, evite disparo" />
+        <TempLegend color="bg-amber-400" label="30–60 · morno" desc="Volume leve permitido" />
+        <TempLegend color="bg-lime-400" label="60–85 · quente" desc="Pronto para campanhas" />
+        <TempLegend color="bg-ember" label="85–100 · brasa" desc="Máxima reputação e entregabilidade" />
+      </div>
+    </section>
+  );
+}
+
+function ChipTempCard({ name, phone, days, temp }: { name: string; phone: string; days: number; temp: number }) {
+  const status =
+    temp >= 85 ? { label: "brasa", cls: "text-ember", bar: "from-ember to-gold" }
+    : temp >= 60 ? { label: "quente", cls: "text-lime-400", bar: "from-lime-400 to-ember" }
+    : temp >= 30 ? { label: "morno", cls: "text-amber-400", bar: "from-amber-400 to-lime-400" }
+    : { label: "frio", cls: "text-red-400", bar: "from-red-500 to-amber-400" };
+
+  const msgs = 40 + temp * 3;
+  const reply = 55 + Math.round(temp * 0.4);
+  return (
+    <div className="panel rounded-2xl p-6 relative overflow-hidden">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-ember animate-ember" />
+            <span className="font-display text-lg font-semibold">{name}</span>
+          </div>
+          <div className="text-xs font-mono text-muted-foreground mt-1">{phone}</div>
+        </div>
+        <div className="text-right">
+          <div className={`font-display text-3xl font-bold ${status.cls}`}>
+            {temp}°
+            <span className="text-sm text-muted-foreground font-mono ml-1">/100</span>
+          </div>
+          <div className={`text-[10px] font-mono uppercase tracking-widest ${status.cls}`}>{status.label}</div>
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <div className="h-2 rounded-full bg-background/60 border border-border/50 overflow-hidden">
+          <div
+            className={`h-full bg-gradient-to-r ${status.bar} transition-all duration-500`}
+            style={{ width: `${temp}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-3 gap-3 text-center">
+        <MicroStat icon={<Clock className="h-3 w-3" />} value={`${days}d`} label="aquecendo" />
+        <MicroStat icon={<MessageCircle className="h-3 w-3" />} value={String(msgs)} label="msgs/dia" />
+        <MicroStat icon={<Signal className="h-3 w-3" />} value={`${reply}%`} label="resposta" />
+      </div>
+    </div>
+  );
+}
+
+function MicroStat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
+  return (
+    <div className="rounded-lg border border-border/50 bg-background/40 py-2">
+      <div className="flex items-center justify-center gap-1 text-ember">
+        {icon}
+        <span className="font-display text-sm font-semibold text-foreground">{value}</span>
+      </div>
+      <div className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+function TempLegend({ color, label, desc }: { color: string; label: string; desc: string }) {
+  return (
+    <div className="panel rounded-lg p-3 flex items-start gap-3">
+      <span className={`mt-1 h-2.5 w-2.5 rounded-full ${color} shrink-0`} />
+      <div>
+        <div className="text-xs font-mono uppercase tracking-widest text-foreground">{label}</div>
+        <div className="text-[11px] text-muted-foreground mt-0.5">{desc}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DASHBOARD PREVIEW — mockup do painel de controle
+// ─────────────────────────────────────────────────────────────
+function DashboardPreviewSection() {
+  const bars = [22, 34, 41, 38, 55, 62, 70, 68, 82, 89, 94, 91];
+  return (
+    <section className="max-w-6xl mx-auto px-6 py-20">
+      <div className="text-center max-w-2xl mx-auto mb-12">
+        <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">dashboard completo</div>
+        <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
+          Tudo o que acontece com seus números, em um só painel
+        </h2>
+        <p className="mt-3 text-muted-foreground">
+          Visão geral da rede, saúde individual de cada chip, gráfico de aquecimento ao longo do tempo e alertas automáticos quando algo foge do padrão.
+        </p>
+      </div>
+
+      <div className="panel rounded-2xl p-6 md:p-8 relative overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 forge-halo opacity-40" aria-hidden />
+
+        <div className="relative grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiCard icon={<Smartphone className="h-4 w-4" />} value="14" label="números ativos" trend="+3 esta semana" />
+          <KpiCard icon={<MessageCircle className="h-4 w-4" />} value="8.472" label="msgs 30d" trend="+124% vs mês passado" />
+          <KpiCard icon={<Thermometer className="h-4 w-4" />} value="76°" label="temp média" trend="rede quente" ember />
+          <KpiCard icon={<CheckCircle2 className="h-4 w-4" />} value="99,2%" label="entrega" trend="sem falhas 24h" />
+        </div>
+
+        <div className="relative mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Chart */}
+          <div className="lg:col-span-2 panel rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <LineChartIcon className="h-4 w-4 text-ember" />
+                <span className="font-display text-sm font-semibold">Evolução da temperatura da rede</span>
+              </div>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">últimos 12 dias</span>
+            </div>
+            <div className="flex items-end gap-1.5 h-40">
+              {bars.map((b, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    className="w-full rounded-t bg-gradient-to-t from-ember/40 via-ember to-gold transition-all"
+                    style={{ height: `${b}%` }}
+                    title={`${b}°`}
+                  />
+                  <span className="text-[9px] text-muted-foreground/60 font-mono">d{i + 1}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Alerts */}
+          <div className="panel rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <BarChart3 className="h-4 w-4 text-ember" />
+              <span className="font-display text-sm font-semibold">Alertas inteligentes</span>
+            </div>
+            <div className="space-y-2.5">
+              <AlertRow icon={<CheckCircle2 className="h-3.5 w-3.5 text-lime-400" />} text="WhatsApp 01 atingiu 92° — liberado para disparos" />
+              <AlertRow icon={<TrendingUp className="h-3.5 w-3.5 text-ember" />} text="Rede subiu 18° nos últimos 7 dias" />
+              <AlertRow icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-400" />} text="WhatsApp 04 está frio — reduzir volume" />
+              <AlertRow icon={<Gauge className="h-3.5 w-3.5 text-ember" />} text="Nova sugestão de par: 02 ↔ 05" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function KpiCard({ icon, value, label, trend, ember }: { icon: React.ReactNode; value: string; label: string; trend: string; ember?: boolean }) {
+  return (
+    <div className={`panel rounded-xl p-4 ${ember ? "border-ember/50 glow-ember" : ""}`}>
+      <div className="flex items-center gap-2 text-ember">
+        {icon}
+        <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{label}</span>
+      </div>
+      <div className={`mt-2 font-display text-2xl font-bold ${ember ? "gradient-ember-text" : ""}`}>{value}</div>
+      <div className="text-[11px] text-muted-foreground mt-0.5">{trend}</div>
+    </div>
+  );
+}
+
+function AlertRow({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="flex items-start gap-2 text-xs text-muted-foreground">
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <span className="leading-snug">{text}</span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// WARMUP JOURNEY — cronograma dia a dia do aquecimento
+// ─────────────────────────────────────────────────────────────
+function WarmupJourneySection() {
+  const stages = [
+    {
+      range: "Dia 1–3",
+      temp: 15,
+      label: "Ignição",
+      msgs: "10–20 msgs/dia",
+      desc: "Chip recém-conectado. IA inicia conversas curtas em intervalos longos para simular o comportamento de um número novo.",
+      status: "frio",
+    },
+    {
+      range: "Dia 4–7",
+      temp: 40,
+      label: "Aquecendo",
+      msgs: "30–60 msgs/dia",
+      desc: "Volume sobe gradualmente. IA introduz mais interlocutores e diversifica assuntos. Delays continuam humanos (2–5 min).",
+      status: "morno",
+    },
+    {
+      range: "Dia 8–14",
+      temp: 72,
+      label: "Quente",
+      msgs: "80–150 msgs/dia",
+      desc: "Chip com reputação sólida. Conversas cruzadas entre múltiplos pares. Já é possível iniciar campanhas leves com o número.",
+      status: "quente",
+    },
+    {
+      range: "Dia 15+",
+      temp: 92,
+      label: "Brasa",
+      msgs: "150+ msgs/dia",
+      desc: "Reputação máxima. Chip totalmente pronto para disparos em massa com alta entregabilidade e baixíssimo risco de banimento.",
+      status: "brasa",
+    },
+  ];
+  return (
+    <section className="max-w-6xl mx-auto px-6 py-20">
+      <div className="text-center max-w-2xl mx-auto mb-14">
+        <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">jornada do aquecimento</div>
+        <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
+          Do chip zerado à brasa em ~15 dias
+        </h2>
+        <p className="mt-3 text-muted-foreground">
+          Cada número passa por 4 estágios controlados pela IA. Volume, delays e diversidade de conversas escalam sozinhos, sem você precisar configurar nada.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {stages.map((s) => {
+          const color =
+            s.status === "brasa" ? { ring: "border-ember/60 glow-ember", text: "text-ember", bar: "from-ember to-gold" }
+            : s.status === "quente" ? { ring: "border-lime-400/40", text: "text-lime-400", bar: "from-lime-400 to-ember" }
+            : s.status === "morno" ? { ring: "border-amber-400/40", text: "text-amber-400", bar: "from-amber-400 to-lime-400" }
+            : { ring: "border-red-500/30", text: "text-red-400", bar: "from-red-500 to-amber-400" };
+          return (
+            <div key={s.range} className={`panel rounded-2xl p-5 flex flex-col ${color.ring}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{s.range}</span>
+                <Thermometer className={`h-4 w-4 ${color.text}`} />
+              </div>
+              <div className={`mt-2 font-display text-2xl font-bold ${color.text}`}>{s.label}</div>
+              <div className="mt-3 h-1.5 rounded-full bg-background/60 border border-border/50 overflow-hidden">
+                <div className={`h-full bg-gradient-to-r ${color.bar}`} style={{ width: `${s.temp}%` }} />
+              </div>
+              <div className={`mt-1 text-[10px] font-mono ${color.text}`}>{s.temp}°</div>
+              <div className="text-xs font-mono text-ember mt-3 flex items-center gap-1.5">
+                <MessageCircle className="h-3 w-3" />
+                {s.msgs}
+              </div>
+              <p className="text-sm text-muted-foreground mt-3 leading-relaxed">{s.desc}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-10 panel rounded-2xl p-6 md:p-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <BenefitRow icon={<Shield className="h-5 w-5" />} title="Menos banimentos" desc="Crescimento gradual controlado pela IA mantém o padrão de um usuário real, reduzindo drasticamente o risco." />
+          <BenefitRow icon={<TrendingUp className="h-5 w-5" />} title="Mais entrega" desc="Chips quentes têm entregabilidade acima de 95% — suas mensagens chegam, não ficam presas no limbo." />
+          <BenefitRow icon={<Gauge className="h-5 w-5" />} title="Escala sem esforço" desc="Adicione 5, 20 ou 100 números. A IA orquestra a rede inteira sem você precisar mexer em nada." />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BenefitRow({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="h-10 w-10 rounded-lg bg-ember/10 text-ember border border-ember/20 grid place-items-center shrink-0">
+        {icon}
+      </div>
+      <div>
+        <div className="font-display font-semibold">{title}</div>
+        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+
