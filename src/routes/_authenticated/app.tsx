@@ -557,10 +557,11 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
               {chip.status === "connecting" ? "Reconectando" : "Aguardando QR"}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
-              Desconectado
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-700 dark:text-red-400 border border-red-500/40">
+              <AlertTriangle className="h-3 w-3" />DESCONECTADO
             </span>
           )}
+
           {chip.is_ready ? (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
               ✓ Pronto para disparo
