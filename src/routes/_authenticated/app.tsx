@@ -249,7 +249,7 @@ function AppPage() {
           
           <TabsContent value="instances"><InstancesTab /></TabsContent>
           <TabsContent value="groups"><GroupsTab changeTab={changeTab} /></TabsContent>
-          <TabsContent value="templates"><TemplatesTab /></TabsContent>
+          <TabsContent value="templates"><TemplatesTab userId={(me.data as any)?.userId} /></TabsContent>
           <TabsContent value="dispatch"><DispatchTab /></TabsContent>
           <TabsContent value="live"><LiveChatTab /></TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
