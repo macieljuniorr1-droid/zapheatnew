@@ -558,9 +558,9 @@ function NetworkGraph() {
         <span className="h-1.5 w-1.5 rounded-full bg-ember animate-ember" />
         rede · 8 whatsapps ativos
       </div>
-      <div className="grid md:grid-cols-[1fr_1.2fr] gap-6 items-center">
+      <div className="grid md:grid-cols-[1fr_1.2fr] gap-6 items-center min-w-0">
         <div className="relative aspect-square max-w-[420px] mx-auto w-full text-ember">
-          <svg viewBox="0 0 420 420" className="w-full h-full">
+          <svg viewBox="0 0 420 420" className="w-full h-full" style={{ overflow: "visible" }}>
             {/* mesh lines */}
             {positions.map((p1, i) =>
               positions.slice(i + 1).map((p2, j) => (
