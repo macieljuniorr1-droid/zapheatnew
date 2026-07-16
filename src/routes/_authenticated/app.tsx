@@ -9,6 +9,7 @@ import {
   createInstance,
   refreshInstance,
   deleteInstance,
+  resetInstance,
   listGroups,
   createGroup,
   toggleGroup,
