@@ -159,6 +159,7 @@ function Landing() {
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#how" className="hover:text-foreground transition">Como funciona</a>
             <a href="#dispatch" className="hover:text-foreground transition">Disparo em massa</a>
+            <a href="#numbers" className="hover:text-foreground transition">Nº virtuais</a>
             <a href="#plans" className="hover:text-foreground transition">Planos</a>
             <a href="#faq" className="hover:text-foreground transition">FAQ</a>
           </nav>
