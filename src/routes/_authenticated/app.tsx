@@ -453,18 +453,63 @@ function InstancesTab() {
               <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" />{counts.connected} conectados</span>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
-                <FlameIcon className="h-3 w-3" />{counts.hot} quentes
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 font-medium">
-                <Thermometer className="h-3 w-3" />{counts.warm} mornos
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-sky-500/15 text-sky-600 dark:text-sky-400 font-medium">
-                <Snowflake className="h-3 w-3" />{counts.cold} frios
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+      {total > 0 && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Chips totais</div>
+                  <Smartphone className="h-4 w-4 text-primary" />
+                </div>
+                <div className="text-3xl font-bold mt-1">{total}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">{counts.connected} online · {disconnected} offline</div>
+              </CardContent>
+            </Card>
+            <Card className="border-green-500/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Prontos p/ disparo</div>
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                </div>
+                <div className="text-3xl font-bold mt-1">{counts.ready}<span className="text-sm text-muted-foreground font-normal ml-1">/ {total}</span></div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full bg-green-500 transition-all" style={{ width: `${readyPct}%` }} />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-orange-500/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Msgs 7 dias</div>
+                  <TrendingUp className="h-4 w-4 text-orange-500" />
+                </div>
+                <div className="text-3xl font-bold mt-1">{counts.msgs7d.toLocaleString("pt-BR")}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">Total histórico: {counts.msgsTotal.toLocaleString("pt-BR")}</div>
+              </CardContent>
+            </Card>
+            <Card className="border-sky-500/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Temperatura média</div>
+                  <Thermometer className="h-4 w-4 text-sky-500" />
+                </div>
+                <div className="flex items-center gap-1.5 mt-2 text-xs font-medium">
+                  <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-400"><FlameIcon className="h-3 w-3" />{counts.hot}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="inline-flex items-center gap-1 text-yellow-600 dark:text-yellow-400"><Thermometer className="h-3 w-3" />{counts.warm}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="inline-flex items-center gap-1 text-sky-600 dark:text-sky-400"><Snowflake className="h-3 w-3" />{counts.cold}</span>
+                </div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden flex">
+                  <div className="h-full bg-orange-500" style={{ width: `${hotPct}%` }} />
+                  <div className="h-full bg-yellow-500" style={{ width: `${warmPct}%` }} />
+                  <div className="h-full bg-sky-500" style={{ width: `${coldPct}%` }} />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
