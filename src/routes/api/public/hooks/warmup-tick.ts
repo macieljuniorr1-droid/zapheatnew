@@ -604,6 +604,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   let status = "sent";
   let errMsg: string | null = null;
+  let lidTargetCache: { number: string; remoteJid: string } | null | undefined;
 
   await broadcast("typing_start", {
     group_id: group.id,
@@ -613,10 +614,40 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     to_name: to.name ?? "Chip",
   });
 
+  const discoverLidTarget = async () => {
+    if (lidTargetCache !== undefined) return lidTargetCache;
+    const pickJid = (raw: unknown) => {
+      const jid = String(raw ?? "").trim();
+      return /@lid$/i.test(jid) ? { number: jid, remoteJid: jid } : null;
+    };
+    try {
+      const resolved = await evolution.whatsappNumbers(from.evolution_instance, [toNumber]);
+      for (const rec of normalizeEvolutionRecords(resolved)) {
+        const t = pickJid(rec?.jid) ?? pickJid(rec?.number) ?? pickJid(rec?.id);
+        if (t) return (lidTargetCache = t);
+      }
+    } catch {}
+    try {
+      const contacts = await evolution.findContacts(from.evolution_instance);
+      for (const rec of normalizeEvolutionRecords(contacts)) {
+        const blob = JSON.stringify(rec ?? {});
+        if (!blob.includes(toNumber)) continue;
+        const t = pickJid(rec?.jid) ?? pickJid(rec?.id) ?? pickJid(rec?.remoteJid);
+        if (t) return (lidTargetCache = t);
+      }
+    } catch {}
+    lidTargetCache = null;
+    return null;
+  };
+
+  const isRecipientIdError = (message: string | null | undefined) =>
+    /cannot read properties of undefined \(reading ['"]id['"]\)|reading ['"]id['"]/i.test(String(message ?? ""));
+
   const attemptSend = async (): Promise<DeliveryAck> => {
     let lastErr: any = null;
     for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS_PER_PAIR; attempt++) {
-      for (const target of sendTargets) {
+      const targets = [...sendTargets];
+      for (const target of targets) {
         try {
           if (attempt > 0) await ensureOpenSession(evolution, from.evolution_instance, true);
           markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid).catch(() => null);
@@ -630,6 +661,16 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
           return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, messageId, cleanMessage, sentAtMs);
         } catch (sendErr: any) {
           lastErr = sendErr;
+          // Evolution 400 "reading 'id'" = Baileys não conseguiu resolver o
+          // destinatário porque o contato está no cache apenas como @lid.
+          // Descobrimos o JID @lid uma única vez e reenviamos.
+          if (isRecipientIdError(sendErr?.message) && !targets.some((t) => /@lid$/i.test(t.number))) {
+            const lid = await discoverLidTarget();
+            if (lid && !targets.some((t) => t.number === lid.number)) {
+              targets.push(lid);
+              continue;
+            }
+          }
           if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
           await repairSenderSession(evolution, from.evolution_instance, target.number);
         }
@@ -679,6 +720,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     await markInstance(supabaseAdmin, to.id, "connected");
   }
 
+  const friendlyErr = friendlyErrorMessage(errMsg);
   await supabaseAdmin.from("warmup_logs").insert({
     user_id: group.user_id,
     group_id: group.id,
@@ -686,8 +728,9 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     to_instance_id: to.id,
     content: cleanMessage,
     status,
-    error: errMsg,
+    error: friendlyErr,
   });
+  if (status === "failed") errMsg = friendlyErr;
 
   if (status === "failed") {
     await quarantineSenderForRepair(supabaseAdmin, evolution, group.id, from, errMsg);
@@ -955,6 +998,25 @@ function isDeliverySyncFailure(message: string | null | undefined) {
 
 function isRepairableSessionFailure(message: string | null | undefined) {
   return isDeliverySyncFailure(message) || /remetente n[aã]o abriu sess[aã]o|destinat[aá]rio n[aã]o confirmou sess[aã]o aberta|sender has not opened session|connection closed|no sessions|sessionerror|stream errored|timed out|1006|cannot read properties of undefined|reading 'id'/i.test(String(message ?? ""));
+}
+
+function friendlyErrorMessage(raw: string | null | undefined): string | null {
+  const msg = String(raw ?? "").trim();
+  if (!msg) return null;
+  if (/cannot read properties of undefined \(reading ['"]id['"]\)|reading ['"]id['"]/i.test(msg))
+    return "WhatsApp não conseguiu localizar o destinatário (contato @lid). O motor tentou reconciliar automaticamente.";
+  if (/whatsapp retornou error/i.test(msg))
+    return "WhatsApp recusou a entrega. A sessão do número pode estar dessincronizada — tente Recriar sessão.";
+  if (/sem confirma[cç][aã]o|n[aã]o entregue|dessincronizada/i.test(msg))
+    return "Mensagem enviada, mas o WhatsApp não confirmou a entrega. Sessão pode estar instável.";
+  if (/sender has not opened session|remetente n[aã]o abriu sess[aã]o|no sessions|sessionerror/i.test(msg))
+    return "Sessão do WhatsApp fechada no servidor. O motor está tentando reabrir.";
+  if (/connection closed|stream errored|1006|timed out/i.test(msg))
+    return "Conexão com o WhatsApp caiu. O motor está reconectando.";
+  if (/n[aã]o est[aá] no whatsapp/i.test(msg))
+    return "Destinatário não está no WhatsApp.";
+  if (msg.length > 160) return msg.slice(0, 157) + "…";
+  return msg;
 }
 
 async function normalizeQr(payload: any): Promise<string | null> {

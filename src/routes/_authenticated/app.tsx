@@ -586,6 +586,14 @@ function ChipCard({ chip, onQR, onReport, onDelete }: { chip: any; onQR: () => v
           <Activity className="h-3 w-3" />última atividade {lastSeen}
         </div>
 
+        {chip.last_error && chip.last_error_at && (Date.now() - new Date(chip.last_error_at).getTime() < 30 * 60 * 1000) ? (
+          <div className="rounded-md border border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400 px-2 py-1.5 text-[11px] leading-snug">
+            <div className="font-semibold mb-0.5">Problema detectado no envio</div>
+            <div className="opacity-90">{chip.last_error}</div>
+            <div className="opacity-60 mt-0.5">{timeAgo(chip.last_error_at)}</div>
+          </div>
+        ) : null}
+
         <div className="flex gap-1 pt-1">
           <Button size="sm" variant="secondary" className="flex-1" onClick={onQR}>
             <RefreshCw className="h-3 w-3 mr-1" />QR / Status
