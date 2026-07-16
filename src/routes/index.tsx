@@ -19,6 +19,14 @@ import {
   Instagram,
   Twitter,
   Youtube,
+  Thermometer,
+  Gauge,
+  BarChart3,
+  MessageCircle,
+  CheckCircle2,
+  LineChart as LineChartIcon,
+  Signal,
+  AlertTriangle,
 } from "lucide-react";
 
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
