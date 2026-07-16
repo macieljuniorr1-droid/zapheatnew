@@ -9,7 +9,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 8;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 9_000;
+const DELIVERY_ACK_WAIT_MS = 18_000;
 const MAX_BURST_ROUNDS = 2;
 const BURST_BUDGET_MS = 24_000;
 const REPLY_GAP_MS = 500;
@@ -584,8 +584,9 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
           await new Promise((r) => setTimeout(r, typingMs));
           const sentAtMs = Date.now();
           const sendResp = await evolution.sendText(from.evolution_instance, target.number, cleanMessage);
+          const messageId = extractMessageId(sendResp);
           const ackJid = extractRemoteJid(sendResp) ?? target.remoteJid;
-          return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, extractMessageId(sendResp), cleanMessage, sentAtMs);
+          return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, messageId, cleanMessage, sentAtMs);
         } catch (sendErr: any) {
           lastErr = sendErr;
           if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
@@ -1015,8 +1016,7 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
   let sawRecord = false;
   while (Date.now() < deadline) {
     try {
-      const found = await evolution.findMessages(instanceName, remoteJid);
-      const records = found?.messages?.records ?? found?.records ?? [];
+      const records = await findOutgoingMessageRecords(evolution, instanceName, remoteJid, messageId);
       const rec = messageId
         ? records.find((r: any) => r?.key?.id === messageId)
         : records.find((r: any) => {
@@ -1030,8 +1030,7 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
         continue;
       }
       sawRecord = true;
-      const updates = rec?.MessageUpdate ?? rec?.messageUpdate ?? [];
-      lastStatus = updates?.[updates.length - 1]?.status ?? rec?.status ?? lastStatus;
+      lastStatus = extractDeliveryStatus(rec) ?? lastStatus;
       const s = String(lastStatus ?? "").toUpperCase();
       // Entrega real: dispositivo do destinatário confirmou recebimento.
       if (s === "DELIVERY_ACK" || s === "READ" || s === "PLAYED") {
@@ -1068,4 +1067,48 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
     explicitError: false,
     ack: lastStatus ?? "ACCEPTED",
   };
+}
+
+async function findOutgoingMessageRecords(evolution: any, instanceName: string, remoteJid: string, messageId?: string) {
+  const searches: any[] = [];
+
+  // O findStatusMessage é a fonte correta do Evolution para status/ACK. Usar
+  // apenas findMessages fazia alguns envios ficarem como "sent" mesmo presos em
+  // PENDING/SERVER_ACK, principalmente quando o WhatsApp alterna @s.whatsapp.net
+  // e @lid para o mesmo contato.
+  if (messageId) {
+    try {
+      searches.push(await evolution.findStatusMessage(instanceName, { id: messageId, fromMe: true }, 50));
+    } catch {}
+  }
+  if (remoteJid) {
+    try {
+      searches.push(await evolution.findStatusMessage(instanceName, { remoteJid, fromMe: true }, 50));
+    } catch {}
+  }
+  try {
+    searches.push(await evolution.findMessages(instanceName, remoteJid));
+  } catch {}
+
+  const records: any[] = [];
+  for (const payload of searches) records.push(...normalizeEvolutionRecords(payload));
+  return records;
+}
+
+function extractDeliveryStatus(record: any) {
+  const updates = [
+    ...(Array.isArray(record?.MessageUpdate) ? record.MessageUpdate : []),
+    ...(Array.isArray(record?.messageUpdate) ? record.messageUpdate : []),
+    ...(Array.isArray(record?.updates) ? record.updates : []),
+  ];
+  const lastUpdate = updates[updates.length - 1];
+  return (
+    lastUpdate?.status ??
+    record?.status ??
+    record?.ack ??
+    record?.message?.status ??
+    record?.message?.ack ??
+    record?.data?.status ??
+    null
+  );
 }
