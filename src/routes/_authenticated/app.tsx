@@ -1123,6 +1123,10 @@ function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
         </CardContent>
       </Card>
 
+      <ReportPanel scope="user" title="Relatório dos grupos" description="Volume de mensagens geradas pelos seus grupos no período." />
+
+
+
       <div className="space-y-3">
         {groups.data?.map((g: any) => (
           <Card key={g.id}>
