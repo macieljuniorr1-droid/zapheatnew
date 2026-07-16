@@ -337,6 +337,7 @@ function InstancesTab() {
   const createFn = useServerFn(createInstance);
   const refreshFn = useServerFn(refreshInstance);
   const deleteFn = useServerFn(deleteInstance);
+  const resetFn = useServerFn(resetInstance);
   const q = useQuery({ queryKey: ["instances-health"], queryFn: () => listFn(), refetchInterval: 15000 });
   const [name, setName] = useState("");
   const [qrOpen, setQrOpen] = useState<string | null>(null);
