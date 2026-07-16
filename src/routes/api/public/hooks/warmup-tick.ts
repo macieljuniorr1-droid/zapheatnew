@@ -616,23 +616,46 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const discoverLidTarget = async () => {
     if (lidTargetCache !== undefined) return lidTargetCache;
-    const pickJid = (raw: unknown) => {
+    const pickJid = (raw: unknown): { number: string; remoteJid: string } | null => {
       const jid = String(raw ?? "").trim();
-      return /@lid$/i.test(jid) ? { number: jid, remoteJid: jid } : null;
+      const m = jid.match(/(\d+@lid)/i);
+      if (!m) return null;
+      const clean = m[1];
+      return { number: clean, remoteJid: clean };
+    };
+    const scanRecord = (rec: any): { number: string; remoteJid: string } | null => {
+      // Evolution retorna o mapeamento @lid em campos diferentes dependendo da
+      // versão: `lid`, `jid`, `id`, `remoteJid`, `owner`. Como fallback, procura
+      // qualquer `\d+@lid` no JSON serializado do registro para não perder o
+      // destino quando o campo é aninhado.
+      const direct =
+        pickJid(rec?.lid) ??
+        pickJid(rec?.jid) ??
+        pickJid(rec?.remoteJid) ??
+        pickJid(rec?.id) ??
+        pickJid(rec?.number) ??
+        pickJid(rec?.owner);
+      if (direct) return direct;
+      try {
+        const blob = JSON.stringify(rec ?? {});
+        return pickJid(blob);
+      } catch {
+        return null;
+      }
     };
     try {
       const resolved = await evolution.whatsappNumbers(from.evolution_instance, [toNumber]);
       for (const rec of normalizeEvolutionRecords(resolved)) {
-        const t = pickJid(rec?.jid) ?? pickJid(rec?.number) ?? pickJid(rec?.id);
+        const t = scanRecord(rec);
         if (t) return (lidTargetCache = t);
       }
     } catch {}
     try {
       const contacts = await evolution.findContacts(from.evolution_instance);
       for (const rec of normalizeEvolutionRecords(contacts)) {
-        const blob = JSON.stringify(rec ?? {});
+        const blob = (() => { try { return JSON.stringify(rec ?? {}); } catch { return ""; } })();
         if (!blob.includes(toNumber)) continue;
-        const t = pickJid(rec?.jid) ?? pickJid(rec?.id) ?? pickJid(rec?.remoteJid);
+        const t = scanRecord(rec);
         if (t) return (lidTargetCache = t);
       }
     } catch {}
