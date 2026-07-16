@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+Disallow: /app
+Disallow: /app/
+Disallow: /admin
+Disallow: /auth
+Disallow: /api/
+
+Sitemap: https://zapheatnew.lovable.app/sitemap.xml
