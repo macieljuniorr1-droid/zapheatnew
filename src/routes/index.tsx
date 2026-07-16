@@ -159,6 +159,7 @@ function Landing() {
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#how" className="hover:text-foreground transition">Como funciona</a>
             <a href="#dispatch" className="hover:text-foreground transition">Disparo em massa</a>
+            <a href="#numbers" className="hover:text-foreground transition">Nº virtuais</a>
             <a href="#plans" className="hover:text-foreground transition">Planos</a>
             <a href="#faq" className="hover:text-foreground transition">FAQ</a>
           </nav>
@@ -287,6 +288,9 @@ function Landing() {
 
         {/* MASS DISPATCH */}
         <MassDispatchSection />
+
+        {/* VIRTUAL NUMBERS */}
+        <VirtualNumbersSection />
 
 
         {/* PLANS */}
@@ -803,6 +807,64 @@ function DispatchBullet({ icon, title, desc }: { icon: React.ReactNode; title: s
     </li>
   );
 }
+
+function VirtualNumbersSection() {
+  return (
+    <section id="numbers" className="max-w-6xl mx-auto px-6 py-20">
+      <div className="text-center max-w-2xl mx-auto mb-12">
+        <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">números descartáveis</div>
+        <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
+          Números virtuais para verificar WhatsApp
+        </h2>
+        <p className="mt-3 text-muted-foreground">
+          Precisa de um número novo só para receber o SMS de verificação do WhatsApp? Compre um número descartável direto no painel, receba o código em até <b className="text-foreground">2 minutos</b> e pronto. Se o código não chegar, o saldo volta automaticamente para sua carteira.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+        <Feature
+          icon={<Smartphone />}
+          title="Número brasileiro (DDD 73)"
+          desc="Chip nacional exclusivo para WhatsApp por R$ 14,90. Ideal para abrir contas comerciais brasileiras."
+        />
+        <Feature
+          icon={<Zap />}
+          title="Código em até 2 minutos"
+          desc="Compra em 1 clique, número na tela, você usa no WhatsApp e o código do SMS aparece automaticamente no painel."
+        />
+        <Feature
+          icon={<Shield />}
+          title="Reembolso automático"
+          desc="Se o SMS não chegar em 2 minutos, o pedido é cancelado e o valor é devolvido para a sua carteira ZapHeat sem burocracia."
+        />
+      </div>
+
+      <div className="panel rounded-2xl p-6 md:p-8 max-w-3xl mx-auto">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div>
+            <div className="text-xs font-mono uppercase tracking-widest text-ember mb-2">como funciona</div>
+            <ol className="space-y-2 text-sm text-muted-foreground">
+              <li><span className="text-foreground font-medium">1.</span> Adicione saldo na carteira via Pix</li>
+              <li><span className="text-foreground font-medium">2.</span> Escolha o país e clique em comprar</li>
+              <li><span className="text-foreground font-medium">3.</span> Use o número no WhatsApp e receba o código no painel</li>
+            </ol>
+          </div>
+          <div className="text-center shrink-0">
+            <div className="font-display text-4xl font-bold gradient-ember-text tabular-nums">R$ 14,90</div>
+            <div className="text-xs text-muted-foreground font-mono uppercase tracking-widest mt-1">número BR · WhatsApp</div>
+            <Link to="/auth" className="inline-block mt-4">
+              <Button className="gradient-ember-bg glow-ember">
+                Comprar número
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
 
 function SiteFooter() {
   return (
