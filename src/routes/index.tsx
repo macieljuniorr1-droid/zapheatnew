@@ -107,36 +107,6 @@ export const Route = createFileRoute("/")({
               ],
               aggregateRating: { "@type": "AggregateRating", ratingValue: "4.9", reviewCount: "128" },
             },
-            {
-              "@type": "FAQPage",
-              mainEntity: [
-                {
-                  "@type": "Question",
-                  name: "O que é aquecimento de chip de WhatsApp?",
-                  acceptedAnswer: { "@type": "Answer", text: "É o processo de simular conversas reais entre seus próprios números de WhatsApp para construir reputação junto ao WhatsApp e reduzir o risco de banimento antes de iniciar disparos ou usar a WhatsApp API oficial." },
-                },
-                {
-                  "@type": "Question",
-                  name: "O ZapHeat funciona com a API oficial do WhatsApp?",
-                  acceptedAnswer: { "@type": "Answer", text: "Sim. O ZapHeat pode aquecer números que serão usados na WhatsApp Business API oficial e também integra com Evolution API para operações não-oficiais." },
-                },
-                {
-                  "@type": "Question",
-                  name: "Posso fazer disparo em massa no WhatsApp?",
-                  acceptedAnswer: { "@type": "Answer", text: "Sim. Após aquecer os chips, você pode disparar campanhas em massa com ritmo humano configurável, reduzindo o risco de banimento e aumentando a entregabilidade." },
-                },
-                {
-                  "@type": "Question",
-                  name: "Meu chip pode ser banido?",
-                  acceptedAnswer: { "@type": "Answer", text: "O ZapHeat reduz drasticamente o risco com delays humanos, ritmo variado e mensagens naturais geradas por IA, mas nenhum sistema garante 100%. Comece com limites baixos e aumente aos poucos." },
-                },
-                {
-                  "@type": "Question",
-                  name: "Preciso pagar para testar?",
-                  acceptedAnswer: { "@type": "Answer", text: "Não. O plano Free permite aquecer 2 números sem cartão de crédito." },
-                },
-              ],
-            },
           ],
         }),
       },
@@ -161,7 +131,6 @@ function Landing() {
             <a href="#dispatch" className="hover:text-foreground transition">Disparo em massa</a>
             <a href="#numbers" className="hover:text-foreground transition">Nº virtuais</a>
             <a href="#plans" className="hover:text-foreground transition">Planos</a>
-            <a href="#faq" className="hover:text-foreground transition">FAQ</a>
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -331,22 +300,6 @@ function Landing() {
           </p>
         </section>
 
-        {/* FAQ */}
-        <section id="faq" className="max-w-3xl mx-auto px-6 py-20">
-          <div className="text-center mb-12">
-            <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">perguntas frequentes</div>
-            <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
-              Dúvidas rápidas
-            </h2>
-          </div>
-          <div className="space-y-3">
-            <Faq q="Posso testar sem pagar?" a="Sim. O plano Free libera 2 números conversando entre si, para sempre. Você vê a plataforma inteira funcionando antes de decidir." />
-            <Faq q="Preciso de VPS ou serviço externo?" a="Sim, você precisa da Evolution API (grátis, open-source) rodando em uma VPS ou em um serviço pronto. No painel Admin você cola URL e API Key e pronto." />
-            <Faq q="A IA repete mensagens?" a="Não. Cada mensagem é gerada em tempo real pela Gemini 3 lendo o histórico da conversa. É diferente sempre." />
-            <Faq q="Meu chip pode ser banido?" a="O ZapHeat reduz drasticamente o risco com delays humanos, ritmo variado e mensagens naturais — mas nenhum sistema garante 100%. Comece com limites baixos e aumente aos poucos." />
-            <Faq q="Funciona em segundo plano?" a="Sim. Roda no servidor 24/7. Você não precisa manter computador ou navegador aberto." />
-          </div>
-        </section>
 
         {/* CTA final */}
         <section className="max-w-4xl mx-auto px-6 py-20">
@@ -500,17 +453,6 @@ function PlanCard({
   );
 }
 
-function Faq({ q, a }: { q: string; a: string }) {
-  return (
-    <details className="panel rounded-xl p-5 group">
-      <summary className="cursor-pointer font-medium flex items-center justify-between list-none">
-        <span>{q}</span>
-        <span className="text-ember font-mono text-xl group-open:rotate-45 transition-transform">+</span>
-      </summary>
-      <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{a}</p>
-    </details>
-  );
-}
 
 const WHATSAPPS = [
   { name: "WhatsApp 01", phone: "+55 11 9•••• 4821" },
@@ -900,7 +842,6 @@ function SiteFooter() {
             { label: "Aquecimento IA", href: "#how" },
             { label: "Disparo em massa", href: "#dispatch" },
             { label: "Planos", href: "#plans" },
-            { label: "FAQ", href: "#faq" },
           ]} />
           <FooterCol title="Empresa" links={[
             { label: "Sobre", href: "#" },
