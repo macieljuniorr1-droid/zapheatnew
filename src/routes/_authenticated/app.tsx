@@ -887,8 +887,59 @@ function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["groups"] });
 
+  const gs = (groups.data ?? []) as any[];
+  const totalGroups = gs.length;
+  const activeGroups = gs.filter((g) => g.active).length;
+  const totalMembers = gs.reduce((acc, g) => acc + (g.members?.length ?? g.member_count ?? 0), 0);
+  const chipsAvailable = (insts.data ?? []).filter((i: any) => i.status === "connected").length;
+  const dailyCapacity = gs.reduce((acc, g) => acc + (g.daily_limit || 0), 0);
+  const fastestGroup = gs.reduce<any>((acc, g) => (!acc || g.min_delay_seconds < acc.min_delay_seconds ? g : acc), null);
+
   return (
     <div className="mt-4 space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Grupos</div>
+              <Users2 className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{totalGroups}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{activeGroups} ativos · {Math.max(0, totalGroups - activeGroups)} pausados</div>
+          </CardContent>
+        </Card>
+        <Card className="border-green-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Chips em grupo</div>
+              <Smartphone className="h-4 w-4 text-green-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{totalMembers}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{chipsAvailable} conectado(s) disponíveis</div>
+          </CardContent>
+        </Card>
+        <Card className="border-orange-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Cap. diária</div>
+              <TrendingUp className="h-4 w-4 text-orange-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{dailyCapacity > 0 ? dailyCapacity.toLocaleString("pt-BR") : "∞"}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">msgs/dia somadas nos grupos</div>
+          </CardContent>
+        </Card>
+        <Card className="border-sky-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Mais rápido</div>
+              <Zap className="h-4 w-4 text-sky-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{fastestGroup ? `${fastestGroup.min_delay_seconds}s` : "—"}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{fastestGroup ? fastestGroup.name : "nenhum grupo ainda"}</div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader><CardTitle>Novo grupo de aquecimento</CardTitle><CardDescription>Escolha a velocidade antes de criar: quanto mais rápido, mais rápido o número aquece — e maior o risco de queda/bloqueio. Cada número só participa de uma conversa por vez.</CardDescription></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
