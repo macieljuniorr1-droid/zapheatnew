@@ -782,9 +782,12 @@ function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
   const delFn = useServerFn(deleteGroup);
   const addMember = useServerFn(addGroupMember);
   const rmMember = useServerFn(removeGroupMember);
+  const listModels = useServerFn(listAiModels);
+  const setModel = useServerFn(setGroupAiModel);
 
   const groups = useQuery({ queryKey: ["groups"], queryFn: () => listFn(), refetchInterval: 15000 });
   const insts = useQuery({ queryKey: ["group-instances"], queryFn: () => listInst(), refetchInterval: 15000 });
+  const models = useQuery({ queryKey: ["ai-models"], queryFn: () => listModels(), staleTime: 60 * 60 * 1000 });
 
   const [name, setName] = useState("");
   const [minD, setMinD] = useState(60);
