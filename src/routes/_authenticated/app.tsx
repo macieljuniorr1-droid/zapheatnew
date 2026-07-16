@@ -2873,33 +2873,35 @@ function CampaignsSection() {
               <div>
                 <Label>Números que vão disparar (marque um ou mais)</Label>
                 <div className="text-[11px] text-muted-foreground mt-1">
-                  Somente números com <b>3+ dias de aquecimento</b> podem disparar.
+                  Recomendado usar apenas números com <b>3+ dias de aquecimento</b>. Números ainda aquecendo podem disparar, mas o risco de bloqueio é maior.
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {insts.data?.filter((i: any) => i.is_ready).map((i: any) => {
+                  {insts.data?.filter((i: any) => i.status === "connected").map((i: any) => {
                     const on = instanceIds.includes(i.id);
+                    const ready = i.is_ready;
                     return (
                       <button
                         key={i.id}
                         type="button"
                         onClick={() => setInstanceIds((s) => on ? s.filter((x) => x !== i.id) : [...s, i.id])}
-                        className={`text-xs px-2 py-1 rounded border ${on ? "bg-primary text-primary-foreground border-primary" : "bg-card"}`}
+                        className={`text-xs px-2 py-1 rounded border flex items-center gap-1 ${on ? "bg-primary text-primary-foreground border-primary" : "bg-card"} ${!ready && !on ? "border-amber-500/60" : ""}`}
+                        title={ready ? "Pronto (3+ dias de aquecimento)" : `Aquecendo — ${i.days_warming ?? 0}/3 dias`}
                       >
-                        {i.name}
+                        <span>{i.name}</span>
+                        {!ready && (
+                          <span className={`text-[10px] px-1 rounded ${on ? "bg-primary-foreground/20" : "bg-amber-500/15 text-amber-600 dark:text-amber-400"}`}>
+                            {i.days_warming ?? 0}/3d
+                          </span>
+                        )}
                       </button>
                     );
                   })}
-                  {insts.data?.filter((i: any) => i.is_ready).length === 0 && (
+                  {(insts.data?.filter((i: any) => i.status === "connected").length ?? 0) === 0 && (
                     <div className="text-xs text-muted-foreground">
-                      Nenhum número pronto. Aguarde completar 3 dias de aquecimento.
+                      Nenhum número conectado. Conecte um número na aba <b>Números</b>.
                     </div>
                   )}
                 </div>
-                {insts.data?.some((i: any) => i.status === "connected" && !i.is_ready) && (
-                  <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
-                    {insts.data.filter((i: any) => i.status === "connected" && !i.is_ready).length} número(s) ainda aquecendo — aparecem aqui após 3 dias.
-                  </div>
-                )}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div><Label>Delay mín (s)</Label><Input type="number" value={minD} onChange={(e) => setMinD(+e.target.value)} /></div>
