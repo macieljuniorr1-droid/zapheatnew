@@ -103,7 +103,7 @@ export const evolution = {
         return await evoFetch(path, {
           method: "POST",
           body: JSON.stringify(payload),
-        }, 7_000);
+        }, 4_000);
       } catch (e: any) {
         errors.push(e);
         const msg = String(e?.message ?? "");
@@ -129,12 +129,12 @@ export const evolution = {
     evoFetch(`/chat/findMessages/${encodeURIComponent(instanceName)}`, {
       method: "POST",
       body: JSON.stringify({ where: { key: { remoteJid } } }),
-    }),
+    }, 1_500),
   findStatusMessage: (instanceName: string, where: { id?: string; remoteJid?: string; fromMe?: boolean }, limit = 20) =>
     evoFetch(`/chat/findStatusMessage/${encodeURIComponent(instanceName)}`, {
       method: "POST",
       body: JSON.stringify({ where, limit, offset: limit, page: 1 }),
-    }),
+    }, 1_500),
   findChats: (instanceName: string) =>
     evoFetch(`/chat/findChats/${encodeURIComponent(instanceName)}`, {
       method: "POST",

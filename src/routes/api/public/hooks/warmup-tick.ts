@@ -7,18 +7,19 @@ import { createFileRoute } from "@tanstack/react-router";
 // private chat; treating missing ACK as failure was taking healthy chips out of
 // the rotation.
 
-const MAX_DELAY_SECONDS = 8;
+const MAX_DELAY_SECONDS = 4;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 18_000;
-const MAX_BURST_ROUNDS = 2;
-const BURST_BUDGET_MS = 24_000;
-const REPLY_GAP_MS = 500;
-const FAILING_PAIR_COOLDOWN_MS = 25 * 1000;
+const DELIVERY_ACK_WAIT_MS = 1_200;
+const MAX_BURST_ROUNDS = 1;
+const BURST_BUDGET_MS = 6_000;
+const REPLY_GAP_MS = 150;
+const FAILING_PAIR_COOLDOWN_MS = 8 * 1000;
 const SENDER_REPAIR_WINDOW_MS = 20 * 60 * 1000;
 const PAIR_STREAK_WINDOW_MS = 8 * 60 * 1000;
 const PAIR_STREAK_LIMIT = 4;
-const MAX_SEND_ATTEMPTS_PER_PAIR = 3;
-const SESSION_SETTLE_MS = 1_100;
+const MAX_SEND_ATTEMPTS_PER_PAIR = 1;
+const SESSION_SETTLE_MS = 250;
+const AI_GENERATION_TIMEOUT_MS = 900;
 
 type Chip = {
   id: string;
@@ -65,11 +66,11 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
           .limit(50);
         if (gErr) return Response.json({ error: gErr.message }, { status: 500 });
 
-        const results: any[] = [];
-        for (const g of groups ?? []) {
+        const dueGroups = pickOneDueGroupPerUser(groups ?? []);
+        const settled = await Promise.all(dueGroups.map(async (g: any) => {
           try {
             const claimed = await claimGroupForThisTick(supabaseAdmin, g, now);
-            if (!claimed) continue;
+            if (!claimed) return [];
 
             let rawMembers: Chip[] = ((g as any).warmup_group_members ?? [])
               .map((m: any) => m.whatsapp_instances)
@@ -81,10 +82,10 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             await deactivateOlderDuplicatePhones(supabaseAdmin, evolution, rawMembers);
             rawMembers = await pruneDuplicateGroupMembers(supabaseAdmin, g, rawMembers);
             await markWarmupStarted(supabaseAdmin, rawMembers);
-            // Chips com histórico recente de ERROR de entrega recebem recuperação
-            // preventiva antes de tentar enviar de novo. Sem isso a sessão fica
-            // aberta no painel, mas dessincronizada para envio.
-            await preemptiveRecoverFailingChips(supabaseAdmin, evolution, rawMembers, (g as any).id);
+            // A recuperação pesada acontece apenas quando o remetente falha no
+            // envio. Fazer restart preventivo em todos os chips a cada tick
+            // deixava o motor "pensando" por muito tempo e misturava atrasos de
+            // um usuário no motor do outro.
 
             // Enquanto a instância estiver marcada como conectada e pareada no
             // painel, ela entra no rodízio. A checagem definitiva de sessão
@@ -93,16 +94,15 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             const members = uniqueSendableMembers(rawMembers.filter((i) => i.status === "connected" && i.phone));
             if (members.length < 2) {
               await scheduleNext(supabaseAdmin, g);
-              results.push({
+              return [{
                 group: (g as any).id,
                 status: "waiting",
                 reason: "menos de 2 números disponíveis neste ciclo",
                 connected_in_platform: rawMembers.filter((i) => i.status === "connected").length,
-              });
-              continue;
+              }];
             }
 
-            const broadcast = createBroadcast();
+            const broadcast = createBroadcast((g as any).user_id);
             const groupResults: any[] = [];
             const deadline = Date.now() + BURST_BUDGET_MS;
 
@@ -127,11 +127,13 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
             }
 
             await scheduleNext(supabaseAdmin, g);
-            results.push(...groupResults);
+            return groupResults;
           } catch (e: any) {
-            results.push({ group: (g as any).id, error: e?.message ?? "erro" });
+            return [{ group: (g as any).id, user: (g as any).user_id, error: e?.message ?? "erro" }];
           }
-        }
+        }));
+
+        const results = settled.flat();
 
         return Response.json({ ok: true, processed: results.length, results });
       },
@@ -139,11 +141,24 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
   },
 });
 
+function pickOneDueGroupPerUser(groups: any[]) {
+  const byUser = new Map<string, any>();
+  for (const group of groups) {
+    const userId = String(group.user_id ?? "");
+    if (!userId) continue;
+    const current = byUser.get(userId);
+    if (!current || new Date(group.next_run_at ?? 0).getTime() < new Date(current.next_run_at ?? 0).getTime()) {
+      byUser.set(userId, group);
+    }
+  }
+  return [...byUser.values()];
+}
+
 async function claimGroupForThisTick(supabaseAdmin: any, group: any, nowIso: string) {
   // O cron chama este endpoint a cada ~30s. Um ciclo pode levar alguns segundos
   // esperando ACK real do WhatsApp; sem essa reserva, duas execuções pegam o
   // mesmo grupo ao mesmo tempo e criam envios duplicados/race na Evolution.
-  const holdUntil = new Date(Date.now() + 60_000).toISOString();
+  const holdUntil = new Date(Date.now() + 18_000).toISOString();
   const { data, error } = await supabaseAdmin
     .from("warmup_groups")
     .update({ next_run_at: holdUntil })
@@ -238,20 +253,10 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           return;
         }
 
-        // Tenta reabrir a sessão em background sem mexer no status do painel.
-        // O usuário pareou o número; a plataforma NUNCA deve marcar como
-        // desconectado sozinha — só o próprio usuário desconecta manualmente.
-        const recovered = await recoverOpenSession(evolution, m.evolution_instance);
-        if (recovered) {
-          m.status = "connected";
-          await markInstance(supabaseAdmin, m.id, "connected");
-          return;
-        }
-
-        // Sessão não confirmou "open" agora — pulamos apenas este ciclo de
-        // envio, mas mantemos o chip como "conectado" no painel se já foi
-        // pareado. Chips que nunca foram pareados continuam em "connecting".
-        m.temporarily_unavailable = true;
+        // Status ao vivo não deve fazer restart/conectar todos os chips a cada
+        // ciclo. Isso era o maior gargalo. O envio real tenta recuperar só o
+        // remetente que falhar, mantendo cada motor rápido e isolado.
+        m.temporarily_unavailable = false;
         if (isPaired) {
           m.status = "connected";
           await markInstance(supabaseAdmin, m.id, "connected");
@@ -266,13 +271,7 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           m.status = "qr";
           return;
         }
-        const recovered = await recoverOpenSession(evolution, m.evolution_instance);
-        if (recovered) {
-          m.status = "connected";
-          await markInstance(supabaseAdmin, m.id, "connected");
-          return;
-        }
-        m.temporarily_unavailable = true;
+        m.temporarily_unavailable = false;
         if (isPaired) {
           m.status = "connected";
           await markInstance(supabaseAdmin, m.id, "connected");
@@ -301,8 +300,9 @@ async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
 
 
 async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
-  for (const m of members) {
-    if (m.status !== "connected") continue;
+  await Promise.all(members.map(async (m) => {
+    if (m.status !== "connected") return;
+    if (normalizePhone(m.phone)) return;
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
       const records = Array.isArray(fetched) ? fetched : Array.isArray(fetched?.instances) ? fetched.instances : [fetched?.instance ?? fetched];
@@ -327,7 +327,7 @@ async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, member
         await supabaseAdmin.from("whatsapp_instances").update({ phone: m.phone, updated_at: new Date().toISOString() }).eq("id", m.id);
       }
     } catch {}
-  }
+  }));
 }
 
 async function deactivateOlderDuplicatePhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
@@ -341,17 +341,17 @@ async function deactivateOlderDuplicatePhones(supabaseAdmin: any, evolution: any
 
     const samePhone = (duplicates ?? []) as Chip[];
     const connected = samePhone.filter((item) => item.status === "connected");
-    if (samePhone.length <= 1 && connected.length <= 1) continue;
+    if (connected.length <= 1) continue;
 
     // O mesmo WhatsApp conectado em duas instâncias deixa uma sessão recebendo,
     // mas sem enviar de forma confiável. Mantemos a conexão mais nova e tiramos
     // as antigas do rodízio, encerrando a sessão duplicada no Evolution.
-    const [keeper] = (connected.length ? connected : samePhone).sort((a, b) => {
+    const [keeper] = connected.sort((a, b) => {
       const byCreated = new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
       if (byCreated !== 0) return byCreated;
       return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime();
     });
-    const stale = samePhone.filter((item) => item.id !== keeper.id);
+    const stale = connected.filter((item) => item.id !== keeper.id);
 
     for (const old of stale) {
       if (old.evolution_instance) {
@@ -592,29 +592,13 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   }
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
-  const messageContent = await generateMessage(supabaseAdmin, group.user_id, from.id, to.id, history);
+  const messageContent = await generateMessageFast(supabaseAdmin, group.user_id, from.id, to.id, history);
   const cleanMessage = String(messageContent ?? "").trim();
   if (!cleanMessage) {
     return await logPairResult(supabaseAdmin, group, from, to, "mensagem vazia", "failed", "mensagem vazia: Evolution exige o campo text");
   }
 
-  const senderOpen = await ensureOpenSession(evolution, from.evolution_instance, true);
-  if (!senderOpen) {
-    // Não aborta o envio só porque a checagem preventiva não confirmou "open".
-    // Em sessões Baileys zumbis o WhatsApp ainda recebe push, mas o endpoint de
-    // estado oscila; o teste real é tentar enviar e, se falhar, recuperar e
-    // repetir. Antes daqui o motor registrava "remetente não abriu sessão" sem
-    // sequer chamar /message/sendText, deixando chips como o 2196 só recebendo.
-    await repairSenderSession(evolution, from.evolution_instance, normalizePhone(to.phone));
-  }
-
-  // O destinatário não precisa estar com o socket da Evolution aberto para
-  // RECEBER a mensagem no WhatsApp; só precisa quando chegar a vez dele enviar.
-  // Antes isso derrubava envios saudáveis porque uma checagem preventiva do
-  // destinatário falhava. Agora tentamos recuperar em background e seguimos.
-  ensureOpenSession(evolution, to.evolution_instance, false).catch(() => false);
-
-  const typingMs = Math.min(900, Math.max(250, cleanMessage.length * 10));
+  const typingMs = Math.min(250, Math.max(80, cleanMessage.length * 3));
   const toNumber = normalizePhone(to.phone);
   const sendTargets = await resolveSendTargets(evolution, from.evolution_instance, toNumber);
 
@@ -634,10 +618,10 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS_PER_PAIR; attempt++) {
       for (const target of sendTargets) {
         try {
-          await ensureOpenSession(evolution, from.evolution_instance, attempt > 0);
-          await markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid);
-          await primeChatSession(evolution, from.evolution_instance, target.number);
-          await evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs);
+          if (attempt > 0) await ensureOpenSession(evolution, from.evolution_instance, true);
+          markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid).catch(() => null);
+          primeChatSession(evolution, from.evolution_instance, target.number).catch(() => null);
+          evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs).catch(() => null);
           await new Promise((r) => setTimeout(r, typingMs));
           const sentAtMs = Date.now();
           const sendResp = await evolution.sendText(from.evolution_instance, target.number, cleanMessage);
@@ -769,6 +753,14 @@ async function getPairHistory(supabaseAdmin: any, groupId: string, fromId: strin
   }));
 }
 
+async function generateMessageFast(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[]) {
+  return await withTimeout(
+    generateMessage(supabaseAdmin, userId, fromId, toId, history),
+    AI_GENERATION_TIMEOUT_MS,
+    () => fallbackMessage(history),
+  );
+}
+
 async function generateMessage(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[]) {
   try {
     const { generateReply } = await import("@/lib/ai.server");
@@ -792,6 +784,28 @@ async function generateMessage(supabaseAdmin: any, userId: string, fromId: strin
   }
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback()), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function fallbackMessage(history: any[]) {
+  const last = String(history?.[history.length - 1]?.content ?? "").toLowerCase();
+  const replies = last.includes("?")
+    ? ["pior que sim kkk e vc?", "acho que sim viu, e por aí?", "demais kkk como tá aí?", "não sei não hein kkk e tu?"]
+    : ["kkkk sério?", "nossa mano kkk", "eita, aí é complicado", "pior que faz sentido", "tô ligado kkk", "aí sim hein"];
+  return replies[Math.floor(Math.random() * replies.length)];
+}
+
 async function markLatestIncomingAsRead(evolution: any, instanceName: string, remoteJid: string) {
   try {
     const found = await evolution.findMessages(instanceName, remoteJid);
@@ -806,6 +820,10 @@ async function markLatestIncomingAsRead(evolution: any, instanceName: string, re
 
 async function resolveSendTargets(evolution: any, instanceName: string, phone: string) {
   const fallback = { number: phone, remoteJid: `${phone}@s.whatsapp.net` };
+  // Caminho rápido: para aquecimento entre números já conhecidos, enviar pelo
+  // telefone puro é mais estável e evita gastar vários segundos consultando
+  // contatos/@lid antes de cada mensagem.
+  return [fallback];
   const targets: Array<{ number: string; remoteJid: string }> = [];
   const addTarget = (value: unknown) => {
     const raw = String(value ?? "").trim();
@@ -868,7 +886,7 @@ function normalizeEvolutionRecords(payload: any): any[] {
   return [];
 }
 
-function createBroadcast() {
+function createBroadcast(userId: string) {
   return async (event: string, payload: any) => {
     try {
       await fetch(`${process.env.SUPABASE_URL}/realtime/v1/api/broadcast`, {
@@ -878,7 +896,7 @@ function createBroadcast() {
           apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
           Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
         },
-        body: JSON.stringify({ messages: [{ topic: "ai-engine-live", event, payload }] }),
+        body: JSON.stringify({ messages: [{ topic: `ai-engine-live:${userId}`, event, payload: { ...payload, user_id: userId } }] }),
       });
     } catch {}
   };

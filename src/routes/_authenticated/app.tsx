@@ -249,7 +249,7 @@ function AppPage() {
           
           <TabsContent value="instances"><InstancesTab /></TabsContent>
           <TabsContent value="groups"><GroupsTab changeTab={changeTab} /></TabsContent>
-          <TabsContent value="templates"><TemplatesTab /></TabsContent>
+          <TabsContent value="templates"><TemplatesTab userId={(me.data as any)?.userId} /></TabsContent>
           <TabsContent value="dispatch"><DispatchTab /></TabsContent>
           <TabsContent value="live"><LiveChatTab /></TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
@@ -896,7 +896,7 @@ function AddMemberSelect({ groupId, used, instances, onAdd, onCreateNumber }: { 
 }
 
 // ---------------- Motor IA (antes: Templates) ----------------
-function TemplatesTab() {
+function TemplatesTab({ userId }: { userId?: string }) {
   const qc = useQueryClient();
   const listFn = useServerFn(listTemplates);
   const addFn = useServerFn(addTemplate);
@@ -924,8 +924,9 @@ function TemplatesTab() {
   // realtime: escuta broadcasts do cron ("typing_start" antes de gerar, "typing_end" ao enviar)
   // + insert em warmup_logs pra aparecer a mensagem já enviada
   useEffect(() => {
+    if (!userId) return;
     const channel = supabase
-      .channel("ai-engine-live")
+      .channel(`ai-engine-live:${userId}`)
       .on("broadcast", { event: "typing_start" }, ({ payload }) => {
         setThinking({ from: payload?.from_name ?? "Chip", to: payload?.to_name ?? "Chip" });
       })
@@ -937,6 +938,7 @@ function TemplatesTab() {
         { event: "INSERT", schema: "public", table: "warmup_logs" },
         async (payload) => {
           const row = payload.new as any;
+          if (row.user_id !== userId) return;
           const { data: names } = await supabase
             .from("whatsapp_instances")
             .select("id, name")
@@ -953,7 +955,7 @@ function TemplatesTab() {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [userId]);
 
   const totalGenerated = liveLogs.length;
   const lastAt = liveLogs[0]?.created_at ?? null;
