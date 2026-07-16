@@ -1013,7 +1013,7 @@ function createBroadcast(userId: string) {
 async function scheduleNext(supabaseAdmin: any, g: any) {
   const configuredMin = Math.max(1, Number(g.min_delay_seconds ?? 60));
   const min = Math.min(configuredMin, FALLBACK_MAX_DELAY_SECONDS);
-  const configuredMax = Math.max(Number(g.max_delay_seconds ?? MAX_DELAY_SECONDS), configuredMin);
+  const configuredMax = Math.max(Number(g.max_delay_seconds ?? FALLBACK_MAX_DELAY_SECONDS), configuredMin);
   const max = Math.max(Math.min(configuredMax, FALLBACK_MAX_DELAY_SECONDS), min);
   const delay = Math.floor(Math.random() * (max - min + 1)) + min;
   const next = new Date(Date.now() + delay * 1000).toISOString();
