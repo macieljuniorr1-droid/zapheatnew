@@ -144,7 +144,7 @@ import {
 export const Route = createFileRoute("/_authenticated/app")({
   validateSearch: (s: Record<string, unknown>) => ({ tab: (s.tab as string) || undefined }),
   head: () => ({
-    meta: [{ title: "Painel — WarmUp Pro" }],
+    meta: [{ title: "Painel — ZapHeat" }],
   }),
   component: AppPage,
 });
@@ -2582,7 +2582,7 @@ function TutorialTab() {
       title: "1. Contrate ou instale a Evolution API",
       body: (
         <>
-          <p>A Evolution API é a ponte entre o WarmUp Pro e o WhatsApp. Você tem 3 caminhos:</p>
+          <p>A Evolution API é a ponte entre o ZapHeat e o WhatsApp. Você tem 3 caminhos:</p>
           <ul className="list-disc pl-5 space-y-1 mt-2 text-sm">
             <li><b>Serviço pronto</b> (mais rápido) — sites como <span className="font-mono">evolution-api.com</span> hospedam pra você. Cria conta, paga, recebe URL + API Key.</li>
             <li><b>VPS + Docker</b> — contrata uma VPS (Contabo, Hostinger, DigitalOcean, ~R$30/mês) e roda o Docker Compose do repositório oficial <span className="font-mono">github.com/EvolutionAPI/evolution-api</span>.</li>
@@ -2658,7 +2658,7 @@ function TutorialTab() {
             <BookOpen className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <h2 className="font-display text-xl font-semibold">Como funciona o WarmUp Pro</h2>
+            <h2 className="font-display text-xl font-semibold">Como funciona o ZapHeat</h2>
             <p className="text-sm text-muted-foreground mt-1">
               Aquecimento automático de WhatsApp com IA. Configure uma vez e deixe rodando —
               seus números conversam entre si de forma natural, 24 horas por dia.

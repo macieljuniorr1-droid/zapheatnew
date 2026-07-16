@@ -253,7 +253,7 @@ function Landing() {
               Diferente de qualquer aquecedor que você já viu
             </h2>
             <p className="mt-3 text-muted-foreground">
-              Enquanto outros mandam listas de mensagens repetitivas, o WarmUp Pro gera cada conversa em tempo real com IA que lê o histórico.
+              Enquanto outros mandam listas de mensagens repetitivas, o ZapHeat gera cada conversa em tempo real com IA que lê o histórico.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -319,7 +319,7 @@ function Landing() {
             <Faq q="Posso testar sem pagar?" a="Sim. O plano Free libera 2 números conversando entre si, para sempre. Você vê a plataforma inteira funcionando antes de decidir." />
             <Faq q="Preciso de VPS ou serviço externo?" a="Sim, você precisa da Evolution API (grátis, open-source) rodando em uma VPS ou em um serviço pronto. No painel Admin você cola URL e API Key e pronto." />
             <Faq q="A IA repete mensagens?" a="Não. Cada mensagem é gerada em tempo real pela Gemini 3 lendo o histórico da conversa. É diferente sempre." />
-            <Faq q="Meu chip pode ser banido?" a="O WarmUp Pro reduz drasticamente o risco com delays humanos, ritmo variado e mensagens naturais — mas nenhum sistema garante 100%. Comece com limites baixos e aumente aos poucos." />
+            <Faq q="Meu chip pode ser banido?" a="O ZapHeat reduz drasticamente o risco com delays humanos, ritmo variado e mensagens naturais — mas nenhum sistema garante 100%. Comece com limites baixos e aumente aos poucos." />
             <Faq q="Funciona em segundo plano?" a="Sim. Roda no servidor 24/7. Você não precisa manter computador ou navegador aberto." />
           </div>
         </section>
