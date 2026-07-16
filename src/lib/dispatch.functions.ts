@@ -125,23 +125,17 @@ export const createCampaign = createServerFn({ method: "POST" })
     if (data.media_url && !data.media_type)
       throw new Error("Selecione o tipo da mídia (imagem, vídeo ou documento)");
 
-    // Regra: só dispara com números que já completaram 3 dias de aquecimento
-    const WARMUP_DAYS_REQUIRED = 3;
+    // Números precisam estar conectados. Aquecimento < 3 dias é permitido, mas
+    // aumenta o risco de bloqueio — a UI já avisa quem ainda está aquecendo.
     const { data: chosen } = await supabase
       .from("whatsapp_instances")
-      .select("id, name, status, warmup_started_at")
+      .select("id, name, status")
       .in("id", data.instance_ids);
-    const now = Date.now();
-    const notReady = (chosen ?? []).filter((c: any) => {
-      if (c.status !== "connected") return true;
-      if (!c.warmup_started_at) return true;
-      const days = (now - new Date(c.warmup_started_at).getTime()) / 86400000;
-      return days < WARMUP_DAYS_REQUIRED;
-    });
-    if (notReady.length > 0) {
-      const names = notReady.map((n: any) => n.name).join(", ");
+    const notConnected = (chosen ?? []).filter((c: any) => c.status !== "connected");
+    if (notConnected.length > 0) {
+      const names = notConnected.map((n: any) => n.name).join(", ");
       throw new Error(
-        `Estes números ainda não completaram 3 dias de aquecimento e não podem disparar: ${names}`,
+        `Estes números não estão conectados e não podem disparar: ${names}`,
       );
     }
 
