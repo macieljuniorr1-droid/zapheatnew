@@ -814,10 +814,16 @@ async function resolveSendTargets(evolution: any, instanceName: string, phone: s
     const digits = normalizePhone(raw);
     if (!isJid && digits !== phone) return;
     const remoteJid = isJid ? raw : `${digits}@s.whatsapp.net`;
-    const number = /@lid$/i.test(remoteJid) ? remoteJid : digits;
+    // O endpoint sendText espera número internacional em dígitos. Enviar para
+    // @lid pode ser aceito pela Evolution, mas ficar preso sem chegar no celular.
+    const number = digits || phone;
     if (!number || targets.some((t) => t.number === number || t.remoteJid === remoteJid)) return;
     targets.push({ number, remoteJid });
   };
+
+  // Primeiro tenta sempre o número normal. JIDs @lid ficam apenas como fallback
+  // de consulta/ACK quando o WhatsApp alterna o identificador internamente.
+  addTarget(fallback.remoteJid);
 
   try {
     const resolved = await evolution.whatsappNumbers(instanceName, [phone]);
