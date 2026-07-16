@@ -186,7 +186,7 @@ export const purchaseVirtualNumber = createServerFn({ method: "POST" })
         price_cents: price,
         provider_cost_cents: c.provider_cost_cents,
         status: "waiting",
-        expires_at: new Date(Date.now() + 20 * 60_000).toISOString(),
+        expires_at: new Date(Date.now() + 2 * 60_000).toISOString(),
       })
       .select("id")
       .single();
