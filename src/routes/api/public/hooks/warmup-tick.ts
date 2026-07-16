@@ -317,7 +317,7 @@ async function refreshRepairQr(supabaseAdmin: any, evolution: any, m: Chip) {
 
 async function refreshConnectedPhones(supabaseAdmin: any, evolution: any, members: Chip[]) {
   await Promise.all(members.map(async (m) => {
-    if (m.status !== "connected") continue;
+    if (m.status !== "connected") return;
     if (normalizePhone(m.phone)) return;
     try {
       const fetched = await evolution.fetchInstance(m.evolution_instance);
