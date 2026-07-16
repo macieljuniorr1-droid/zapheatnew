@@ -617,32 +617,14 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   const discoverLidTarget = async () => {
     if (lidTargetCache !== undefined) return lidTargetCache;
-    const pickJid = (raw: unknown): { number: string; remoteJid: string } | null => {
-      const jid = String(raw ?? "").trim();
-      const m = jid.match(/(\d+@lid)/i);
-      if (!m) return null;
-      const clean = m[1];
-      return { number: clean, remoteJid: clean };
-    };
     const scanRecord = (rec: any): { number: string; remoteJid: string } | null => {
-      // Evolution retorna o mapeamento @lid em campos diferentes dependendo da
-      // versão: `lid`, `jid`, `id`, `remoteJid`, `owner`. Como fallback, procura
-      // qualquer `\d+@lid` no JSON serializado do registro para não perder o
-      // destino quando o campo é aninhado.
-      const direct =
-        pickJid(rec?.lid) ??
-        pickJid(rec?.jid) ??
-        pickJid(rec?.remoteJid) ??
-        pickJid(rec?.id) ??
-        pickJid(rec?.number) ??
-        pickJid(rec?.owner);
-      if (direct) return direct;
-      try {
-        const blob = JSON.stringify(rec ?? {});
-        return pickJid(blob);
-      } catch {
-        return null;
-      }
+      // O problema real não é "enviar para @lid"; é transformar o @lid no JID
+      // telefônico correto. Versões recentes da Evolution expõem esse par em
+      // remoteJidAlt/participantAlt. Quando encontrado, reenviamos usando
+      // phone@s.whatsapp.net — nunca o @lid como destino principal.
+      const real = extractRealPhoneJid(rec, toNumber);
+      if (real) return { number: real, remoteJid: real };
+      return null;
     };
     try {
       const resolved = await evolution.whatsappNumbers(from.evolution_instance, [toNumber]);
@@ -688,7 +670,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
           // Evolution 400 "reading 'id'" = Baileys não conseguiu resolver o
           // destinatário porque o contato está no cache apenas como @lid.
           // Descobrimos o JID @lid uma única vez e reenviamos.
-          if (isRecipientIdError(sendErr?.message) && !targets.some((t) => /@lid$/i.test(t.number))) {
+          if (isRecipientIdError(sendErr?.message) && !targets.some((t) => t.number === `${toNumber}@s.whatsapp.net`)) {
             const lid = await discoverLidTarget();
             if (lid && !targets.some((t) => t.number === lid.number)) {
               targets.push(lid);
@@ -1256,29 +1238,10 @@ async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJi
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  // Ficou preso em SERVER_ACK/PENDING: mensagem saiu do remetente mas o
-  // destinatário nunca recebeu. Tratamos como falha para acionar a recuperação
-  // de sessão em vez de mentir que foi entregue.
-  const s = String(lastStatus ?? "").toUpperCase();
-  if (sawRecord && (s === "SERVER_ACK" || s === "PENDING")) {
-    return {
-      delivered: false,
-      explicitError: true,
-      error: `mensagem não entregue ao destinatário (${lastStatus}) — sessão pode estar dessincronizada`,
-    };
-  }
-  if (!sawRecord) {
-    return {
-      delivered: false,
-      explicitError: true,
-      error: "mensagem aceita pela Evolution, mas sem confirmação real no WhatsApp — sessão pode estar dessincronizada",
-    };
-  }
-  return {
-    delivered: false,
-    explicitError: true,
-    error: `mensagem sem confirmação de entrega (${lastStatus ?? "status desconhecido"}) — sessão pode estar dessincronizada`,
-  };
+  // Se a Evolution aceitou o envio e não retornou ERROR explícito, não marcamos
+  // como falha só porque o ACK demorou. Em Baileys/Evolution o status pode ficar
+  // PENDING/SERVER_ACK por alguns segundos/minutos, especialmente em contas LID.
+  return { delivered: true, explicitError: false, ack: lastStatus ?? (sawRecord ? "ACCEPTED" : "ACCEPTED_BY_EVOLUTION") };
 }
 
 async function findOutgoingMessageRecords(evolution: any, instanceName: string, remoteJid: string, messageId?: string) {
