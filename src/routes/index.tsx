@@ -274,8 +274,18 @@ function Landing() {
           </div>
         </section>
 
+        {/* TEMPERATURE — live number status */}
+        <TemperatureSection />
+
+        {/* DASHBOARD PREVIEW */}
+        <DashboardPreviewSection />
+
+        {/* WARMUP JOURNEY — day-by-day evolution */}
+        <WarmupJourneySection />
+
         {/* MASS DISPATCH */}
         <MassDispatchSection />
+
 
         {/* PLANS */}
 
