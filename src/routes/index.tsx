@@ -13,7 +13,14 @@ import {
   Clock,
   TrendingUp,
   Users2,
+  Send,
+  Shuffle,
+  Target,
+  Instagram,
+  Twitter,
+  Youtube,
 } from "lucide-react";
+
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
@@ -42,9 +49,11 @@ function Landing() {
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#how" className="hover:text-foreground transition">Como funciona</a>
+            <a href="#dispatch" className="hover:text-foreground transition">Disparo em massa</a>
             <a href="#plans" className="hover:text-foreground transition">Planos</a>
             <a href="#faq" className="hover:text-foreground transition">FAQ</a>
           </nav>
+
           <div className="flex items-center gap-2">
             <Link to="/auth">
               <Button size="sm" variant="ghost" className="hidden sm:inline-flex">
@@ -156,7 +165,11 @@ function Landing() {
           </div>
         </section>
 
+        {/* MASS DISPATCH */}
+        <MassDispatchSection />
+
         {/* PLANS */}
+
         <section id="plans" className="max-w-6xl mx-auto px-6 py-20">
           <div className="text-center max-w-2xl mx-auto mb-14">
             <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">planos</div>
@@ -231,24 +244,8 @@ function Landing() {
           </div>
         </section>
 
-        <footer className="border-t border-border/40 mt-8">
-          <div className="max-w-6xl mx-auto px-6 py-8 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground font-mono">
-            <div className="flex items-center gap-2">
-              <Logo small />
-              <span>© WarmUp Pro</span>
-            </div>
-            <a
-              href="https://wa.me/212786573855"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-foreground/80 hover:text-ember transition"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-ember animate-ember" />
-              suporte · +212 786-573855
-            </a>
-            <span className="flex items-center gap-1"><Flame className="h-3 w-3 text-ember" /> forjando reputação</span>
-          </div>
-        </footer>
+        <SiteFooter />
+
 
         {/* Floating WhatsApp support */}
         <a
@@ -536,3 +533,249 @@ function NetworkGraph() {
     </div>
   );
 }
+
+function MassDispatchSection() {
+  const numbers = [
+    { id: "01", phone: "+55 11 9•••• 4821", status: "sending", label: "Enviando agora", progress: 76, sent: 428 },
+    { id: "02", phone: "+55 21 9•••• 7392", status: "queued", label: "Aguardando rodízio", progress: 0, sent: 312 },
+    { id: "03", phone: "+55 31 9•••• 2154", status: "resting", label: "Descansando · cooldown", progress: 0, sent: 189 },
+    { id: "04", phone: "+55 41 9•••• 8867", status: "queued", label: "Na fila", progress: 0, sent: 91 },
+  ];
+  return (
+    <section id="dispatch" className="max-w-6xl mx-auto px-6 py-24">
+      <div className="grid lg:grid-cols-2 gap-14 items-center">
+        {/* Left copy */}
+        <div className="space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full border border-ember/30 bg-ember/5 px-3 py-1 text-xs text-ember">
+            <Shuffle className="h-3 w-3" />
+            <span className="font-mono uppercase tracking-widest">Disparo em massa</span>
+          </div>
+          <h2 className="font-display text-4xl md:text-5xl font-bold tracking-tight leading-[1.05]">
+            Disparo em massa com<br />
+            <span className="gradient-ember-text">rotação inteligente de números.</span>
+          </h2>
+          <p className="text-lg text-muted-foreground leading-relaxed max-w-xl">
+            Depois que seus chips estão aquecidos, a mesma plataforma dispara em escala — só que sem colocar todos os ovos na mesma cesta. Cada mensagem sai de um número diferente, com delays humanos e variação de texto.
+          </p>
+          <ul className="space-y-4 pt-2">
+            <DispatchBullet
+              icon={<Shuffle className="h-4 w-4" />}
+              title="Variação automática de números"
+              desc="A cada envio o sistema alterna entre os chips ativos — 3, 10 ou 50 números disparando como uma equipe."
+            />
+            <DispatchBullet
+              icon={<Sparkles className="h-4 w-4" />}
+              title="Spintax + variação de texto"
+              desc="Duas mensagens iguais nunca saem — o motor troca sinônimos, ordem de frases e emojis para eliminar footprint."
+            />
+            <DispatchBullet
+              icon={<Clock className="h-4 w-4" />}
+              title="Delays humanos configuráveis"
+              desc="Intervalos randômicos entre disparos e presença digitando antes de enviar. WhatsApp lê como pessoa, não robô."
+            />
+            <DispatchBullet
+              icon={<Target className="h-4 w-4" />}
+              title="Segmentação por lista"
+              desc="Importe CSV, valide números na Evolution, exclua duplicados e dispare para milhares em uma campanha só."
+            />
+          </ul>
+          <div className="pt-4 flex flex-wrap gap-3">
+            <Link to="/auth">
+              <Button size="lg" className="gradient-ember-bg glow-ember h-12 px-8 text-base">
+                <Send className="h-4 w-4 mr-2" />Criar minha campanha
+              </Button>
+            </Link>
+            <a href="#plans">
+              <Button size="lg" variant="outline" className="h-12 px-8 text-base border-ember/40">
+                Ver planos
+              </Button>
+            </a>
+          </div>
+        </div>
+
+        {/* Right — Rotor visual */}
+        <div className="relative">
+          <div className="pointer-events-none absolute -inset-8 forge-halo opacity-70" aria-hidden />
+          <div className="relative panel rounded-2xl p-6 backdrop-blur-md">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-ember animate-ember" />
+                <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                  campanha · rotor ativo
+                </span>
+              </div>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-ember px-2 py-0.5 rounded border border-ember/30 bg-ember/5">
+                em execução
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {numbers.map((n) => (
+                <div
+                  key={n.id}
+                  className={`flex items-center gap-3 p-3 rounded-xl border transition ${
+                    n.status === "sending"
+                      ? "border-ember/50 bg-ember/5 glow-ember"
+                      : n.status === "queued"
+                        ? "border-border/60 bg-background/40 opacity-80"
+                        : "border-border/40 bg-background/20 opacity-50"
+                  }`}
+                >
+                  <div
+                    className={`h-10 w-10 shrink-0 rounded-full grid place-items-center font-mono text-xs font-bold ${
+                      n.status === "sending"
+                        ? "gradient-ember-bg text-primary-foreground"
+                        : "bg-muted text-muted-foreground border border-border/60"
+                    }`}
+                  >
+                    #{n.id}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium truncate">{n.phone}</div>
+                    <div
+                      className={`text-[10px] font-mono uppercase tracking-widest mt-0.5 ${
+                        n.status === "sending" ? "text-ember" : "text-muted-foreground"
+                      }`}
+                    >
+                      {n.label}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-semibold tabular-nums">{n.sent}</div>
+                    <div className="text-[10px] font-mono text-muted-foreground uppercase">enviados</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 grid grid-cols-3 gap-2">
+              <div className="rounded-lg border border-border/50 bg-background/40 p-3">
+                <div className="text-[10px] font-mono uppercase text-muted-foreground">total hoje</div>
+                <div className="font-display text-lg font-bold gradient-ember-text">12.482</div>
+              </div>
+              <div className="rounded-lg border border-border/50 bg-background/40 p-3">
+                <div className="text-[10px] font-mono uppercase text-muted-foreground">chips em rotação</div>
+                <div className="font-display text-lg font-bold">12</div>
+              </div>
+              <div className="rounded-lg border border-border/50 bg-background/40 p-3">
+                <div className="text-[10px] font-mono uppercase text-muted-foreground">taxa entrega</div>
+                <div className="font-display text-lg font-bold text-ember">98%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DispatchBullet({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+  return (
+    <li className="flex items-start gap-3">
+      <div className="mt-0.5 h-8 w-8 shrink-0 rounded-lg bg-ember/10 border border-ember/20 text-ember grid place-items-center">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="font-semibold text-foreground">{title}</div>
+        <div className="text-sm text-muted-foreground leading-relaxed">{desc}</div>
+      </div>
+    </li>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer className="relative border-t border-border/40 mt-12 bg-background/40 backdrop-blur-sm">
+      <div className="max-w-6xl mx-auto px-6 pt-16 pb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-10 mb-14">
+          <div className="col-span-2">
+            <Link to="/" className="inline-flex items-center gap-2 mb-5">
+              <img src={zapheatLogo.url} alt="ZapHeat" className="h-9 w-auto" />
+            </Link>
+            <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
+              A plataforma brasileira para aquecer chips de WhatsApp com IA generativa e disparar em massa com rotação inteligente entre números.
+            </p>
+            <a
+              href="https://wa.me/212786573855"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center gap-2 text-sm text-foreground/80 hover:text-ember transition"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-ember animate-ember" />
+              <span className="font-mono">suporte · +212 786-573855</span>
+            </a>
+            <div className="flex gap-3 mt-6">
+              <SocialLink href="https://instagram.com" label="Instagram"><Instagram className="h-4 w-4" /></SocialLink>
+              <SocialLink href="https://twitter.com" label="Twitter"><Twitter className="h-4 w-4" /></SocialLink>
+              <SocialLink href="https://youtube.com" label="YouTube"><Youtube className="h-4 w-4" /></SocialLink>
+            </div>
+          </div>
+
+          <FooterCol title="Produto" links={[
+            { label: "Aquecimento IA", href: "#how" },
+            { label: "Disparo em massa", href: "#dispatch" },
+            { label: "Planos", href: "#plans" },
+            { label: "FAQ", href: "#faq" },
+          ]} />
+          <FooterCol title="Empresa" links={[
+            { label: "Sobre", href: "#" },
+            { label: "Blog", href: "#" },
+            { label: "Suporte", href: "https://wa.me/212786573855", external: true },
+            { label: "Contato", href: "https://wa.me/212786573855", external: true },
+          ]} />
+          <FooterCol title="Legal" links={[
+            { label: "Termos de uso", href: "#" },
+            { label: "Privacidade", href: "#" },
+            { label: "Política anti-spam", href: "#" },
+          ]} />
+        </div>
+
+        <div className="pt-6 border-t border-border/40 flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-xs text-muted-foreground font-mono">
+            © {new Date().getFullYear()} ZapHeat · forjando reputação
+          </p>
+          <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            <span className="h-1.5 w-1.5 rounded-full bg-ember animate-ember" />
+            todos os sistemas operacionais
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+function FooterCol({ title, links }: { title: string; links: Array<{ label: string; href: string; external?: boolean }> }) {
+  return (
+    <div>
+      <h4 className="text-sm font-semibold text-foreground mb-4">{title}</h4>
+      <ul className="space-y-3">
+        {links.map((l) => (
+          <li key={l.label}>
+            <a
+              href={l.href}
+              {...(l.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              className="text-sm text-muted-foreground hover:text-ember transition"
+            >
+              {l.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SocialLink({ href, label, children }: { href: string; label: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={label}
+      className="h-9 w-9 grid place-items-center rounded-lg border border-border/60 bg-background/40 text-muted-foreground hover:text-ember hover:border-ember/40 transition"
+    >
+      {children}
+    </a>
+  );
+}
+
