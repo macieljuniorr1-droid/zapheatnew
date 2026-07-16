@@ -253,20 +253,10 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           return;
         }
 
-        // Tenta reabrir a sessão em background sem mexer no status do painel.
-        // O usuário pareou o número; a plataforma NUNCA deve marcar como
-        // desconectado sozinha — só o próprio usuário desconecta manualmente.
-        const recovered = await recoverOpenSession(evolution, m.evolution_instance);
-        if (recovered) {
-          m.status = "connected";
-          await markInstance(supabaseAdmin, m.id, "connected");
-          return;
-        }
-
-        // Sessão não confirmou "open" agora — pulamos apenas este ciclo de
-        // envio, mas mantemos o chip como "conectado" no painel se já foi
-        // pareado. Chips que nunca foram pareados continuam em "connecting".
-        m.temporarily_unavailable = true;
+        // Status ao vivo não deve fazer restart/conectar todos os chips a cada
+        // ciclo. Isso era o maior gargalo. O envio real tenta recuperar só o
+        // remetente que falhar, mantendo cada motor rápido e isolado.
+        m.temporarily_unavailable = false;
         if (isPaired) {
           m.status = "connected";
           await markInstance(supabaseAdmin, m.id, "connected");
@@ -281,13 +271,7 @@ async function refreshLiveStatuses(supabaseAdmin: any, evolution: any, members: 
           m.status = "qr";
           return;
         }
-        const recovered = await recoverOpenSession(evolution, m.evolution_instance);
-        if (recovered) {
-          m.status = "connected";
-          await markInstance(supabaseAdmin, m.id, "connected");
-          return;
-        }
-        m.temporarily_unavailable = true;
+        m.temporarily_unavailable = false;
         if (isPaired) {
           m.status = "connected";
           await markInstance(supabaseAdmin, m.id, "connected");
