@@ -59,7 +59,7 @@ export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
         const { data: groups, error: gErr } = await supabaseAdmin
           .from("warmup_groups")
           .select(
-            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, warmup_group_members(instance_id, whatsapp_instances(id, name, evolution_instance, status, phone, last_qr, warmup_started_at, created_at, updated_at))",
+            "id, user_id, min_delay_seconds, max_delay_seconds, daily_limit, ai_model, warmup_group_members(instance_id, whatsapp_instances(id, name, evolution_instance, status, phone, last_qr, warmup_started_at, created_at, updated_at))",
           )
           .eq("active", true)
           .lte("next_run_at", now)
@@ -592,7 +592,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
   }
 
   const history = await getPairHistory(supabaseAdmin, group.id, from.id, to.id);
-  const messageContent = await generateMessageFast(supabaseAdmin, group.user_id, from.id, to.id, history);
+  const messageContent = await generateMessageFast(supabaseAdmin, group.user_id, from.id, to.id, history, group.ai_model ?? null);
   const cleanMessage = String(messageContent ?? "").trim();
   if (!cleanMessage) {
     return await logPairResult(supabaseAdmin, group, from, to, "mensagem vazia", "failed", "mensagem vazia: Evolution exige o campo text");
@@ -819,15 +819,15 @@ async function getPairHistory(supabaseAdmin: any, groupId: string, fromId: strin
   }));
 }
 
-async function generateMessageFast(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[]) {
+async function generateMessageFast(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[], aiModel: string | null) {
   return await withTimeout(
-    generateMessage(supabaseAdmin, userId, fromId, toId, history),
+    generateMessage(supabaseAdmin, userId, fromId, toId, history, aiModel),
     AI_GENERATION_TIMEOUT_MS,
     () => fallbackMessage(history),
   );
 }
 
-async function generateMessage(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[]) {
+async function generateMessage(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[], aiModel: string | null) {
   try {
     const { generateReply } = await import("@/lib/ai.server");
     const { data: names } = await supabaseAdmin
@@ -839,6 +839,7 @@ async function generateMessage(supabaseAdmin: any, userId: string, fromId: strin
       pairSeed: fromId,
       fromName: map.get(fromId) ?? null,
       toName: map.get(toId) ?? null,
+      model: aiModel,
     });
   } catch {
     const { data: templates } = await supabaseAdmin

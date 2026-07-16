@@ -626,6 +626,7 @@ export type Database = {
       warmup_groups: {
         Row: {
           active: boolean
+          ai_model: string
           created_at: string
           daily_limit: number
           id: string
@@ -637,6 +638,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          ai_model?: string
           created_at?: string
           daily_limit?: number
           id?: string
@@ -648,6 +650,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          ai_model?: string
           created_at?: string
           daily_limit?: number
           id?: string

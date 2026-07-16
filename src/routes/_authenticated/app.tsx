@@ -37,6 +37,8 @@ import {
   adminPlatformDashboard,
   listWhatsappChats,
   listWhatsappMessages,
+  listAiModels,
+  setGroupAiModel,
 } from "@/lib/warmup.functions";
 import {
   listContactLists,
@@ -780,9 +782,12 @@ function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
   const delFn = useServerFn(deleteGroup);
   const addMember = useServerFn(addGroupMember);
   const rmMember = useServerFn(removeGroupMember);
+  const listModels = useServerFn(listAiModels);
+  const setModel = useServerFn(setGroupAiModel);
 
   const groups = useQuery({ queryKey: ["groups"], queryFn: () => listFn(), refetchInterval: 15000 });
   const insts = useQuery({ queryKey: ["group-instances"], queryFn: () => listInst(), refetchInterval: 15000 });
+  const models = useQuery({ queryKey: ["ai-models"], queryFn: () => listModels(), staleTime: 60 * 60 * 1000 });
 
   const [name, setName] = useState("");
   const [minD, setMinD] = useState(60);
@@ -842,6 +847,32 @@ function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
                   onAdd={(instance_id) => addMember({ data: { group_id: g.id, instance_id } }).then(invalidate)}
                   onCreateNumber={() => changeTab("instances")}
                 />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+                <span className="text-xs text-muted-foreground">IA do aquecimento:</span>
+                <Select
+                  value={g.ai_model ?? "google/gemini-3-flash-preview"}
+                  onValueChange={(v) => {
+                    setModel({ data: { id: g.id, ai_model: v } })
+                      .then(() => { toast.success("IA atualizada"); invalidate(); })
+                      .catch((e: any) => toast.error(e.message));
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[280px] text-xs">
+                    <SelectValue placeholder="Selecione a IA" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(models.data ?? []).map((m: any) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        <span className="font-medium">{m.label}</span>
+                        <span className="ml-2 text-[10px] text-muted-foreground">{m.vendor} · {m.note}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-[10px] text-muted-foreground">
+                  Cada grupo pode usar uma IA diferente. Sem chave extra — tudo pelo Lovable AI.
+                </span>
               </div>
               <GroupEnginePanel groupId={g.id} />
             </CardContent>
