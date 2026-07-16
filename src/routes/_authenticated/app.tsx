@@ -371,6 +371,15 @@ function InstancesTab() {
     },
     onError: (e: any) => toast.error(e.message),
   });
+  const reset = useMutation({
+    mutationFn: (id: string) => resetFn({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Sessão recriada. Escaneie o novo QR.");
+      qc.invalidateQueries({ queryKey: ["instances-health"] });
+      qc.invalidateQueries({ queryKey: ["instances"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   const current = q.data?.find((i: any) => i.id === qrOpen);
   const counts = { hot: 0, warm: 0, cold: 0, connected: 0 };
