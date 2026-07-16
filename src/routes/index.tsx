@@ -654,7 +654,7 @@ function MassDispatchSection() {
                 <div className="font-display text-lg font-bold gradient-ember-text">12.482</div>
               </div>
               <div className="rounded-lg border border-border/50 bg-background/40 p-3">
-                <div className="text-[10px] font-mono uppercase text-muted-foreground">chips em rotação</div>
+                <div className="text-[10px] font-mono uppercase text-muted-foreground">whatsapps em rotação</div>
                 <div className="font-display text-lg font-bold">12</div>
               </div>
               <div className="rounded-lg border border-border/50 bg-background/40 p-3">
