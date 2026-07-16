@@ -816,7 +816,7 @@ async function resolveSendTargets(evolution: any, instanceName: string, phone: s
     const remoteJid = isJid ? raw : `${digits}@s.whatsapp.net`;
     // O endpoint sendText espera número internacional em dígitos. Enviar para
     // @lid pode ser aceito pela Evolution, mas ficar preso sem chegar no celular.
-    const number = digits || phone;
+    const number = /@lid$/i.test(remoteJid) ? phone : digits;
     if (!number || targets.some((t) => t.number === number || t.remoteJid === remoteJid)) return;
     targets.push({ number, remoteJid });
   };
