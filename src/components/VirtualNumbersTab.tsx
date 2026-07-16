@@ -151,7 +151,7 @@ export function VirtualNumbersTab() {
           <CardDescription>
             Números para receber SMS de verificação do WhatsApp. Uso único —
             após confirmar a conta, finalize o pedido. Se não receber o código em
-            20 minutos, o saldo é reembolsado automaticamente.
+            2 minutos, o saldo é reembolsado automaticamente.
           </CardDescription>
         </CardHeader>
         <CardContent>
