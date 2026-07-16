@@ -389,12 +389,20 @@ function InstancesTab() {
   });
 
   const current = q.data?.find((i: any) => i.id === qrOpen);
-  const counts = { hot: 0, warm: 0, cold: 0, connected: 0 };
+  const counts = { hot: 0, warm: 0, cold: 0, connected: 0, ready: 0, msgs7d: 0, msgsTotal: 0 };
   for (const i of q.data ?? []) {
     counts[(i as any).temperature as "hot" | "warm" | "cold"]++;
     if (i.status === "connected") counts.connected++;
+    if ((i as any).is_ready) counts.ready++;
+    counts.msgs7d += Number((i as any).msgs_7d ?? 0);
+    counts.msgsTotal += Number((i as any).msgs_total ?? 0);
   }
   const total = q.data?.length ?? 0;
+  const disconnected = Math.max(0, total - counts.connected);
+  const readyPct = total ? Math.round((counts.ready / total) * 100) : 0;
+  const hotPct = total ? Math.round((counts.hot / total) * 100) : 0;
+  const warmPct = total ? Math.round((counts.warm / total) * 100) : 0;
+  const coldPct = total ? Math.max(0, 100 - hotPct - warmPct) : 0;
 
   // Polling rápido enquanto o modal do QR está aberto: chama Evolution a cada 2s
   // para detectar a conexão imediatamente após o celular escanear.
@@ -437,26 +445,62 @@ function InstancesTab() {
       </Card>
 
       {total > 0 && (
-        <Card className="border-primary/20">
-          <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3 text-sm">
-              <span className="font-semibold">{total} chips</span>
-              <span className="text-muted-foreground">·</span>
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" />{counts.connected} conectados</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
-                <FlameIcon className="h-3 w-3" />{counts.hot} quentes
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 font-medium">
-                <Thermometer className="h-3 w-3" />{counts.warm} mornos
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-sky-500/15 text-sky-600 dark:text-sky-400 font-medium">
-                <Snowflake className="h-3 w-3" />{counts.cold} frios
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Chips totais</div>
+                  <Smartphone className="h-4 w-4 text-primary" />
+                </div>
+                <div className="text-3xl font-bold mt-1">{total}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">{counts.connected} online · {disconnected} offline</div>
+              </CardContent>
+            </Card>
+            <Card className="border-green-500/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Prontos p/ disparo</div>
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                </div>
+                <div className="text-3xl font-bold mt-1">{counts.ready}<span className="text-sm text-muted-foreground font-normal ml-1">/ {total}</span></div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full bg-green-500 transition-all" style={{ width: `${readyPct}%` }} />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-orange-500/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Msgs 7 dias</div>
+                  <TrendingUp className="h-4 w-4 text-orange-500" />
+                </div>
+                <div className="text-3xl font-bold mt-1">{counts.msgs7d.toLocaleString("pt-BR")}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">Total histórico: {counts.msgsTotal.toLocaleString("pt-BR")}</div>
+              </CardContent>
+            </Card>
+            <Card className="border-sky-500/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Temperatura média</div>
+                  <Thermometer className="h-4 w-4 text-sky-500" />
+                </div>
+                <div className="flex items-center gap-1.5 mt-2 text-xs font-medium">
+                  <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-400"><FlameIcon className="h-3 w-3" />{counts.hot}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="inline-flex items-center gap-1 text-yellow-600 dark:text-yellow-400"><Thermometer className="h-3 w-3" />{counts.warm}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="inline-flex items-center gap-1 text-sky-600 dark:text-sky-400"><Snowflake className="h-3 w-3" />{counts.cold}</span>
+                </div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden flex">
+                  <div className="h-full bg-orange-500" style={{ width: `${hotPct}%` }} />
+                  <div className="h-full bg-yellow-500" style={{ width: `${warmPct}%` }} />
+                  <div className="h-full bg-sky-500" style={{ width: `${coldPct}%` }} />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -843,8 +887,59 @@ function GroupsTab({ changeTab }: { changeTab: (value: string) => void }) {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["groups"] });
 
+  const gs = (groups.data ?? []) as any[];
+  const totalGroups = gs.length;
+  const activeGroups = gs.filter((g) => g.active).length;
+  const totalMembers = gs.reduce((acc, g) => acc + (g.members?.length ?? g.member_count ?? 0), 0);
+  const chipsAvailable = (insts.data ?? []).filter((i: any) => i.status === "connected").length;
+  const dailyCapacity = gs.reduce((acc, g) => acc + (g.daily_limit || 0), 0);
+  const fastestGroup = gs.reduce<any>((acc, g) => (!acc || g.min_delay_seconds < acc.min_delay_seconds ? g : acc), null);
+
   return (
     <div className="mt-4 space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Grupos</div>
+              <Users2 className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{totalGroups}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{activeGroups} ativos · {Math.max(0, totalGroups - activeGroups)} pausados</div>
+          </CardContent>
+        </Card>
+        <Card className="border-green-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Chips em grupo</div>
+              <Smartphone className="h-4 w-4 text-green-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{totalMembers}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{chipsAvailable} conectado(s) disponíveis</div>
+          </CardContent>
+        </Card>
+        <Card className="border-orange-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Cap. diária</div>
+              <TrendingUp className="h-4 w-4 text-orange-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{dailyCapacity > 0 ? dailyCapacity.toLocaleString("pt-BR") : "∞"}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">msgs/dia somadas nos grupos</div>
+          </CardContent>
+        </Card>
+        <Card className="border-sky-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Mais rápido</div>
+              <Zap className="h-4 w-4 text-sky-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{fastestGroup ? `${fastestGroup.min_delay_seconds}s` : "—"}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{fastestGroup ? fastestGroup.name : "nenhum grupo ainda"}</div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader><CardTitle>Novo grupo de aquecimento</CardTitle><CardDescription>Escolha a velocidade antes de criar: quanto mais rápido, mais rápido o número aquece — e maior o risco de queda/bloqueio. Cada número só participa de uma conversa por vez.</CardDescription></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1092,8 +1187,20 @@ function TemplatesTab({ userId }: { userId?: string }) {
     return () => { supabase.removeChannel(channel); };
   }, [userId]);
 
+  const groupsFn = useServerFn(listGroups);
+  const modelsFn = useServerFn(listAiModels);
+  const groupsQ = useQuery({ queryKey: ["groups"], queryFn: () => groupsFn(), refetchInterval: 30000 });
+  const modelsQ = useQuery({ queryKey: ["ai-models"], queryFn: () => modelsFn(), staleTime: 60 * 60 * 1000 });
+
   const totalGenerated = liveLogs.length;
   const lastAt = liveLogs[0]?.created_at ?? null;
+  const gs = (groupsQ.data ?? []) as any[];
+  const activeGroups = gs.filter((g) => g.active).length;
+  const modelsInUse = new Set(gs.map((g) => g.ai_model).filter(Boolean)).size;
+  const totalModels = (modelsQ.data as any[] | undefined)?.length ?? 0;
+  const oneMinAgo = Date.now() - 60_000;
+  const msgsLastMinute = liveLogs.filter((l) => new Date(l.created_at).getTime() > oneMinAgo).length;
+
 
   return (
     <div className="mt-4 space-y-4">
@@ -1122,6 +1229,49 @@ function TemplatesTab({ userId }: { userId?: string }) {
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Grupos ativos</div>
+              <Activity className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{activeGroups}<span className="text-sm text-muted-foreground font-normal ml-1">/ {gs.length}</span></div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">gerando mensagens agora</div>
+          </CardContent>
+        </Card>
+        <Card className="border-green-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Msgs geradas</div>
+              <Sparkles className="h-4 w-4 text-green-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{totalGenerated}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{msgsLastMinute} no último minuto</div>
+          </CardContent>
+        </Card>
+        <Card className="border-orange-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Modelos de IA</div>
+              <Zap className="h-4 w-4 text-orange-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{modelsInUse}<span className="text-sm text-muted-foreground font-normal ml-1">/ {totalModels}</span></div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">em uso · disponíveis no motor</div>
+          </CardContent>
+        </Card>
+        <Card className="border-sky-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Última msg</div>
+              <MessageSquare className="h-4 w-4 text-sky-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{lastAt ? timeAgo(lastAt) : "—"}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{thinking ? "IA pensando…" : "motor aguardando ciclo"}</div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Painel ao vivo */}
       <Card>
@@ -2798,22 +2948,108 @@ function WarmupInternalChat() {
 
 // ---------------- Dispatch (Disparos em massa) ----------------
 function DispatchTab() {
+  const listsFn = useServerFn(listContactLists);
+  const campsFn = useServerFn(listCampaigns);
+  const instFn = useServerFn(listInstances);
+  const lists = useQuery({ queryKey: ["contact-lists"], queryFn: () => listsFn() });
+  const camps = useQuery({ queryKey: ["campaigns"], queryFn: () => campsFn(), refetchInterval: 10000 });
+  const insts = useQuery({ queryKey: ["instances"], queryFn: () => instFn() });
+
+  const cs = (camps.data ?? []) as any[];
+  const ls = (lists.data ?? []) as any[];
+  const totalContacts = ls.reduce((acc, l) => acc + (l.contact_count ?? 0), 0);
+  const running = cs.filter((c) => c.status === "running").length;
+  const paused = cs.filter((c) => c.status === "paused").length;
+  const done = cs.filter((c) => c.status === "done").length;
+  const sent = cs.reduce((acc, c) => acc + (c.progress?.sent ?? 0), 0);
+  const failed = cs.reduce((acc, c) => acc + (c.progress?.failed ?? 0), 0);
+  const pending = cs.reduce((acc, c) => acc + (c.progress?.pending ?? 0), 0);
+  const totalTargets = sent + failed + pending;
+  const progressPct = totalTargets ? Math.round((sent / totalTargets) * 100) : 0;
+  const successRate = sent + failed > 0 ? Math.round((sent / (sent + failed)) * 100) : 100;
+  const chipsReady = (insts.data ?? []).filter((i: any) => i.status === "connected").length;
+
   return (
     <div className="mt-4 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Send className="h-5 w-5" />Disparos em massa</CardTitle>
-          <CardDescription>
-            Envie mensagens em massa usando seus números conectados enquanto continuam aquecendo.
-            O sistema respeita intervalos aleatórios, limite por número/dia e janela de horário.
-          </CardDescription>
-        </CardHeader>
+      <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-background to-background">
+        <CardContent className="p-6 flex items-start gap-4">
+          <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+            <Send className="h-6 w-6 text-primary" />
+          </div>
+          <div className="flex-1 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-lg font-semibold">Disparos em massa</h3>
+              {running > 0 && (
+                <Badge className="bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30">
+                  <span className="relative flex h-1.5 w-1.5 mr-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+                  </span>
+                  {running} rodando
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-xs">{chipsReady} chips conectados</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Envie em massa pelos seus números conectados enquanto continuam aquecendo. Intervalo aleatório,
+              limite por chip/dia e janela horária são respeitados. Falhas são retentadas automaticamente.
+            </p>
+          </div>
+        </CardContent>
       </Card>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Campanhas</div>
+              <Send className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{cs.length}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{running} rodando · {paused} pausadas · {done} concluídas</div>
+          </CardContent>
+        </Card>
+        <Card className="border-green-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Enviadas</div>
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{sent.toLocaleString("pt-BR")}</div>
+            <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-full bg-green-500" style={{ width: `${progressPct}%` }} />
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{progressPct}% do total programado</div>
+          </CardContent>
+        </Card>
+        <Card className="border-orange-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Taxa de sucesso</div>
+              <TrendingUp className="h-4 w-4 text-orange-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{successRate}%</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{failed.toLocaleString("pt-BR")} falha(s) · {pending.toLocaleString("pt-BR")} pendente(s)</div>
+          </CardContent>
+        </Card>
+        <Card className="border-sky-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Contatos</div>
+              <Users2 className="h-4 w-4 text-sky-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{totalContacts.toLocaleString("pt-BR")}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">em {ls.length} lista(s)</div>
+          </CardContent>
+        </Card>
+      </div>
+
       <ContactListsSection />
       <CampaignsSection />
     </div>
   );
 }
+
 
 function ContactListsSection() {
   const qc = useQueryClient();
