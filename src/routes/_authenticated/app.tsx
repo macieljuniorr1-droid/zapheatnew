@@ -459,7 +459,7 @@ function ReportPanel({
               <BarChart data={chart}>
                 <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <Tooltip />
+                <ChartTooltip />
                 <Legend />
                 <Bar dataKey="Enviadas" fill="hsl(142 76% 36%)" stackId="a" />
                 <Bar dataKey="Falhas" fill="hsl(0 84% 60%)" stackId="a" />
