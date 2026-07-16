@@ -885,7 +885,7 @@ async function resolveSendTargets(evolution: any, instanceName: string, chip: Ch
     const number = sendRaw && /@(s\.whatsapp\.net|lid)$/i.test(sendRaw)
       ? sendRaw
       : sendDigits || (/@lid$/i.test(remoteJid) ? phoneJid : digits);
-    if (!number || targets.some((t) => t.number === number || t.remoteJid === remoteJid)) return;
+    if (!number || targets.some((t) => t.number === number)) return;
     targets.push({ number, remoteJid });
   };
 
