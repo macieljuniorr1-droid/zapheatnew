@@ -27,9 +27,9 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
-      { name: "description", content: "Aqueça seus chips de WhatsApp com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
+      { name: "description", content: "Aqueça seus whatsapps com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
       { property: "og:title", content: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
-      { property: "og:description", content: "Aqueça seus chips de WhatsApp com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
+      { property: "og:description", content: "Aqueça seus whatsapps com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
       { property: "og:type", content: "website" },
     ],
   }),
