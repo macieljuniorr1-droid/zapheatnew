@@ -604,6 +604,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
 
   let status = "sent";
   let errMsg: string | null = null;
+  let lidTargetCache: { number: string; remoteJid: string } | null | undefined;
 
   await broadcast("typing_start", {
     group_id: group.id,
@@ -613,10 +614,40 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     to_name: to.name ?? "Chip",
   });
 
+  const discoverLidTarget = async () => {
+    if (lidTargetCache !== undefined) return lidTargetCache;
+    const pickJid = (raw: unknown) => {
+      const jid = String(raw ?? "").trim();
+      return /@lid$/i.test(jid) ? { number: jid, remoteJid: jid } : null;
+    };
+    try {
+      const resolved = await evolution.whatsappNumbers(from.evolution_instance, [toNumber]);
+      for (const rec of normalizeEvolutionRecords(resolved)) {
+        const t = pickJid(rec?.jid) ?? pickJid(rec?.number) ?? pickJid(rec?.id);
+        if (t) return (lidTargetCache = t);
+      }
+    } catch {}
+    try {
+      const contacts = await evolution.findContacts(from.evolution_instance);
+      for (const rec of normalizeEvolutionRecords(contacts)) {
+        const blob = JSON.stringify(rec ?? {});
+        if (!blob.includes(toNumber)) continue;
+        const t = pickJid(rec?.jid) ?? pickJid(rec?.id) ?? pickJid(rec?.remoteJid);
+        if (t) return (lidTargetCache = t);
+      }
+    } catch {}
+    lidTargetCache = null;
+    return null;
+  };
+
+  const isRecipientIdError = (message: string | null | undefined) =>
+    /cannot read properties of undefined \(reading ['"]id['"]\)|reading ['"]id['"]/i.test(String(message ?? ""));
+
   const attemptSend = async (): Promise<DeliveryAck> => {
     let lastErr: any = null;
     for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS_PER_PAIR; attempt++) {
-      for (const target of sendTargets) {
+      const targets = [...sendTargets];
+      for (const target of targets) {
         try {
           if (attempt > 0) await ensureOpenSession(evolution, from.evolution_instance, true);
           markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid).catch(() => null);
@@ -630,6 +661,16 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
           return await waitForDeliveryAck(evolution, from.evolution_instance, ackJid, messageId, cleanMessage, sentAtMs);
         } catch (sendErr: any) {
           lastErr = sendErr;
+          // Evolution 400 "reading 'id'" = Baileys não conseguiu resolver o
+          // destinatário porque o contato está no cache apenas como @lid.
+          // Descobrimos o JID @lid uma única vez e reenviamos.
+          if (isRecipientIdError(sendErr?.message) && !targets.some((t) => /@lid$/i.test(t.number))) {
+            const lid = await discoverLidTarget();
+            if (lid && !targets.some((t) => t.number === lid.number)) {
+              targets.push(lid);
+              continue;
+            }
+          }
           if (!isClosedSessionError(sendErr?.message) && !isDeliverySyncFailure(sendErr?.message)) break;
           await repairSenderSession(evolution, from.evolution_instance, target.number);
         }
