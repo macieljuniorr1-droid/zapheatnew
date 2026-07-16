@@ -9,7 +9,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const MAX_DELAY_SECONDS = 4;
 const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
-const DELIVERY_ACK_WAIT_MS = 4_000;
+const DELIVERY_ACK_WAIT_MS = 1_200;
 const MAX_BURST_ROUNDS = 1;
 const BURST_BUDGET_MS = 6_000;
 const REPLY_GAP_MS = 150;
@@ -19,7 +19,7 @@ const PAIR_STREAK_WINDOW_MS = 8 * 60 * 1000;
 const PAIR_STREAK_LIMIT = 4;
 const MAX_SEND_ATTEMPTS_PER_PAIR = 1;
 const SESSION_SETTLE_MS = 250;
-const AI_GENERATION_TIMEOUT_MS = 2_200;
+const AI_GENERATION_TIMEOUT_MS = 900;
 
 type Chip = {
   id: string;
@@ -621,7 +621,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
           if (attempt > 0) await ensureOpenSession(evolution, from.evolution_instance, true);
           markLatestIncomingAsRead(evolution, from.evolution_instance, target.remoteJid).catch(() => null);
           primeChatSession(evolution, from.evolution_instance, target.number).catch(() => null);
-          await evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs);
+          evolution.sendPresence(from.evolution_instance, target.number, "composing", typingMs).catch(() => null);
           await new Promise((r) => setTimeout(r, typingMs));
           const sentAtMs = Date.now();
           const sendResp = await evolution.sendText(from.evolution_instance, target.number, cleanMessage);
@@ -820,6 +820,10 @@ async function markLatestIncomingAsRead(evolution: any, instanceName: string, re
 
 async function resolveSendTargets(evolution: any, instanceName: string, phone: string) {
   const fallback = { number: phone, remoteJid: `${phone}@s.whatsapp.net` };
+  // Caminho rápido: para aquecimento entre números já conhecidos, enviar pelo
+  // telefone puro é mais estável e evita gastar vários segundos consultando
+  // contatos/@lid antes de cada mensagem.
+  return [fallback];
   const targets: Array<{ number: string; remoteJid: string }> = [];
   const addTarget = (value: unknown) => {
     const raw = String(value ?? "").trim();
