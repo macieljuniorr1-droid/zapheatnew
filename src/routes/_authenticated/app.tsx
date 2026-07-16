@@ -339,7 +339,139 @@ function StatCard({ label, value, icon }: { label: string; value: number | strin
   );
 }
 
+// ---------------- Report Panel (relatório por datas) ----------------
+function ReportPanel({
+  scope,
+  targetId,
+  title,
+  description,
+}: {
+  scope: "user" | "instance" | "group";
+  targetId?: string;
+  title?: string;
+  description?: string;
+}) {
+  const reportFn = useServerFn(getWarmupReport);
+  const today = new Date();
+  const defaultFrom = new Date(today);
+  defaultFrom.setDate(defaultFrom.getDate() - 6);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const [from, setFrom] = useState(iso(defaultFrom));
+  const [to, setTo] = useState(iso(today));
+  const [preset, setPreset] = useState("7d");
+
+  const applyPreset = (p: string) => {
+    setPreset(p);
+    const end = new Date();
+    const start = new Date();
+    if (p === "today") { /* start = end (today) */ }
+    else if (p === "7d") start.setDate(end.getDate() - 6);
+    else if (p === "30d") start.setDate(end.getDate() - 29);
+    else if (p === "90d") start.setDate(end.getDate() - 89);
+    else return;
+    setFrom(iso(start));
+    setTo(iso(end));
+  };
+
+  const q = useQuery({
+    queryKey: ["warmup-report", scope, targetId ?? null, from, to],
+    queryFn: () => reportFn({ data: { from, to, scope, targetId } }),
+    staleTime: 30_000,
+  });
+
+  const data = q.data;
+  const chart = (data?.series ?? []).map((r) => ({
+    day: new Date(r.day + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+    Enviadas: r.sent,
+    Falhas: r.failed,
+  }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <BarChart3 className="h-4 w-4" />
+          {title ?? "Relatório por período"}
+        </CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex gap-1 flex-wrap">
+            {[
+              { id: "today", label: "Hoje" },
+              { id: "7d", label: "7d" },
+              { id: "30d", label: "30d" },
+              { id: "90d", label: "90d" },
+            ].map((p) => (
+              <Button
+                key={p.id}
+                size="sm"
+                variant={preset === p.id ? "default" : "outline"}
+                onClick={() => applyPreset(p.id)}
+              >
+                {p.label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] uppercase text-muted-foreground tracking-wide">De</label>
+            <Input type="date" value={from} onChange={(e) => { setPreset("custom"); setFrom(e.target.value); }} className="w-40" />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] uppercase text-muted-foreground tracking-wide">Até</label>
+            <Input type="date" value={to} onChange={(e) => { setPreset("custom"); setTo(e.target.value); }} className="w-40" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded border p-3">
+            <div className="text-[10px] uppercase text-muted-foreground tracking-wide">Total</div>
+            <div className="text-2xl font-bold">{data?.totals.total ?? 0}</div>
+          </div>
+          <div className="rounded border p-3">
+            <div className="text-[10px] uppercase text-muted-foreground tracking-wide">Enviadas</div>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">{data?.totals.sent ?? 0}</div>
+          </div>
+          <div className="rounded border p-3">
+            <div className="text-[10px] uppercase text-muted-foreground tracking-wide">Falhas</div>
+            <div className="text-2xl font-bold text-destructive">{data?.totals.failed ?? 0}</div>
+          </div>
+          <div className="rounded border p-3">
+            <div className="text-[10px] uppercase text-muted-foreground tracking-wide">Sucesso</div>
+            <div className="text-2xl font-bold">{data?.totals.successRate ?? 0}%</div>
+          </div>
+        </div>
+
+        <div className="h-56">
+          {q.isLoading ? (
+            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" /> Carregando…
+            </div>
+          ) : chart.length === 0 || (data?.totals.total ?? 0) === 0 ? (
+            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+              Sem dados nesse período.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chart}>
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="Enviadas" fill="hsl(142 76% 36%)" stackId="a" />
+                <Bar dataKey="Falhas" fill="hsl(0 84% 60%)" stackId="a" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ---------------- Instances (Números) with health & temperature ----------------
+
 function InstancesTab() {
   const qc = useQueryClient();
   const listFn = useServerFn(listInstancesWithHealth);
