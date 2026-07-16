@@ -74,6 +74,7 @@ import {
   heartbeat,
   getMyTeamContext,
 } from "@/lib/team.functions";
+import { VirtualNumbersTab } from "@/components/VirtualNumbersTab";
 
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 import { supabase } from "@/integrations/supabase/client";
@@ -120,6 +121,7 @@ import {
   Circle,
   AlertTriangle,
   Search,
+  Wallet,
   Filter,
   TrendingDown,
 } from "lucide-react";
@@ -253,6 +255,7 @@ function AppPage() {
             <TabsTrigger value="live"><Radio className="h-4 w-4 mr-1" />Chat ao vivo</TabsTrigger>
             <TabsTrigger value="logs"><ScrollText className="h-4 w-4 mr-1" />Logs</TabsTrigger>
             <TabsTrigger value="plan"><CreditCard className="h-4 w-4 mr-1" />Plano</TabsTrigger>
+            <TabsTrigger value="virtual"><Wallet className="h-4 w-4 mr-1" />Nº Virtuais</TabsTrigger>
             <TabsTrigger value="team"><UsersRound className="h-4 w-4 mr-1" />Equipe</TabsTrigger>
             {isAdmin && <TabsTrigger value="admin"><Settings className="h-4 w-4 mr-1" />Admin</TabsTrigger>}
           </TabsList>
@@ -265,6 +268,7 @@ function AppPage() {
           <TabsContent value="live"><LiveChatTab /></TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
           <TabsContent value="plan"><PlanTab /></TabsContent>
+          <TabsContent value="virtual"><VirtualNumbersTab /></TabsContent>
           <TabsContent value="team"><TeamTab /></TabsContent>
           {isAdmin && <TabsContent value="admin"><AdminTab /></TabsContent>}
         </Tabs>
