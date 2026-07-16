@@ -34,6 +34,13 @@ type Chip = {
   live_state?: string | null;
 };
 
+type DeliveryAck = {
+  delivered: boolean;
+  explicitError: boolean;
+  ack?: string | null;
+  error?: string | null;
+};
+
 export const Route = createFileRoute("/api/public/hooks/warmup-tick")({
   server: {
     handlers: {
@@ -572,7 +579,7 @@ async function processPair({ supabaseAdmin, evolution, group, pair, broadcast }:
     to_name: to.name ?? "Chip",
   });
 
-  const attemptSend = async () => {
+  const attemptSend = async (): Promise<DeliveryAck> => {
     let lastErr: any = null;
     for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS_PER_PAIR; attempt++) {
       for (const target of sendTargets) {
@@ -1010,7 +1017,7 @@ function messageTimestampMs(record: any) {
   return raw > 1_000_000_000_000 ? raw : raw * 1000;
 }
 
-async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJid: string, messageId?: string, text?: string, sentAtMs?: number) {
+async function waitForDeliveryAck(evolution: any, instanceName: string, remoteJid: string, messageId?: string, text?: string, sentAtMs?: number): Promise<DeliveryAck> {
   const deadline = Date.now() + DELIVERY_ACK_WAIT_MS;
   let lastStatus: string | null = null;
   let sawRecord = false;
