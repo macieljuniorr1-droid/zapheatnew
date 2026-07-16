@@ -244,24 +244,8 @@ function Landing() {
           </div>
         </section>
 
-        <footer className="border-t border-border/40 mt-8">
-          <div className="max-w-6xl mx-auto px-6 py-8 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground font-mono">
-            <div className="flex items-center gap-2">
-              <Logo small />
-              <span>© WarmUp Pro</span>
-            </div>
-            <a
-              href="https://wa.me/212786573855"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-foreground/80 hover:text-ember transition"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-ember animate-ember" />
-              suporte · +212 786-573855
-            </a>
-            <span className="flex items-center gap-1"><Flame className="h-3 w-3 text-ember" /> forjando reputação</span>
-          </div>
-        </footer>
+        <SiteFooter />
+
 
         {/* Floating WhatsApp support */}
         <a
