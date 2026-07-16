@@ -555,13 +555,13 @@ function MassDispatchSection() {
             <span className="gradient-ember-text">rotação inteligente de números.</span>
           </h2>
           <p className="text-lg text-muted-foreground leading-relaxed max-w-xl">
-            Depois que seus chips estão aquecidos, a mesma plataforma dispara em escala — só que sem colocar todos os ovos na mesma cesta. Cada mensagem sai de um número diferente, com delays humanos e variação de texto.
+            Depois que seus whatsapps estão aquecidos, a mesma plataforma dispara em escala — só que sem colocar todos os ovos na mesma cesta. Cada mensagem sai de um número diferente, com delays humanos e variação de texto.
           </p>
           <ul className="space-y-4 pt-2">
             <DispatchBullet
               icon={<Shuffle className="h-4 w-4" />}
               title="Variação automática de números"
-              desc="A cada envio o sistema alterna entre os chips ativos — 3, 10 ou 50 números disparando como uma equipe."
+              desc="A cada envio o sistema alterna entre os whatsapps ativos — 3, 10 ou 50 números disparando como uma equipe."
             />
             <DispatchBullet
               icon={<Sparkles className="h-4 w-4" />}
