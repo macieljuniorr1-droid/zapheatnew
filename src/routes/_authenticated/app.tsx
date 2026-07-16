@@ -2893,22 +2893,108 @@ function WarmupInternalChat() {
 
 // ---------------- Dispatch (Disparos em massa) ----------------
 function DispatchTab() {
+  const listsFn = useServerFn(listContactLists);
+  const campsFn = useServerFn(listCampaigns);
+  const instFn = useServerFn(listInstances);
+  const lists = useQuery({ queryKey: ["contact-lists"], queryFn: () => listsFn() });
+  const camps = useQuery({ queryKey: ["campaigns"], queryFn: () => campsFn(), refetchInterval: 10000 });
+  const insts = useQuery({ queryKey: ["instances"], queryFn: () => instFn() });
+
+  const cs = (camps.data ?? []) as any[];
+  const ls = (lists.data ?? []) as any[];
+  const totalContacts = ls.reduce((acc, l) => acc + (l.contact_count ?? 0), 0);
+  const running = cs.filter((c) => c.status === "running").length;
+  const paused = cs.filter((c) => c.status === "paused").length;
+  const done = cs.filter((c) => c.status === "done").length;
+  const sent = cs.reduce((acc, c) => acc + (c.progress?.sent ?? 0), 0);
+  const failed = cs.reduce((acc, c) => acc + (c.progress?.failed ?? 0), 0);
+  const pending = cs.reduce((acc, c) => acc + (c.progress?.pending ?? 0), 0);
+  const totalTargets = sent + failed + pending;
+  const progressPct = totalTargets ? Math.round((sent / totalTargets) * 100) : 0;
+  const successRate = sent + failed > 0 ? Math.round((sent / (sent + failed)) * 100) : 100;
+  const chipsReady = (insts.data ?? []).filter((i: any) => i.status === "connected").length;
+
   return (
     <div className="mt-4 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Send className="h-5 w-5" />Disparos em massa</CardTitle>
-          <CardDescription>
-            Envie mensagens em massa usando seus números conectados enquanto continuam aquecendo.
-            O sistema respeita intervalos aleatórios, limite por número/dia e janela de horário.
-          </CardDescription>
-        </CardHeader>
+      <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-background to-background">
+        <CardContent className="p-6 flex items-start gap-4">
+          <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+            <Send className="h-6 w-6 text-primary" />
+          </div>
+          <div className="flex-1 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-lg font-semibold">Disparos em massa</h3>
+              {running > 0 && (
+                <Badge className="bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30">
+                  <span className="relative flex h-1.5 w-1.5 mr-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+                  </span>
+                  {running} rodando
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-xs">{chipsReady} chips conectados</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Envie em massa pelos seus números conectados enquanto continuam aquecendo. Intervalo aleatório,
+              limite por chip/dia e janela horária são respeitados. Falhas são retentadas automaticamente.
+            </p>
+          </div>
+        </CardContent>
       </Card>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Campanhas</div>
+              <Send className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{cs.length}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{running} rodando · {paused} pausadas · {done} concluídas</div>
+          </CardContent>
+        </Card>
+        <Card className="border-green-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Enviadas</div>
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{sent.toLocaleString("pt-BR")}</div>
+            <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-full bg-green-500" style={{ width: `${progressPct}%` }} />
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{progressPct}% do total programado</div>
+          </CardContent>
+        </Card>
+        <Card className="border-orange-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Taxa de sucesso</div>
+              <TrendingUp className="h-4 w-4 text-orange-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{successRate}%</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{failed.toLocaleString("pt-BR")} falha(s) · {pending.toLocaleString("pt-BR")} pendente(s)</div>
+          </CardContent>
+        </Card>
+        <Card className="border-sky-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Contatos</div>
+              <Users2 className="h-4 w-4 text-sky-500" />
+            </div>
+            <div className="text-3xl font-bold mt-1">{totalContacts.toLocaleString("pt-BR")}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">em {ls.length} lista(s)</div>
+          </CardContent>
+        </Card>
+      </div>
+
       <ContactListsSection />
       <CampaignsSection />
     </div>
   );
 }
+
 
 function ContactListsSection() {
   const qc = useQueryClient();
