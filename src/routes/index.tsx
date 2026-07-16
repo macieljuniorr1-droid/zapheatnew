@@ -900,7 +900,6 @@ function SiteFooter() {
             { label: "Aquecimento IA", href: "#how" },
             { label: "Disparo em massa", href: "#dispatch" },
             { label: "Planos", href: "#plans" },
-            { label: "FAQ", href: "#faq" },
           ]} />
           <FooterCol title="Empresa" links={[
             { label: "Sobre", href: "#" },
