@@ -13,7 +13,14 @@ import {
   Clock,
   TrendingUp,
   Users2,
+  Send,
+  Shuffle,
+  Target,
+  Instagram,
+  Twitter,
+  Youtube,
 } from "lucide-react";
+
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
