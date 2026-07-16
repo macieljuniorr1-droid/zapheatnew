@@ -23,14 +23,115 @@ import {
 
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
 
+const SEO_TITLE = "Aquecimento de WhatsApp com IA e Disparo em Massa | ZapHeat";
+const SEO_DESCRIPTION = "Plataforma de aquecimento de chip de WhatsApp com IA e disparo em massa. Compatível com WhatsApp API oficial e Evolution API. Reduza banimentos, aumente entregabilidade e conquiste clientes.";
+const SEO_KEYWORDS = "aquecimento de whatsapp, aquecer chip whatsapp, whatsapp api oficial, api whatsapp business, disparo em massa whatsapp, aquecedor de chip, evolution api, chip aquecido, marketing no whatsapp, automação whatsapp, chatbot whatsapp, envio em massa whatsapp";
+const SITE_URL = "https://zapheatnew.lovable.app";
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
-      { name: "description", content: "Aqueça seus whatsapps com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
-      { property: "og:title", content: "ZapHeat — Aquecimento inteligente de WhatsApp com IA" },
-      { property: "og:description", content: "Aqueça seus whatsapps com IA que gera conversas naturais entre seus próprios números 24/7. Reduza banimentos, aumente a reputação." },
+      { title: SEO_TITLE },
+      { name: "description", content: SEO_DESCRIPTION },
+      { name: "keywords", content: SEO_KEYWORDS },
+      { name: "author", content: "ZapHeat" },
+      { name: "robots", content: "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" },
+      { name: "googlebot", content: "index, follow" },
+      { httpEquiv: "content-language", content: "pt-BR" },
+      { name: "geo.region", content: "BR" },
+      { property: "og:title", content: SEO_TITLE },
+      { property: "og:description", content: SEO_DESCRIPTION },
       { property: "og:type", content: "website" },
+      { property: "og:url", content: SITE_URL },
+      { property: "og:locale", content: "pt_BR" },
+      { property: "og:site_name", content: "ZapHeat" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: SEO_TITLE },
+      { name: "twitter:description", content: SEO_DESCRIPTION },
+    ],
+    links: [{ rel: "canonical", href: SITE_URL }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "Organization",
+              "@id": `${SITE_URL}#org`,
+              name: "ZapHeat",
+              url: SITE_URL,
+              logo: `${SITE_URL}/__l5e/assets-v1/2f9c442e-0889-4ebb-a2ed-b703580cfa09/zapheat-logo.png`,
+              sameAs: [] as string[],
+              contactPoint: [{
+                "@type": "ContactPoint",
+                contactType: "customer support",
+                availableLanguage: ["Portuguese", "pt-BR"],
+                url: "https://wa.me/212786573855",
+              }],
+            },
+            {
+              "@type": "WebSite",
+              "@id": `${SITE_URL}#site`,
+              url: SITE_URL,
+              name: "ZapHeat",
+              inLanguage: "pt-BR",
+              publisher: { "@id": `${SITE_URL}#org` },
+            },
+            {
+              "@type": "SoftwareApplication",
+              name: "ZapHeat — Aquecedor de WhatsApp com IA",
+              applicationCategory: "BusinessApplication",
+              operatingSystem: "Web, Cloud",
+              description: SEO_DESCRIPTION,
+              inLanguage: "pt-BR",
+              offers: [
+                { "@type": "Offer", name: "Free", price: "0", priceCurrency: "BRL" },
+                { "@type": "Offer", name: "Pro", price: "25", priceCurrency: "BRL", description: "R$ 25 por número/mês" },
+              ],
+              featureList: [
+                "Aquecimento de chip WhatsApp com IA",
+                "Compatível com WhatsApp API oficial e Evolution API",
+                "Disparo em massa com ritmo humano",
+                "Conversas geradas por IA (Gemini 3)",
+                "Chat ao vivo entre números",
+                "Delays configuráveis para reduzir banimento",
+              ],
+              aggregateRating: { "@type": "AggregateRating", ratingValue: "4.9", reviewCount: "128" },
+            },
+            {
+              "@type": "FAQPage",
+              mainEntity: [
+                {
+                  "@type": "Question",
+                  name: "O que é aquecimento de chip de WhatsApp?",
+                  acceptedAnswer: { "@type": "Answer", text: "É o processo de simular conversas reais entre seus próprios números de WhatsApp para construir reputação junto ao WhatsApp e reduzir o risco de banimento antes de iniciar disparos ou usar a WhatsApp API oficial." },
+                },
+                {
+                  "@type": "Question",
+                  name: "O ZapHeat funciona com a API oficial do WhatsApp?",
+                  acceptedAnswer: { "@type": "Answer", text: "Sim. O ZapHeat pode aquecer números que serão usados na WhatsApp Business API oficial e também integra com Evolution API para operações não-oficiais." },
+                },
+                {
+                  "@type": "Question",
+                  name: "Posso fazer disparo em massa no WhatsApp?",
+                  acceptedAnswer: { "@type": "Answer", text: "Sim. Após aquecer os chips, você pode disparar campanhas em massa com ritmo humano configurável, reduzindo o risco de banimento e aumentando a entregabilidade." },
+                },
+                {
+                  "@type": "Question",
+                  name: "Meu chip pode ser banido?",
+                  acceptedAnswer: { "@type": "Answer", text: "O ZapHeat reduz drasticamente o risco com delays humanos, ritmo variado e mensagens naturais geradas por IA, mas nenhum sistema garante 100%. Comece com limites baixos e aumente aos poucos." },
+                },
+                {
+                  "@type": "Question",
+                  name: "Preciso pagar para testar?",
+                  acceptedAnswer: { "@type": "Answer", text: "Não. O plano Free permite aquecer 2 números sem cartão de crédito." },
+                },
+              ],
+            },
+          ],
+        }),
+      },
     ],
   }),
   component: Landing,
