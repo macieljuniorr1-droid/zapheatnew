@@ -331,22 +331,6 @@ function Landing() {
           </p>
         </section>
 
-        {/* FAQ */}
-        <section id="faq" className="max-w-3xl mx-auto px-6 py-20">
-          <div className="text-center mb-12">
-            <div className="text-xs font-mono uppercase tracking-widest text-ember mb-3">perguntas frequentes</div>
-            <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
-              Dúvidas rápidas
-            </h2>
-          </div>
-          <div className="space-y-3">
-            <Faq q="Posso testar sem pagar?" a="Sim. O plano Free libera 2 números conversando entre si, para sempre. Você vê a plataforma inteira funcionando antes de decidir." />
-            <Faq q="Preciso de VPS ou serviço externo?" a="Sim, você precisa da Evolution API (grátis, open-source) rodando em uma VPS ou em um serviço pronto. No painel Admin você cola URL e API Key e pronto." />
-            <Faq q="A IA repete mensagens?" a="Não. Cada mensagem é gerada em tempo real pela Gemini 3 lendo o histórico da conversa. É diferente sempre." />
-            <Faq q="Meu chip pode ser banido?" a="O ZapHeat reduz drasticamente o risco com delays humanos, ritmo variado e mensagens naturais — mas nenhum sistema garante 100%. Comece com limites baixos e aumente aos poucos." />
-            <Faq q="Funciona em segundo plano?" a="Sim. Roda no servidor 24/7. Você não precisa manter computador ou navegador aberto." />
-          </div>
-        </section>
 
         {/* CTA final */}
         <section className="max-w-4xl mx-auto px-6 py-20">
