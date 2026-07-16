@@ -431,7 +431,7 @@ function NetworkGraph() {
     <div className="panel rounded-2xl p-6 md:p-8 relative overflow-hidden">
       <div className="absolute top-4 left-4 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-ember z-10">
         <span className="h-1.5 w-1.5 rounded-full bg-ember animate-ember" />
-        rede · 8 chips ativos
+        rede · 8 whatsapps ativos
       </div>
       <div className="grid md:grid-cols-[1fr_1.2fr] gap-6 items-center">
         <div className="relative aspect-square max-w-[420px] mx-auto w-full text-ember">
