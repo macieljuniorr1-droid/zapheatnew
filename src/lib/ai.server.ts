@@ -71,7 +71,7 @@ export const AI_MODELS = [
 ] as const;
 
 export const DEFAULT_AI_MODEL = "google/gemini-3-flash-preview";
-const VALID_MODEL_IDS = new Set(AI_MODELS.map((m) => m.id));
+const VALID_MODEL_IDS = new Set<string>(AI_MODELS.map((m) => m.id));
 
 export async function generateReply(
   history: { from: string; content: string }[],
