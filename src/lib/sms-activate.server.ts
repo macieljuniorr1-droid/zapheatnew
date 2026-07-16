@@ -95,11 +95,14 @@ export async function listWhatsAppCountries(): Promise<
     const wa = prices?.[c.code]?.[WHATSAPP_SERVICE];
     const cost = typeof wa?.cost === "number" ? wa.cost : 0;
     const count = typeof wa?.count === "number" ? wa.count : 0;
+    // Brasil: preço fixo R$ 14,90 (política comercial, exclusivo WhatsApp).
+    const isBR = c.code === "73";
+    const price_cents = isBR ? 1490 : providerRubToBrlCents(cost);
     return {
       ...c,
       provider_cost_rub: cost,
       provider_cost_cents: providerRubToRawBrlCents(cost),
-      price_cents: providerRubToBrlCents(cost),
+      price_cents,
       available: count,
     };
   });
