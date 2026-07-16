@@ -1,0 +1,1 @@
+ALTER TABLE public.warmup_groups ADD COLUMN IF NOT EXISTS ai_model text NOT NULL DEFAULT 'google/gemini-3-flash-preview';
