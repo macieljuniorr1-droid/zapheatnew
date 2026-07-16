@@ -938,6 +938,7 @@ function TemplatesTab({ userId }: { userId?: string }) {
         { event: "INSERT", schema: "public", table: "warmup_logs" },
         async (payload) => {
           const row = payload.new as any;
+          if (row.user_id !== userId) return;
           const { data: names } = await supabase
             .from("whatsapp_instances")
             .select("id, name")
