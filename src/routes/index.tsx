@@ -151,10 +151,10 @@ function Landing() {
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[700px] forge-halo" aria-hidden />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,transparent_60%,var(--background)_100%)]" aria-hidden />
 
-      <header className="relative z-20 border-b border-border/40 backdrop-blur-md bg-background/40 sticky top-0">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-          <Link to="/" className="flex items-center">
-            <img src={zapheatLogo.url} alt="ZapHeat" className="h-9 md:h-10 w-auto" />
+      <header className="fixed z-30 top-4 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[min(1120px,calc(100%-2rem))]">
+        <div className="rounded-2xl border border-border/60 bg-background/70 backdrop-blur-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.6)] px-4 md:px-6 py-2.5 flex items-center justify-between gap-4">
+          <Link to="/" className="flex items-center shrink-0">
+            <img src={zapheatLogo.url} alt="ZapHeat" className="h-8 md:h-9 w-auto" />
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#how" className="hover:text-foreground transition">Como funciona</a>
@@ -163,7 +163,7 @@ function Landing() {
             <a href="#faq" className="hover:text-foreground transition">FAQ</a>
           </nav>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Link to="/auth">
               <Button size="sm" variant="ghost" className="hidden sm:inline-flex">
                 Entrar
@@ -177,6 +177,8 @@ function Landing() {
           </div>
         </div>
       </header>
+      <div aria-hidden className="h-20" />
+
 
       <main className="relative z-10">
         {/* HERO */}
