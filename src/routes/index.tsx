@@ -112,10 +112,10 @@ function Landing() {
               <Activity className="h-3.5 w-3.5 text-ember/70 ml-auto" />
             </div>
             <div className="mt-4 space-y-3 font-mono text-sm">
-              <ConsoleLine time="10:42" from="Chip 01" to="Chip 02" text="oi tudo bem?" />
-              <ConsoleLine time="10:44" from="Chip 02" to="Chip 01" text="tudo tranquilo e vc?" />
-              <ConsoleLine time="10:47" from="Chip 03" to="Chip 01" text="bora almoçar amanhã?" />
-              <ConsoleLine time="10:49" from="Chip 01" to="Chip 03" text="bora sim, que horas" fresh />
+              <ConsoleLine time="10:42" from="WhatsApp 01" to="WhatsApp 02" text="oi tudo bem?" />
+              <ConsoleLine time="10:44" from="WhatsApp 02" to="WhatsApp 01" text="tudo tranquilo e vc?" />
+              <ConsoleLine time="10:47" from="WhatsApp 03" to="WhatsApp 01" text="bora almoçar amanhã?" />
+              <ConsoleLine time="10:49" from="WhatsApp 01" to="WhatsApp 03" text="bora sim, que horas" fresh />
             </div>
           </div>
         </section>
