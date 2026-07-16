@@ -422,8 +422,8 @@ function NetworkGraph() {
   const cx = 210;
   const cy = 210;
   const r = 160;
-  const positions = CHIPS.map((_, i) => {
-    const angle = (i / CHIPS.length) * Math.PI * 2 - Math.PI / 2;
+  const positions = WHATSAPPS.map((_, i) => {
+    const angle = (i / WHATSAPPS.length) * Math.PI * 2 - Math.PI / 2;
     return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
   });
 
