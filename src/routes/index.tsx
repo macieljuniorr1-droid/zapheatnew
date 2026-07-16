@@ -629,7 +629,7 @@ function NetworkGraph() {
             })}
           </svg>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0 w-full">
           <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-3">
             conversas ao vivo
           </div>
