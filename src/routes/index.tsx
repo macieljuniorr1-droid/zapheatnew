@@ -289,6 +289,9 @@ function Landing() {
         {/* MASS DISPATCH */}
         <MassDispatchSection />
 
+        {/* VIRTUAL NUMBERS */}
+        <VirtualNumbersSection />
+
 
         {/* PLANS */}
 
