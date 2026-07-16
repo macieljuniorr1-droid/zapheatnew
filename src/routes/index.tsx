@@ -161,7 +161,6 @@ function Landing() {
             <a href="#dispatch" className="hover:text-foreground transition">Disparo em massa</a>
             <a href="#numbers" className="hover:text-foreground transition">Nº virtuais</a>
             <a href="#plans" className="hover:text-foreground transition">Planos</a>
-            <a href="#faq" className="hover:text-foreground transition">FAQ</a>
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
