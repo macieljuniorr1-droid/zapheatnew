@@ -819,15 +819,15 @@ async function getPairHistory(supabaseAdmin: any, groupId: string, fromId: strin
   }));
 }
 
-async function generateMessageFast(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[]) {
+async function generateMessageFast(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[], aiModel: string | null) {
   return await withTimeout(
-    generateMessage(supabaseAdmin, userId, fromId, toId, history),
+    generateMessage(supabaseAdmin, userId, fromId, toId, history, aiModel),
     AI_GENERATION_TIMEOUT_MS,
     () => fallbackMessage(history),
   );
 }
 
-async function generateMessage(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[]) {
+async function generateMessage(supabaseAdmin: any, userId: string, fromId: string, toId: string, history: any[], aiModel: string | null) {
   try {
     const { generateReply } = await import("@/lib/ai.server");
     const { data: names } = await supabaseAdmin
@@ -839,6 +839,7 @@ async function generateMessage(supabaseAdmin: any, userId: string, fromId: strin
       pairSeed: fromId,
       fromName: map.get(fromId) ?? null,
       toName: map.get(toId) ?? null,
+      model: aiModel,
     });
   } catch {
     const { data: templates } = await supabaseAdmin
