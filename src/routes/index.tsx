@@ -107,36 +107,6 @@ export const Route = createFileRoute("/")({
               ],
               aggregateRating: { "@type": "AggregateRating", ratingValue: "4.9", reviewCount: "128" },
             },
-            {
-              "@type": "FAQPage",
-              mainEntity: [
-                {
-                  "@type": "Question",
-                  name: "O que é aquecimento de chip de WhatsApp?",
-                  acceptedAnswer: { "@type": "Answer", text: "É o processo de simular conversas reais entre seus próprios números de WhatsApp para construir reputação junto ao WhatsApp e reduzir o risco de banimento antes de iniciar disparos ou usar a WhatsApp API oficial." },
-                },
-                {
-                  "@type": "Question",
-                  name: "O ZapHeat funciona com a API oficial do WhatsApp?",
-                  acceptedAnswer: { "@type": "Answer", text: "Sim. O ZapHeat pode aquecer números que serão usados na WhatsApp Business API oficial e também integra com Evolution API para operações não-oficiais." },
-                },
-                {
-                  "@type": "Question",
-                  name: "Posso fazer disparo em massa no WhatsApp?",
-                  acceptedAnswer: { "@type": "Answer", text: "Sim. Após aquecer os chips, você pode disparar campanhas em massa com ritmo humano configurável, reduzindo o risco de banimento e aumentando a entregabilidade." },
-                },
-                {
-                  "@type": "Question",
-                  name: "Meu chip pode ser banido?",
-                  acceptedAnswer: { "@type": "Answer", text: "O ZapHeat reduz drasticamente o risco com delays humanos, ritmo variado e mensagens naturais geradas por IA, mas nenhum sistema garante 100%. Comece com limites baixos e aumente aos poucos." },
-                },
-                {
-                  "@type": "Question",
-                  name: "Preciso pagar para testar?",
-                  acceptedAnswer: { "@type": "Answer", text: "Não. O plano Free permite aquecer 2 números sem cartão de crédito." },
-                },
-              ],
-            },
           ],
         }),
       },
