@@ -580,6 +580,10 @@ function InstancesTab() {
         </CardContent>
       </Card>
 
+      <ReportPanel scope="user" title="Relatório dos números" description="Mensagens enviadas e falhas dos seus chips no período." />
+
+
+
       {total > 0 && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
