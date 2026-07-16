@@ -1490,6 +1490,10 @@ function TemplatesTab({ userId }: { userId?: string }) {
         </CardContent>
       </Card>
 
+      <ReportPanel scope="user" title="Relatório do motor de IA" description="Volume de mensagens geradas pela IA no período selecionado." />
+
+
+
       {/* Avançado: fallback templates */}
       <Card>
         <CardHeader className="pb-2 cursor-pointer" onClick={() => setShowAdvanced((v) => !v)}>
