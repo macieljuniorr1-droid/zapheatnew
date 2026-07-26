@@ -20,7 +20,9 @@ const automationSchema = z.object({
   active_hour_start: z.number().int().min(0).max(23).optional(),
   active_hour_end: z.number().int().min(1).max(24).optional(),
   daily_limit: z.number().int().min(1).max(2000).optional(),
+  sticker_chance: z.number().int().min(0).max(100).optional(),
 });
+
 
 export const listWaGroups = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
