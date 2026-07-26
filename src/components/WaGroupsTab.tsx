@@ -253,7 +253,19 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
             <div><Label>Intervalo máx. (seg)</Label><Input type="number" value={maxI} onChange={(e) => setMaxI(Number(e.target.value))} /></div>
             <div><Label>Hora início</Label><Input type="number" min={0} max={23} value={hStart} onChange={(e) => setHStart(Number(e.target.value))} /></div>
             <div><Label>Hora fim</Label><Input type="number" min={1} max={24} value={hEnd} onChange={(e) => setHEnd(Number(e.target.value))} /></div>
-            <div className="col-span-2"><Label>Limite de mensagens por dia</Label><Input type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></div>
+            <div><Label>Limite de mensagens por dia</Label><Input type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></div>
+            <div><Label>Chance de figurinha (%)</Label><Input type="number" min={0} max={100} value={stickerChance} onChange={(e) => setStickerChance(Number(e.target.value))} /></div>
+            <div className="col-span-2">
+              <Label>Quantos grupos criar agora</Label>
+              <Input type="number" min={1} max={20} value={count} onChange={(e) => setCount(Number(e.target.value))} />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ex.: 10 cria "{subject || "Grupo"} 1" até "{subject || "Grupo"} 10", todos com os mesmos participantes e a mesma automação.
+              </p>
+            </div>
+            <label className="col-span-2 flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={activate} onChange={(e) => setActivate(e.target.checked)} />
+              Já ligar a automação 24h assim que criar
+            </label>
           </div>
           <p className="text-xs text-muted-foreground">
             Deixe 0h → 24h para o grupo rodar 24 horas por dia. Intervalos maiores parecem mais humanos e reduzem risco de bloqueio.
@@ -261,9 +273,11 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
         </div>
         <DialogFooter>
           <Button disabled={!owner || !subject || mut.isPending} onClick={() => mut.mutate()}>
-            {mut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Criar grupo
+            {mut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {count > 1 ? `Criar ${count} grupos` : "Criar grupo"}
           </Button>
         </DialogFooter>
+
       </DialogContent>
     </Dialog>
   );
