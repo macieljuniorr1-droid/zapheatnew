@@ -106,38 +106,51 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                 .slice()
                 .sort((a: any, b: any) => (lastSpokeAt.get(a.id) ?? 0) - (lastSpokeAt.get(b.id) ?? 0))[0];
 
-              const text = await generateGroupMessage(
-                recent.map((r: any) => ({
-                  from: r.instance_id === sender.id ? "__me__" : String(r.instance_id ?? "outro"),
-                  content: String(r.content ?? ""),
-                })),
-                {
-                  seed: `${g.id}:${sender.id}`,
-                  senderName: sender.name,
-                  subject: g.subject,
-                  theme: g.theme,
-                  model: g.ai_model,
-                },
-              );
+              // Às vezes o motor manda uma figurinha em vez de texto.
+              const stickerChance = Math.max(0, Math.min(100, g.sticker_chance ?? 0));
+              const stickerUrl =
+                Math.random() * 100 < stickerChance ? await pickSticker(supabaseAdmin, g.user_id) : null;
+
+              const text = stickerUrl
+                ? ""
+                : await generateGroupMessage(
+                    recent.map((r: any) => ({
+                      from: r.instance_id === sender.id ? "__me__" : String(r.instance_id ?? "outro"),
+                      content: String(r.content ?? ""),
+                    })),
+                    {
+                      seed: `${g.id}:${sender.id}`,
+                      senderName: sender.name,
+                      subject: g.subject,
+                      theme: g.theme,
+                      model: g.ai_model,
+                    },
+                  );
 
               await evolution.sendPresence(
                 sender.evolution_instance,
                 g.group_jid,
                 "composing",
-                Math.min(4000, 300 + text.length * 60),
+                stickerUrl ? 1200 : Math.min(4000, 300 + text.length * 60),
               );
 
               try {
-                await evolution.sendText(sender.evolution_instance, g.group_jid, text, 0);
+                if (stickerUrl) {
+                  await evolution.sendSticker(sender.evolution_instance, g.group_jid, stickerUrl, 0);
+                } else {
+                  await evolution.sendText(sender.evolution_instance, g.group_jid, text, 0);
+                }
                 await supabaseAdmin.from("wa_group_logs").insert({
                   user_id: g.user_id,
                   group_id: g.id,
                   instance_id: sender.id,
-                  content: text,
+                  content: stickerUrl ? "[figurinha]" : text,
+                  kind: stickerUrl ? "sticker" : "text",
                   status: "sent",
                 });
                 await reschedule(g, randomBetween(g.min_interval_seconds, g.max_interval_seconds));
-                return { group: g.id, sent: true, from: sender.name };
+                return { group: g.id, sent: true, from: sender.name, kind: stickerUrl ? "sticker" : "text" };
+
               } catch (e: any) {
                 const raw = String(e?.message ?? e);
                 const friendly = /not-authorized|forbidden|403/i.test(raw)
