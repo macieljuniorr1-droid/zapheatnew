@@ -13,6 +13,12 @@ import {
   deleteWaGroup,
   getWaGroupInvite,
   listWaGroupLogs,
+  listWaGroupParticipants,
+  syncWaGroupParticipants,
+  removeWaGroupParticipant,
+  listWaStickers,
+  addWaStickers,
+  deleteWaSticker,
 } from "@/lib/wa-groups.functions";
 import { listInstances, listAiModels } from "@/lib/warmup.functions";
 import { Button } from "@/components/ui/button";
@@ -26,7 +32,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Users2, Plus, Loader2, Trash2, Link2, RefreshCw, Bot, Clock, Send, AlertTriangle, UserPlus, Radio,
+  Smile, Eye, ShieldCheck, LogOut,
 } from "lucide-react";
+
 
 const fmtInterval = (s: number) => (s >= 3600 ? `${Math.round(s / 360) / 10}h` : s >= 60 ? `${Math.round(s / 60)}min` : `${s}s`);
 
