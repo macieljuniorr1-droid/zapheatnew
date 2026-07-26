@@ -167,6 +167,9 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
   const [hEnd, setHEnd] = useState(24);
   const [limit, setLimit] = useState(200);
   const [model, setModel] = useState<string>("");
+  const [stickerChance, setStickerChance] = useState(15);
+  const [count, setCount] = useState(1);
+  const [activate, setActivate] = useState(true);
 
   const mut = useMutation({
     mutationFn: () =>
@@ -184,16 +187,21 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
           active_hour_start: hStart,
           active_hour_end: hEnd,
           daily_limit: limit,
+          sticker_chance: stickerChance,
+          count,
+          activate,
         },
       }),
-    onSuccess: () => {
-      toast.success("Grupo criado no WhatsApp!");
+    onSuccess: (r: any) => {
+      toast.success(`${r?.created ?? 1} grupo(s) criado(s) no WhatsApp!`);
+      if (r?.errors?.length) toast.error(String(r.errors[0]));
       setOpen(false);
-      setSubject(""); setDescription(""); setNumbers(""); setSenders([]);
+      setSubject(""); setDescription(""); setNumbers(""); setSenders([]); setCount(1);
       qc.invalidateQueries({ queryKey: ["wa-groups"] });
     },
     onError: (e: any) => toast.error(String(e.message ?? e)),
   });
+
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
