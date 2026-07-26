@@ -168,3 +168,74 @@ Devolva SOMENTE o texto da mensagem, sem aspas, sem prefixo, sem nome.`;
   if (text.length > 240) text = text.slice(0, 240).replace(/\s+\S*$/, "");
   return text || "oi";
 }
+
+// ---------------- Mensagens para grupos reais de WhatsApp ----------------
+// Gera uma mensagem curta e natural para manter um grupo vivo 24h, com
+// personas diferentes por número remetente e continuidade com o histórico.
+export async function generateGroupMessage(
+  history: { from: string; content: string }[],
+  opts?: { seed?: string; senderName?: string | null; subject?: string | null; theme?: string | null; model?: string | null },
+): Promise<string> {
+  const apiKey = process.env.LOVABLE_API_KEY;
+  if (!apiKey) throw new Error("LOVABLE_API_KEY ausente");
+  const requested = opts?.model && VALID_MODEL_IDS.has(opts.model) ? opts.model : DEFAULT_AI_MODEL;
+
+  const seed = opts?.seed ?? String(Math.random());
+  const persona = pickByHash(PERSONAS, seed);
+  const isStart = history.length === 0;
+  const topicHint = pickByHash(TOPIC_SEEDS, seed + Math.floor(Date.now() / 60000));
+
+  const system = `Você é essa pessoa: ${persona}
+
+Você participa de um GRUPO de WhatsApp chamado "${opts?.subject ?? "grupo"}".${opts?.theme ? `\nAssunto/vibe do grupo: ${opts.theme}.` : ""}
+Você está mandando uma mensagem no grupo agora, como membro real.
+
+REGRAS ABSOLUTAS:
+- Português brasileiro coloquial, minúsculas, frases curtas (1 a 20 palavras).
+- Fale para o grupo, não para uma pessoa específica (evite nomes e @mentions).
+- Emoji raro (no máximo 1). Gírias naturais (kkk, né, tipo, mano, poxa, tô, cê).
+- NUNCA diga que é IA, bot, teste, automação, aquecimento.
+- NUNCA fale de venda, marketing, promoção, link, telefone, código.
+- NUNCA repita mensagens anteriores do grupo.
+- Continue o papo do grupo: reaja à última mensagem, comente ou puxe assunto.
+${isStart ? `INÍCIO: o grupo está parado, puxe assunto — ${topicHint}.` : ""}
+
+Devolva SOMENTE o texto da mensagem, sem aspas, sem prefixo, sem nome.`;
+
+  const messages: Msg[] = [{ role: "system", content: system }];
+  for (const h of history.slice(-20)) {
+    messages.push({ role: h.from === "__me__" ? "assistant" : "user", content: h.content });
+  }
+  if (isStart) messages.push({ role: "user", content: "(mande a primeira mensagem do grupo agora)" });
+
+  const body: Record<string, unknown> = {
+    model: requested,
+    messages,
+    temperature: 1.1,
+    top_p: 0.95,
+    frequency_penalty: 0.7,
+    presence_penalty: 0.7,
+    max_tokens: 120,
+  };
+  if (requested.startsWith("openai/gpt-5.6")) body.reasoning_effort = "none";
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`AI ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  let text: string = data?.choices?.[0]?.message?.content?.trim() ?? "";
+  if (!text) throw new Error("Resposta vazia da IA");
+  text = text
+    .replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, "")
+    .replace(/^(eu|resposta|mensagem)\s*[:\-–]\s*/i, "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/#\w+/g, "")
+    .replace(/@\d+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (text.length > 240) text = text.slice(0, 240).replace(/\s+\S*$/, "");
+  return text || "e aí pessoal";
+}
