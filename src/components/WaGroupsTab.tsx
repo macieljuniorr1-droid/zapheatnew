@@ -106,6 +106,9 @@ export function WaGroupsTab() {
         </div>
       )}
 
+      <StickerLibrary />
+
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2"><Bot className="h-4 w-4" />Últimas mensagens do motor nos grupos</CardTitle>
