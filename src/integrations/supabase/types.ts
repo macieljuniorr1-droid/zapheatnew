@@ -656,6 +656,161 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_group_logs: {
+        Row: {
+          content: string | null
+          created_at: string
+          error: string | null
+          group_id: string
+          id: string
+          instance_id: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          error?: string | null
+          group_id: string
+          id?: string
+          instance_id?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          error?: string | null
+          group_id?: string
+          id?: string
+          instance_id?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_group_logs_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "wa_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_group_logs_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wa_group_senders: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          instance_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          instance_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          instance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_group_senders_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "wa_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_group_senders_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wa_groups: {
+        Row: {
+          active: boolean
+          active_hour_end: number
+          active_hour_start: number
+          ai_model: string | null
+          created_at: string
+          daily_limit: number
+          description: string | null
+          group_jid: string
+          id: string
+          max_interval_seconds: number
+          min_interval_seconds: number
+          next_run_at: string | null
+          owner_instance_id: string
+          participant_count: number
+          subject: string
+          theme: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          active_hour_end?: number
+          active_hour_start?: number
+          ai_model?: string | null
+          created_at?: string
+          daily_limit?: number
+          description?: string | null
+          group_jid: string
+          id?: string
+          max_interval_seconds?: number
+          min_interval_seconds?: number
+          next_run_at?: string | null
+          owner_instance_id: string
+          participant_count?: number
+          subject: string
+          theme?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          active_hour_end?: number
+          active_hour_start?: number
+          ai_model?: string | null
+          created_at?: string
+          daily_limit?: number
+          description?: string | null
+          group_jid?: string
+          id?: string
+          max_interval_seconds?: number
+          min_interval_seconds?: number
+          next_run_at?: string | null
+          owner_instance_id?: string
+          participant_count?: number
+          subject?: string
+          theme?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_groups_owner_instance_id_fkey"
+            columns: ["owner_instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wallet_transactions: {
         Row: {
           amount_cents: number
