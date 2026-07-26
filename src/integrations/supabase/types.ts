@@ -664,6 +664,7 @@ export type Database = {
           group_id: string
           id: string
           instance_id: string | null
+          kind: string
           status: string
           user_id: string
         }
@@ -674,6 +675,7 @@ export type Database = {
           group_id: string
           id?: string
           instance_id?: string | null
+          kind?: string
           status?: string
           user_id: string
         }
@@ -684,6 +686,7 @@ export type Database = {
           group_id?: string
           id?: string
           instance_id?: string | null
+          kind?: string
           status?: string
           user_id?: string
         }
@@ -700,6 +703,59 @@ export type Database = {
             columns: ["instance_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wa_group_participants: {
+        Row: {
+          first_seen_at: string
+          group_id: string
+          id: string
+          is_admin: boolean
+          is_mine: boolean
+          jid: string
+          last_seen_at: string
+          left_at: string | null
+          name: string | null
+          phone: string | null
+          present: boolean
+          user_id: string
+        }
+        Insert: {
+          first_seen_at?: string
+          group_id: string
+          id?: string
+          is_admin?: boolean
+          is_mine?: boolean
+          jid: string
+          last_seen_at?: string
+          left_at?: string | null
+          name?: string | null
+          phone?: string | null
+          present?: boolean
+          user_id: string
+        }
+        Update: {
+          first_seen_at?: string
+          group_id?: string
+          id?: string
+          is_admin?: boolean
+          is_mine?: boolean
+          jid?: string
+          last_seen_at?: string
+          left_at?: string | null
+          name?: string | null
+          phone?: string | null
+          present?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_group_participants_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "wa_groups"
             referencedColumns: ["id"]
           },
         ]
@@ -756,6 +812,8 @@ export type Database = {
           next_run_at: string | null
           owner_instance_id: string
           participant_count: number
+          participants_synced_at: string | null
+          sticker_chance: number
           subject: string
           theme: string | null
           updated_at: string
@@ -776,6 +834,8 @@ export type Database = {
           next_run_at?: string | null
           owner_instance_id: string
           participant_count?: number
+          participants_synced_at?: string | null
+          sticker_chance?: number
           subject: string
           theme?: string | null
           updated_at?: string
@@ -796,6 +856,8 @@ export type Database = {
           next_run_at?: string | null
           owner_instance_id?: string
           participant_count?: number
+          participants_synced_at?: string | null
+          sticker_chance?: number
           subject?: string
           theme?: string | null
           updated_at?: string
@@ -810,6 +872,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      wa_stickers: {
+        Row: {
+          created_at: string
+          id: string
+          label: string | null
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string | null
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string | null
+          url?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       wallet_transactions: {
         Row: {
