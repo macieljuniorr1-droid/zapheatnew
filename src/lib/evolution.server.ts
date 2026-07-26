@@ -202,9 +202,9 @@ export const evolution = {
       { method: "GET" },
       10_000,
     ).catch(() => null),
-  joinGroupByInvite: (instanceName: string, inviteCode: string) =>
+  acceptGroupInvite: (instanceName: string, inviteCode: string) =>
     evoFetch(
-      `/group/inviteCode/${encodeURIComponent(instanceName)}?inviteCode=${encodeURIComponent(inviteCode)}`,
+      `/group/acceptInviteCode/${encodeURIComponent(instanceName)}?inviteCode=${encodeURIComponent(inviteCode)}`,
       { method: "GET" },
       10_000,
     ).catch(() => null),
