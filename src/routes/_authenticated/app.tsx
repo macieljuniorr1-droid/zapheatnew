@@ -74,6 +74,7 @@ import {
   heartbeat,
   getMyTeamContext,
 } from "@/lib/team.functions";
+import { WaGroupsTab } from "@/components/WaGroupsTab";
 import { VirtualNumbersTab } from "@/components/VirtualNumbersTab";
 
 import zapheatLogo from "@/assets/zapheat-logo.png.asset.json";
@@ -249,7 +250,8 @@ function AppPage() {
             <TabsTrigger value="dashboard"><Flame className="h-4 w-4 mr-1" />Dashboard</TabsTrigger>
             
             <TabsTrigger value="instances"><Smartphone className="h-4 w-4 mr-1" />Números</TabsTrigger>
-            <TabsTrigger value="groups"><Users2 className="h-4 w-4 mr-1" />Grupos</TabsTrigger>
+            <TabsTrigger value="groups"><Users2 className="h-4 w-4 mr-1" />Aquecimento</TabsTrigger>
+            <TabsTrigger value="wagroups"><Users2 className="h-4 w-4 mr-1" />Grupos WhatsApp</TabsTrigger>
             <TabsTrigger value="templates"><Sparkles className="h-4 w-4 mr-1" />Motor IA</TabsTrigger>
             <TabsTrigger value="dispatch"><Send className="h-4 w-4 mr-1" />Disparos</TabsTrigger>
             <TabsTrigger value="live"><Radio className="h-4 w-4 mr-1" />Chat ao vivo</TabsTrigger>
@@ -263,6 +265,7 @@ function AppPage() {
           
           <TabsContent value="instances"><InstancesTab /></TabsContent>
           <TabsContent value="groups"><GroupsTab changeTab={changeTab} /></TabsContent>
+          <TabsContent value="wagroups"><WaGroupsTab /></TabsContent>
           <TabsContent value="templates"><TemplatesTab userId={(me.data as any)?.userId} /></TabsContent>
           <TabsContent value="dispatch"><DispatchTab /></TabsContent>
           <TabsContent value="live"><LiveChatTab /></TabsContent>
