@@ -165,4 +165,54 @@ export const evolution = {
         fileName: opts.fileName ?? `arquivo.${opts.mediatype === "image" ? "jpg" : opts.mediatype === "video" ? "mp4" : "pdf"}`,
       }),
     }),
+
+  // ---------------- Grupos reais do WhatsApp (@g.us) ----------------
+  createGroup: (
+    instanceName: string,
+    opts: { subject: string; description?: string; participants: string[] },
+  ) =>
+    evoFetch(`/group/create/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({
+        subject: opts.subject,
+        description: opts.description ?? "",
+        participants: opts.participants,
+      }),
+    }, 20_000),
+  updateGroupParticipants: (
+    instanceName: string,
+    groupJid: string,
+    action: "add" | "remove" | "promote" | "demote",
+    participants: string[],
+  ) =>
+    evoFetch(
+      `/group/updateParticipant/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`,
+      { method: "POST", body: JSON.stringify({ action, participants }) },
+      20_000,
+    ),
+  fetchAllGroups: (instanceName: string, getParticipants = false) =>
+    evoFetch(
+      `/group/fetchAllGroups/${encodeURIComponent(instanceName)}?getParticipants=${getParticipants}`,
+      { method: "GET" },
+      20_000,
+    ),
+  groupInviteCode: (instanceName: string, groupJid: string) =>
+    evoFetch(
+      `/group/inviteCode/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`,
+      { method: "GET" },
+      10_000,
+    ).catch(() => null),
+  joinGroupByInvite: (instanceName: string, inviteCode: string) =>
+    evoFetch(
+      `/group/inviteCode/${encodeURIComponent(instanceName)}?inviteCode=${encodeURIComponent(inviteCode)}`,
+      { method: "GET" },
+      10_000,
+    ).catch(() => null),
+  leaveGroup: (instanceName: string, groupJid: string) =>
+    evoFetch(
+      `/group/leaveGroup/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`,
+      { method: "DELETE" },
+      10_000,
+    ),
 };
+
