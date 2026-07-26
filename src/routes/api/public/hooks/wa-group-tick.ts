@@ -44,11 +44,29 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
         const results = await Promise.all(
           (groups ?? []).map(async (g: any) => {
             try {
+              // Monitoramento: relê a lista de participantes a cada 30 min.
+              const owner: any = g.whatsapp_instances;
+              const staleMs = Date.now() - new Date(g.participants_synced_at ?? 0).getTime();
+              if (owner?.evolution_instance && owner.status === "connected" && staleMs > 30 * 60_000) {
+                try {
+                  await syncGroupParticipants(supabaseAdmin, {
+                    id: g.id,
+                    user_id: g.user_id,
+                    group_jid: g.group_jid,
+                    evolution_instance: owner.evolution_instance,
+                  });
+                } catch {
+                  // monitoramento é best-effort; não bloqueia o envio
+                }
+              }
+
               const h = nowHourBRT();
               if (h < g.active_hour_start || h >= g.active_hour_end) {
                 await reschedule(g, 600);
                 return { group: g.id, skipped: "fora do horário" };
               }
+
+
 
               const todayIso = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
               const { count } = await supabaseAdmin
