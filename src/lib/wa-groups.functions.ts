@@ -374,3 +374,112 @@ export const deleteWaGroup = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// ---------------- Monitoramento de participantes ----------------
+
+export const listWaGroupParticipants = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ groupId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: rows, error } = await supabase
+      .from("wa_group_participants")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("group_id", data.groupId)
+      .order("present", { ascending: false })
+      .order("is_admin", { ascending: false })
+      .order("name", { ascending: true });
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const syncWaGroupParticipants = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ groupId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { syncGroupParticipants } = await import("@/lib/wa-groups.server");
+    const { data: g } = await supabase
+      .from("wa_groups")
+      .select("id, user_id, group_jid, whatsapp_instances:owner_instance_id(evolution_instance, status)")
+      .eq("id", data.groupId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!g) throw new Error("Grupo não encontrado");
+    const inst: any = (g as any).whatsapp_instances;
+    if (!inst?.evolution_instance) throw new Error("Número criador indisponível");
+    if (inst.status !== "connected") throw new Error("O número dono do grupo está desconectado");
+    return await syncGroupParticipants(supabase, {
+      id: g.id,
+      user_id: g.user_id,
+      group_jid: g.group_jid,
+      evolution_instance: inst.evolution_instance,
+    });
+  });
+
+export const removeWaGroupParticipant = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ groupId: z.string().uuid(), jid: z.string().min(5) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { evolution } = await import("@/lib/evolution.server");
+    const { jidToPhone } = await import("@/lib/wa-groups.server");
+    const { data: g } = await supabase
+      .from("wa_groups")
+      .select("id, group_jid, whatsapp_instances:owner_instance_id(evolution_instance)")
+      .eq("id", data.groupId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!g) throw new Error("Grupo não encontrado");
+    const inst: any = (g as any).whatsapp_instances;
+    const phone = jidToPhone(data.jid);
+    if (!phone) throw new Error("Participante sem número válido");
+    await evolution.updateGroupParticipants(inst.evolution_instance, g.group_jid, "remove", [phone]);
+    await supabase
+      .from("wa_group_participants")
+      .update({ present: false, left_at: new Date().toISOString() })
+      .eq("group_id", g.id)
+      .eq("jid", data.jid);
+    return { ok: true };
+  });
+
+// ---------------- Biblioteca de figurinhas ----------------
+
+export const listWaStickers = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data, error } = await supabase
+      .from("wa_stickers")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const addWaStickers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ urls: z.array(z.string().url()).min(1).max(50), label: z.string().max(60).optional().nullable() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const rows = data.urls.map((url) => ({ user_id: userId, url, label: data.label ?? null }));
+    const { error } = await supabase.from("wa_stickers").insert(rows);
+    if (error) throw new Error(error.message);
+    return { added: rows.length };
+  });
+
+export const deleteWaSticker = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase.from("wa_stickers").delete().eq("id", data.id).eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
