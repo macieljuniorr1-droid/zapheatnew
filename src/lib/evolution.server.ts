@@ -196,6 +196,30 @@ export const evolution = {
       { method: "GET" },
       20_000,
     ),
+  groupParticipants: async (instanceName: string, groupJid: string) => {
+    // Versões diferentes da Evolution expõem rotas distintas; tentamos ambas.
+    const paths = [
+      `/group/participants/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`,
+      `/group/findGroupInfos/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`,
+    ];
+    for (const p of paths) {
+      try {
+        const res: any = await evoFetch(p, { method: "GET" }, 15_000);
+        const list = res?.participants ?? res?.data?.participants ?? (Array.isArray(res) ? res : null);
+        if (Array.isArray(list)) return { participants: list, info: res };
+      } catch {
+        // tenta o próximo formato
+      }
+    }
+    return { participants: [] as any[], info: null };
+  },
+  sendSticker: (instanceName: string, number: string, sticker: string, delayMs = 0) =>
+    evoFetch(
+      `/message/sendSticker/${encodeURIComponent(instanceName)}`,
+      { method: "POST", body: JSON.stringify({ number, sticker, delay: delayMs }) },
+      15_000,
+    ),
+
   groupInviteCode: (instanceName: string, groupJid: string) =>
     evoFetch(
       `/group/inviteCode/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`,
