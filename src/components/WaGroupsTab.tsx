@@ -334,17 +334,37 @@ function GroupCard({ group, instances, models }: { group: any; instances: any[];
           <Badge variant="outline">{group.active_hour_start}h–{group.active_hour_end}h</Badge>
           <Badge variant="outline">até {group.daily_limit}/dia</Badge>
           <Badge variant="outline">{group.sender_instance_ids?.length ?? 0} remetentes</Badge>
+          <Badge variant="outline"><Smile className="h-3 w-3 mr-1" />{group.sticker_chance ?? 0}% figurinha</Badge>
         </div>
 
-        <div>
-          <Label className="text-xs">Modelo de IA</Label>
-          <Select value={group.ai_model ?? ""} onValueChange={(v) => wrap(updateFn({ data: { groupId: group.id, patch: { ai_model: v } } }), "Modelo atualizado")}>
-            <SelectTrigger className="h-8"><SelectValue placeholder="Padrão" /></SelectTrigger>
-            <SelectContent>
-              {models.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs">Modelo de IA</Label>
+            <Select value={group.ai_model ?? ""} onValueChange={(v) => wrap(updateFn({ data: { groupId: group.id, patch: { ai_model: v } } }), "Modelo atualizado")}>
+              <SelectTrigger className="h-8"><SelectValue placeholder="Padrão" /></SelectTrigger>
+              <SelectContent>
+                {models.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Chance de figurinha (%)</Label>
+            <Input
+              className="h-8"
+              type="number"
+              min={0}
+              max={100}
+              defaultValue={group.sticker_chance ?? 0}
+              onBlur={(e) =>
+                wrap(
+                  updateFn({ data: { groupId: group.id, patch: { sticker_chance: Math.max(0, Math.min(100, Number(e.target.value) || 0)) } } }),
+                  "Figurinhas atualizadas",
+                )
+              }
+            />
+          </div>
         </div>
+
 
         <div>
           <Label className="text-xs">Números que conversam no grupo</Label>
