@@ -164,7 +164,8 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                   user_id: g.user_id,
                   group_id: g.id,
                   instance_id: sender.id,
-                  content: text,
+                  content: stickerUrl ? "[figurinha]" : text,
+                  kind: stickerUrl ? "sticker" : "text",
                   status: "failed",
                   error: friendly,
                 });
