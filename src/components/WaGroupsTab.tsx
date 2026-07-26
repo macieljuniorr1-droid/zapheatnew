@@ -387,3 +387,169 @@ function GroupCard({ group, instances, models }: { group: any; instances: any[];
     </Card>
   );
 }
+
+function StickerLibrary() {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listWaStickers);
+  const addFn = useServerFn(addWaStickers);
+  const delFn = useServerFn(deleteWaSticker);
+  const [urls, setUrls] = useState("");
+
+  const stickers = useQuery({ queryKey: ["wa-stickers"], queryFn: () => listFn(), staleTime: 30000 });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["wa-stickers"] });
+
+  const addMut = useMutation({
+    mutationFn: () =>
+      addFn({ data: { urls: urls.split(/[\n,;\s]+/).map((s) => s.trim()).filter(Boolean) } }),
+    onSuccess: (r: any) => { toast.success(`${r.added} figurinha(s) adicionada(s)`); setUrls(""); invalidate(); },
+    onError: (e: any) => toast.error(String(e.message ?? e)),
+  });
+
+  const list = (stickers.data as any[]) ?? [];
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2"><Smile className="h-4 w-4" />Figurinhas do motor</CardTitle>
+        <CardDescription>
+          Cole os links das figurinhas (.webp, .png ou .jpg). O motor sorteia uma delas de acordo com a
+          chance de figurinha configurada em cada grupo.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Textarea
+          rows={3}
+          value={urls}
+          onChange={(e) => setUrls(e.target.value)}
+          placeholder={"https://site.com/figurinha1.webp\nhttps://site.com/figurinha2.webp"}
+        />
+        <Button size="sm" disabled={!urls.trim() || addMut.isPending} onClick={() => addMut.mutate()}>
+          {addMut.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+          Adicionar figurinhas
+        </Button>
+
+        {list.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhuma figurinha ainda — o motor vai enviar só texto.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {list.map((s: any) => (
+              <div key={s.id} className="relative h-16 w-16 rounded-md border bg-muted/30 p-1">
+                <img src={s.url} alt={s.label ?? "figurinha"} className="h-full w-full object-contain" />
+                <button
+                  className="absolute -right-2 -top-2 rounded-full bg-background border p-0.5 text-red-500"
+                  onClick={() =>
+                    delFn({ data: { id: s.id } })
+                      .then(() => { toast.success("Figurinha removida"); invalidate(); })
+                      .catch((e: any) => toast.error(String(e.message ?? e)))
+                  }
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ParticipantsDialog({ group }: { group: any }) {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listWaGroupParticipants);
+  const syncFn = useServerFn(syncWaGroupParticipants);
+  const removeFn = useServerFn(removeWaGroupParticipant);
+  const [open, setOpen] = useState(false);
+
+  const people = useQuery({
+    queryKey: ["wa-group-participants", group.id],
+    queryFn: () => listFn({ data: { groupId: group.id } }),
+    enabled: open,
+    refetchInterval: open ? 30000 : false,
+  });
+
+  const syncMut = useMutation({
+    mutationFn: () => syncFn({ data: { groupId: group.id } }),
+    onSuccess: (r: any) => {
+      toast.success(`${r.synced} participantes · ${r.joined} novos · ${r.left} saíram`);
+      people.refetch();
+      qc.invalidateQueries({ queryKey: ["wa-groups"] });
+    },
+    onError: (e: any) => toast.error(String(e.message ?? e)),
+  });
+
+  const list = (people.data as any[]) ?? [];
+  const inside = list.filter((p) => p.present);
+  const gone = list.filter((p) => !p.present);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />Ver pessoas</Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-auto">
+        <DialogHeader>
+          <DialogTitle>Pessoas em {group.subject}</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            {inside.length} no grupo · {gone.length} saíram
+            {group.participants_synced_at && ` · atualizado ${new Date(group.participants_synced_at).toLocaleString("pt-BR")}`}
+          </p>
+          <Button size="sm" variant="outline" disabled={syncMut.isPending} onClick={() => syncMut.mutate()}>
+            {syncMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            <span className="ml-2">Atualizar</span>
+          </Button>
+        </div>
+
+        {people.isLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
+        ) : list.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Ainda não li os participantes deste grupo. Clique em Atualizar.
+          </p>
+        ) : (
+          <div className="space-y-1">
+            {inside.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate">{p.name ?? p.phone ?? p.jid}</p>
+                  <p className="text-xs text-muted-foreground truncate">{p.phone ?? p.jid}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {p.is_mine && <Badge variant="secondary" className="text-[10px]">meu número</Badge>}
+                  {p.is_admin && <Badge variant="outline" className="text-[10px]"><ShieldCheck className="h-3 w-3 mr-1" />admin</Badge>}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-red-500"
+                    onClick={() => {
+                      if (!confirm(`Remover ${p.name ?? p.phone} do grupo?`)) return;
+                      removeFn({ data: { groupId: group.id, jid: p.jid } })
+                        .then(() => { toast.success("Removido do grupo"); people.refetch(); })
+                        .catch((e: any) => toast.error(String(e.message ?? e)));
+                    }}
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {gone.length > 0 && (
+              <>
+                <p className="pt-2 text-xs font-medium text-muted-foreground">Saíram do grupo</p>
+                {gone.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between gap-2 rounded-md border border-dashed p-2 text-sm opacity-60">
+                    <span className="truncate">{p.name ?? p.phone ?? p.jid}</span>
+                    <span className="text-xs shrink-0">{p.left_at ? new Date(p.left_at).toLocaleDateString("pt-BR") : ""}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
