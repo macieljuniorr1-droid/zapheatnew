@@ -276,7 +276,7 @@ export const updateWaGroup = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const patch: Record<string, unknown> = { ...data.patch };
+    const patch: any = { ...data.patch };
     if (
       typeof patch.min_interval_seconds === "number" &&
       typeof patch.max_interval_seconds === "number" &&
