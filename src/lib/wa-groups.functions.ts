@@ -140,7 +140,7 @@ export const createWaGroup = createServerFn({ method: "POST" })
     const senderIds = Array.from(new Set([...data.senderInstanceIds, owner.id]));
     const { data: senders } = await supabase
       .from("whatsapp_instances")
-      .select("id, phone, status")
+      .select("id, phone, status, evolution_instance")
       .in("id", senderIds);
 
     const phones = new Set<string>();
