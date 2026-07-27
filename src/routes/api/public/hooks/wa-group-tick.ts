@@ -20,7 +20,7 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { evolution } = await import("@/lib/evolution.server");
         const { generateGroupMessage, fallbackGroupMessage, isAiQuotaError } = await import("@/lib/ai.server");
-        const { syncGroupParticipants, pickSticker } = await import("@/lib/wa-groups.server");
+        const { syncGroupParticipants, pickSticker, ensureSendersJoined } = await import("@/lib/wa-groups.server");
 
         // Modo "disparar agora": envia UMA mensagem imediatamente em um grupo
         // específico, ignorando horário e agendamento (usado logo após criar o grupo).
