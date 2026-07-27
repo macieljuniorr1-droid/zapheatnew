@@ -8,6 +8,42 @@ export function jidToPhone(jid: string): string | null {
 
 type AnyClient = any;
 
+type SenderToJoin =
+  | string
+  | {
+      evolution_instance?: string | null;
+      phone?: string | null;
+    };
+
+function onlyDigits(value: string | null | undefined): string | null {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.length >= 8 ? digits : null;
+}
+
+function extractInviteCode(res: any): string | null {
+  const raw =
+    res?.inviteCode ??
+    res?.code ??
+    res?.data?.inviteCode ??
+    res?.data?.code ??
+    res?.inviteUrl ??
+    res?.data?.inviteUrl ??
+    null;
+  if (!raw) return null;
+  return String(raw)
+    .replace(/^https?:\/\/chat\.whatsapp\.com\//i, "")
+    .replace(/[?#].*$/, "")
+    .trim();
+}
+
+function senderName(sender: SenderToJoin): string | null {
+  return typeof sender === "string" ? sender : (sender.evolution_instance ?? null);
+}
+
+function senderPhone(sender: SenderToJoin): string | null {
+  return typeof sender === "string" ? null : onlyDigits(sender.phone);
+}
+
 /**
  * Lê os participantes atuais do grupo na Evolution e reconcilia com a tabela
  * wa_group_participants: quem entrou, quem continua e quem saiu.
@@ -101,14 +137,38 @@ export async function pickSticker(db: AnyClient, userId: string): Promise<string
 export async function ensureSendersJoined(
   ownerInstance: string,
   groupJid: string,
-  senderInstances: string[],
-): Promise<{ code: string | null; joined: number }> {
+  senders: SenderToJoin[],
+): Promise<{ code: string | null; joined: number; invited: number }> {
   const { evolution } = await import("@/lib/evolution.server");
   const res: any = await evolution.groupInviteCode(ownerInstance, groupJid);
-  const code: string | null = res?.inviteCode ?? res?.code ?? res?.data?.inviteCode ?? null;
-  if (!code) return { code: null, joined: 0 };
+  const code = extractInviteCode(res);
+  if (!code) return { code: null, joined: 0, invited: 0 };
+
+  // Primeiro tenta adicionar pelo dono/admin do grupo. Em muitas versões da
+  // Evolution o updateParticipant aceita JID completo; em outras aceita só o
+  // número. Tentamos os dois formatos para contornar diferenças de versão.
+  let invited = 0;
+  for (const sender of senders) {
+    const phone = senderPhone(sender);
+    if (!phone) continue;
+    try {
+      await evolution.updateGroupParticipants(ownerInstance, groupJid, "add", [`${phone}@s.whatsapp.net`]);
+      invited += 1;
+    } catch {
+      try {
+        await evolution.updateGroupParticipants(ownerInstance, groupJid, "add", [phone]);
+        invited += 1;
+      } catch {
+        // Privacidade do WhatsApp pode bloquear convite direto; abaixo o próprio
+        // número tenta entrar pelo link de convite.
+      }
+    }
+    await new Promise((r) => setTimeout(r, 450));
+  }
+
   let joined = 0;
-  for (const inst of senderInstances) {
+  for (const sender of senders) {
+    const inst = senderName(sender);
     if (!inst || inst === ownerInstance) continue;
     try {
       const r = await evolution.acceptGroupInvite(inst, code);
@@ -116,7 +176,7 @@ export async function ensureSendersJoined(
     } catch {
       // convite pode falhar por número já estar no grupo — segue o baile
     }
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 900));
   }
-  return { code, joined };
+  return { code, joined, invited };
 }
