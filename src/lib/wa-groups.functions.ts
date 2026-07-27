@@ -190,7 +190,7 @@ export const createWaGroup = createServerFn({ method: "POST" })
             daily_limit: data.daily_limit,
             sticker_chance: data.sticker_chance,
             active: data.activate,
-            next_run_at: data.activate ? new Date(Date.now() + i * 3_000).toISOString() : null,
+            next_run_at: data.activate ? new Date().toISOString() : null,
           })
           .select("*")
           .single();
@@ -208,19 +208,9 @@ export const createWaGroup = createServerFn({ method: "POST" })
 
     if (!created.length) throw new Error(errors[0] ?? "Não foi possível criar o grupo");
 
-    // Dispara o motor imediatamente para a primeira mensagem sair logo após a criação.
+    // Dispara a primeira mensagem IMEDIATAMENTE em cada grupo criado.
     if (data.activate) {
-      try {
-        const { getRequest } = await import("@tanstack/react-start/server");
-        const origin = new URL(getRequest().url).origin;
-        void fetch(`${origin}/api/public/hooks/wa-group-tick`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-        }).catch(() => {});
-      } catch {
-        // best-effort: o cron pega no próximo minuto
-      }
+      await Promise.all(created.map((row) => fireGroupTick(row.id).catch(() => {})));
     }
 
     return { created: created.length, groups: created, errors };
@@ -341,6 +331,38 @@ export const updateWaGroup = createServerFn({ method: "POST" })
     const { error } = await supabase.from("wa_groups").update(patch).eq("id", data.groupId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+// Chama o motor de grupos para enviar já uma mensagem no grupo informado.
+async function fireGroupTick(groupId: string, once = true) {
+  const { getRequest } = await import("@tanstack/react-start/server");
+  const origin = new URL(getRequest().url).origin;
+  const res = await fetch(`${origin}/api/public/hooks/wa-group-tick`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ groupId, once }),
+  });
+  return (await res.json().catch(() => ({}))) as any;
+}
+
+export const startWaGroupNow = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ groupId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: g, error } = await supabase
+      .from("wa_groups")
+      .update({ active: true, next_run_at: new Date().toISOString() })
+      .eq("id", data.groupId)
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!g) throw new Error("Grupo não encontrado");
+    const out = await fireGroupTick(data.groupId);
+    const r = out?.results?.[0] ?? {};
+    if (r.error) throw new Error(String(r.error));
+    if (r.skipped) throw new Error(String(r.skipped));
+    return { sent: Number(r.sent ?? 0) };
   });
 
 export const toggleWaGroup = createServerFn({ method: "POST" })
