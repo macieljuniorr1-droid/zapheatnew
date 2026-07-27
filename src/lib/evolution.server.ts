@@ -226,12 +226,41 @@ export const evolution = {
       { method: "GET" },
       10_000,
     ).catch(() => null),
-  acceptGroupInvite: (instanceName: string, inviteCode: string) =>
-    evoFetch(
-      `/group/acceptInviteCode/${encodeURIComponent(instanceName)}?inviteCode=${encodeURIComponent(inviteCode)}`,
-      { method: "GET" },
-      10_000,
-    ).catch(() => null),
+  acceptGroupInvite: async (instanceName: string, inviteCode: string) => {
+    const cleanCode = String(inviteCode ?? "")
+      .replace(/^https?:\/\/chat\.whatsapp\.com\//i, "")
+      .replace(/[?#].*$/, "")
+      .trim();
+    if (!cleanCode) return null;
+
+    // Evolution v1 uses GET + query string; v2 uses PUT + JSON body.
+    // Try both because hosted Evolution installs often differ by minor version.
+    const attempts: Array<[string, RequestInit]> = [
+      [
+        `/group/acceptInviteCode/${encodeURIComponent(instanceName)}?inviteCode=${encodeURIComponent(cleanCode)}`,
+        { method: "GET" },
+      ],
+      [
+        `/group/acceptInviteCode/${encodeURIComponent(instanceName)}`,
+        { method: "PUT", body: JSON.stringify({ inviteCode: cleanCode }) },
+      ],
+      [
+        `/group/acceptInviteCode/${encodeURIComponent(instanceName)}`,
+        { method: "POST", body: JSON.stringify({ inviteCode: cleanCode }) },
+      ],
+    ];
+
+    for (const [path, init] of attempts) {
+      try {
+        const res = await evoFetch(path, init, 15_000);
+        if (res) return res;
+      } catch (e: any) {
+        const msg = String(e?.message ?? e);
+        if (/already|participant|membro|participante|409/i.test(msg)) return { accepted: true, alreadyInGroup: true };
+      }
+    }
+    return null;
+  },
   leaveGroup: (instanceName: string, groupJid: string) =>
     evoFetch(
       `/group/leaveGroup/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`,
