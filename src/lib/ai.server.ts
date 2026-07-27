@@ -58,7 +58,8 @@ function pickByHash<T>(arr: T[], seed: string): T {
 // Lovable AI Gateway (sem chave do usuário). Se o usuário selecionar um modelo
 // não catalogado, cai no default (Gemini 3 Flash).
 export const AI_MODELS = [
-  { id: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (padrão)", vendor: "Google", note: "Rápido, natural em PT-BR" },
+  { id: "local/motor-zapheat", label: "Motor ZapHeat (grátis, sem créditos)", vendor: "ZapHeat", note: "Roda local, não consome créditos" },
+  { id: "google/gemini-3-flash-preview", label: "Gemini 3 Flash", vendor: "Google", note: "Rápido, natural em PT-BR" },
   { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash", vendor: "Google", note: "Mais recente, boa fluidez" },
   { id: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)", vendor: "Google", note: "Reasoning forte" },
   { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", vendor: "Google", note: "Multimodal robusto" },
@@ -70,8 +71,14 @@ export const AI_MODELS = [
   { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", vendor: "OpenAI", note: "GPT-5.6 rápido" },
 ] as const;
 
-export const DEFAULT_AI_MODEL = "google/gemini-3-flash-preview";
+// Padrão: motor local (não consome créditos do workspace).
+export const DEFAULT_AI_MODEL = "local/motor-zapheat";
+export const LOCAL_MODEL_ID = "local/motor-zapheat";
 const VALID_MODEL_IDS = new Set<string>(AI_MODELS.map((m) => m.id));
+function isLocal(model?: string | null) {
+  return !model || model === LOCAL_MODEL_ID || !VALID_MODEL_IDS.has(model);
+}
+
 
 export async function generateReply(
   history: { from: string; content: string }[],
