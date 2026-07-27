@@ -436,13 +436,15 @@ function GroupCard({ group, instances, models }: { group: any; instances: any[];
             </DialogContent>
           </Dialog>
 
+          <InviteDialog group={group} />
+
           <Button size="sm" variant="outline" onClick={async () => {
             try {
               const r: any = await inviteFn({ data: { groupId: group.id } });
               if (r?.url) { await navigator.clipboard.writeText(r.url); toast.success("Link de convite copiado"); }
               else toast.error("Não foi possível obter o link");
             } catch (e: any) { toast.error(String(e.message ?? e)); }
-          }}><Link2 className="h-4 w-4 mr-1" />Link do grupo</Button>
+          }}><Link2 className="h-4 w-4 mr-1" />Copiar link</Button>
 
           <Button size="sm" variant="ghost" className="text-red-500" onClick={() => {
             if (confirm("Remover este grupo da plataforma? (o grupo continua no WhatsApp)")) {
