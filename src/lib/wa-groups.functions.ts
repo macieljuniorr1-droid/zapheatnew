@@ -210,6 +210,7 @@ export const createWaGroup = createServerFn({ method: "POST" })
 
     // Dispara a primeira mensagem IMEDIATAMENTE em cada grupo criado.
     if (data.activate) {
+      const { fireGroupTick } = await import("@/lib/wa-groups-tick.server");
       await Promise.all(created.map((row) => fireGroupTick(row.id).catch(() => {})));
     }
 
@@ -333,18 +334,6 @@ export const updateWaGroup = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// Chama o motor de grupos para enviar já uma mensagem no grupo informado.
-async function fireGroupTick(groupId: string, once = true) {
-  const { getRequest } = await import("@tanstack/react-start/server");
-  const origin = new URL(getRequest().url).origin;
-  const res = await fetch(`${origin}/api/public/hooks/wa-group-tick`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ groupId, once }),
-  });
-  return (await res.json().catch(() => ({}))) as any;
-}
-
 export const startWaGroupNow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ groupId: z.string().uuid() }).parse(d))
@@ -358,6 +347,7 @@ export const startWaGroupNow = createServerFn({ method: "POST" })
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!g) throw new Error("Grupo não encontrado");
+    const { fireGroupTick } = await import("@/lib/wa-groups-tick.server");
     const out = await fireGroupTick(data.groupId);
     const r = out?.results?.[0] ?? {};
     if (r.error) throw new Error(String(r.error));
@@ -380,6 +370,10 @@ export const toggleWaGroup = createServerFn({ method: "POST" })
       })
       .eq("id", data.groupId);
     if (error) throw new Error(error.message);
+    if (data.active) {
+      const { fireGroupTick } = await import("@/lib/wa-groups-tick.server");
+      await fireGroupTick(data.groupId).catch(() => {});
+    }
     return { ok: true };
   });
 
