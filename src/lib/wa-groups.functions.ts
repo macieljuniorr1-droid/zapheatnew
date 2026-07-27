@@ -24,14 +24,17 @@ const clampNum = (min: number, max: number, fallback: number) =>
     })
     .pipe(z.number().int());
 
+// Limite diário "ilimitado" é representado por um número muito alto.
+export const UNLIMITED_DAILY = 1000000;
+
 const automationSchema = z.object({
   theme: z.string().max(300).optional().nullable(),
   ai_model: z.string().max(120).optional().nullable(),
-  min_interval_seconds: clampNum(30, 86400, 300).optional(),
-  max_interval_seconds: clampNum(60, 86400, 1800).optional(),
+  min_interval_seconds: clampNum(10, 86400, 10).optional(),
+  max_interval_seconds: clampNum(10, 86400, 20).optional(),
   active_hour_start: clampNum(0, 23, 0).optional(),
   active_hour_end: clampNum(1, 24, 24).optional(),
-  daily_limit: clampNum(1, 2000, 200).optional(),
+  daily_limit: clampNum(1, UNLIMITED_DAILY, UNLIMITED_DAILY).optional(),
   sticker_chance: clampNum(0, 100, 15).optional(),
 });
 
