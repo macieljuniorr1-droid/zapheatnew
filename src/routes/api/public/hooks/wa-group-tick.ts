@@ -20,7 +20,7 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { evolution } = await import("@/lib/evolution.server");
         const { generateGroupMessage, fallbackGroupMessage, isAiQuotaError } = await import("@/lib/ai.server");
-        const { syncGroupParticipants, pickSticker } = await import("@/lib/wa-groups.server");
+        const { syncGroupParticipants, pickSticker, ensureSendersJoined } = await import("@/lib/wa-groups.server");
 
         // Modo "disparar agora": envia UMA mensagem imediatamente em um grupo
         // específico, ignorando horário e agendamento (usado logo após criar o grupo).
@@ -89,6 +89,27 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                 return { group: g.id, skipped: "nenhum número conectado" };
               }
 
+              // Números que não estão dentro do grupo (WhatsApp costuma ignorar
+              // convites diretos por privacidade) são ignorados neste tick até
+              // conseguirem entrar pelo link de convite.
+              const notInGroup = new Set<string>();
+              let inviteTried = false;
+              const tryJoinAll = async () => {
+                if (inviteTried) return;
+                inviteTried = true;
+                if (!owner?.evolution_instance) return;
+                try {
+                  await ensureSendersJoined(
+                    owner.evolution_instance,
+                    g.group_jid,
+                    senders.map((s: any) => s.evolution_instance),
+                  );
+                  notInGroup.clear();
+                } catch {
+                  // sem convite disponível; segue com quem já está no grupo
+                }
+              };
+
               // Intervalos curtos (10–20s) exigem enviar várias mensagens dentro
               // do mesmo tick, já que o cron roda a cada minuto.
               const minI = Math.max(5, g.min_interval_seconds ?? 10);
@@ -125,9 +146,20 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                 for (const r of recent) {
                   if (r.instance_id) lastSpokeAt.set(r.instance_id, new Date(r.created_at).getTime());
                 }
-                const sender = senders
+                let pool = senders.filter((s: any) => !notInGroup.has(s.id));
+                if (!pool.length) {
+                  await tryJoinAll();
+                  pool = senders.filter((s: any) => !notInGroup.has(s.id));
+                }
+                if (!pool.length) {
+                  lastError =
+                    "Nenhum dos números selecionados está dentro do grupo. Entre no grupo pelo link de convite ou adicione-os manualmente.";
+                  break;
+                }
+                const sender = pool
                   .slice()
                   .sort((a: any, b: any) => (lastSpokeAt.get(a.id) ?? 0) - (lastSpokeAt.get(b.id) ?? 0))[0];
+
 
                 // Às vezes o motor manda uma figurinha em vez de texto.
                 const stickerChance = Math.max(0, Math.min(100, g.sticker_chance ?? 0));
@@ -174,11 +206,26 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                   stickerUrl ? 1200 : Math.min(4000, 300 + text.length * 60),
                 );
 
-                try {
+                const doSend = async () => {
                   if (stickerUrl) {
                     await evolution.sendSticker(sender.evolution_instance, g.group_jid, stickerUrl, 0);
                   } else {
                     await evolution.sendText(sender.evolution_instance, g.group_jid, text, 0);
+                  }
+                };
+
+                try {
+                  try {
+                    await doSend();
+                  } catch (first: any) {
+                    const raw = String(first?.message ?? first);
+                    const membershipIssue =
+                      /not found|404|item-not-found|cannot read properties of undefined|reading ['"]id['"]/i.test(raw);
+                    if (!membershipIssue) throw first;
+                    // O número provavelmente não está no grupo: entra pelo convite e tenta de novo.
+                    await tryJoinAll();
+                    await new Promise((r) => setTimeout(r, 1500));
+                    await doSend();
                   }
                   await supabaseAdmin.from("wa_group_logs").insert({
                     user_id: g.user_id,
@@ -191,10 +238,12 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                   sentInTick += 1;
                 } catch (e: any) {
                   const raw = String(e?.message ?? e);
+                  const membership =
+                    /not found|404|item-not-found|cannot read properties of undefined|reading ['"]id['"]/i.test(raw);
                   const friendly = /not-authorized|forbidden|403/i.test(raw)
                     ? "Este número não tem permissão para enviar no grupo (talvez só admins possam falar)."
-                    : /not found|404|item-not-found/i.test(raw)
-                      ? "Grupo não encontrado no WhatsApp — pode ter sido excluído ou o número saiu dele."
+                    : membership
+                      ? "Este número não está dentro do grupo. Envie o link de convite para ele entrar (o motor tentou entrar automaticamente e não conseguiu)."
                       : /connection closed|no sessions|timed out|1006/i.test(raw)
                         ? "Sessão do número instável. Tente Recriar sessão na aba Números."
                         : raw.slice(0, 300);
@@ -208,8 +257,14 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                     error: friendly,
                   });
                   lastError = friendly;
+                  // Um número fora do grupo não deve travar o motor: pula para o próximo.
+                  if (membership || /not-authorized|forbidden|403/i.test(raw)) {
+                    notInGroup.add(sender.id);
+                    continue;
+                  }
                   break;
                 }
+
 
                 const wait = randomBetween(minI, maxI) * 1000;
                 if (Date.now() + wait >= deadline) {
