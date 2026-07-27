@@ -161,11 +161,12 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
   const [owner, setOwner] = useState("");
   const [senders, setSenders] = useState<string[]>([]);
   const [numbers, setNumbers] = useState("");
-  const [minI, setMinI] = useState("300");
-  const [maxI, setMaxI] = useState("1800");
+  const [minI, setMinI] = useState("10");
+  const [maxI, setMaxI] = useState("20");
   const [hStart, setHStart] = useState("0");
   const [hEnd, setHEnd] = useState("24");
-  const [limit, setLimit] = useState("200");
+  const [unlimited, setUnlimited] = useState(true);
+  const [limit, setLimit] = useState("500");
   const [model, setModel] = useState<string>("");
   const [stickerChance, setStickerChance] = useState("15");
   const [count, setCount] = useState("1");
@@ -177,9 +178,9 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
     return Math.min(max, Math.max(min, Math.round(n)));
   };
 
-  const minSec = num(minI, 300, 30, 86400);
-  const maxSec = Math.max(minSec + 30, num(maxI, 1800, 60, 86400));
-  const dailyLimit = num(limit, 200, 1, 5000);
+  const minSec = num(minI, 10, 10, 86400);
+  const maxSec = Math.max(minSec, num(maxI, 20, 10, 86400));
+  const dailyLimit = unlimited ? UNLIMITED_DAILY : num(limit, 500, 1, UNLIMITED_DAILY);
   const groupCount = num(count, 1, 1, 20);
 
   const mut = useMutation({
