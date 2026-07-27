@@ -207,6 +207,22 @@ export const createWaGroup = createServerFn({ method: "POST" })
     }
 
     if (!created.length) throw new Error(errors[0] ?? "Não foi possível criar o grupo");
+
+    // Dispara o motor imediatamente para a primeira mensagem sair logo após a criação.
+    if (data.activate) {
+      try {
+        const { getRequest } = await import("@tanstack/react-start/server");
+        const origin = new URL(getRequest().url).origin;
+        void fetch(`${origin}/api/public/hooks/wa-group-tick`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }).catch(() => {});
+      } catch {
+        // best-effort: o cron pega no próximo minuto
+      }
+    }
+
     return { created: created.length, groups: created, errors };
   });
 
