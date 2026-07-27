@@ -206,11 +206,26 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                   stickerUrl ? 1200 : Math.min(4000, 300 + text.length * 60),
                 );
 
-                try {
+                const doSend = async () => {
                   if (stickerUrl) {
                     await evolution.sendSticker(sender.evolution_instance, g.group_jid, stickerUrl, 0);
                   } else {
                     await evolution.sendText(sender.evolution_instance, g.group_jid, text, 0);
+                  }
+                };
+
+                try {
+                  try {
+                    await doSend();
+                  } catch (first: any) {
+                    const raw = String(first?.message ?? first);
+                    const membershipIssue =
+                      /not found|404|item-not-found|cannot read properties of undefined|reading ['"]id['"]/i.test(raw);
+                    if (!membershipIssue) throw first;
+                    // O número provavelmente não está no grupo: entra pelo convite e tenta de novo.
+                    await tryJoinAll();
+                    await new Promise((r) => setTimeout(r, 1500));
+                    await doSend();
                   }
                   await supabaseAdmin.from("wa_group_logs").insert({
                     user_id: g.user_id,
@@ -223,10 +238,12 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                   sentInTick += 1;
                 } catch (e: any) {
                   const raw = String(e?.message ?? e);
+                  const membership =
+                    /not found|404|item-not-found|cannot read properties of undefined|reading ['"]id['"]/i.test(raw);
                   const friendly = /not-authorized|forbidden|403/i.test(raw)
                     ? "Este número não tem permissão para enviar no grupo (talvez só admins possam falar)."
-                    : /not found|404|item-not-found/i.test(raw)
-                      ? "Grupo não encontrado no WhatsApp — pode ter sido excluído ou o número saiu dele."
+                    : membership
+                      ? "Este número não está dentro do grupo. Envie o link de convite para ele entrar (o motor tentou entrar automaticamente e não conseguiu)."
                       : /connection closed|no sessions|timed out|1006/i.test(raw)
                         ? "Sessão do número instável. Tente Recriar sessão na aba Números."
                         : raw.slice(0, 300);
@@ -240,8 +257,14 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                     error: friendly,
                   });
                   lastError = friendly;
+                  // Um número fora do grupo não deve travar o motor: pula para o próximo.
+                  if (membership || /not-authorized|forbidden|403/i.test(raw)) {
+                    notInGroup.add(sender.id);
+                    continue;
+                  }
                   break;
                 }
+
 
                 const wait = randomBetween(minI, maxI) * 1000;
                 if (Date.now() + wait >= deadline) {
