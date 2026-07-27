@@ -161,15 +161,26 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
   const [owner, setOwner] = useState("");
   const [senders, setSenders] = useState<string[]>([]);
   const [numbers, setNumbers] = useState("");
-  const [minI, setMinI] = useState(300);
-  const [maxI, setMaxI] = useState(1800);
-  const [hStart, setHStart] = useState(0);
-  const [hEnd, setHEnd] = useState(24);
-  const [limit, setLimit] = useState(200);
+  const [minI, setMinI] = useState("300");
+  const [maxI, setMaxI] = useState("1800");
+  const [hStart, setHStart] = useState("0");
+  const [hEnd, setHEnd] = useState("24");
+  const [limit, setLimit] = useState("200");
   const [model, setModel] = useState<string>("");
-  const [stickerChance, setStickerChance] = useState(15);
-  const [count, setCount] = useState(1);
+  const [stickerChance, setStickerChance] = useState("15");
+  const [count, setCount] = useState("1");
   const [activate, setActivate] = useState(true);
+
+  const num = (v: string, fallback: number, min: number, max: number) => {
+    const n = Number(String(v).replace(",", "."));
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, Math.round(n)));
+  };
+
+  const minSec = num(minI, 300, 30, 86400);
+  const maxSec = Math.max(minSec + 30, num(maxI, 1800, 60, 86400));
+  const dailyLimit = num(limit, 200, 1, 5000);
+  const groupCount = num(count, 1, 1, 20);
 
   const mut = useMutation({
     mutationFn: () =>
@@ -182,21 +193,22 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
           ai_model: model || null,
           participants: numbers.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean),
           senderInstanceIds: senders,
-          min_interval_seconds: minI,
-          max_interval_seconds: Math.max(minI, maxI),
-          active_hour_start: hStart,
-          active_hour_end: hEnd,
-          daily_limit: limit,
-          sticker_chance: stickerChance,
-          count,
+          min_interval_seconds: minSec,
+          max_interval_seconds: maxSec,
+          active_hour_start: num(hStart, 0, 0, 23),
+          active_hour_end: num(hEnd, 24, 1, 24),
+          daily_limit: dailyLimit,
+          sticker_chance: num(stickerChance, 0, 0, 100),
+          count: groupCount,
           activate,
         },
       }),
+
     onSuccess: (r: any) => {
       toast.success(`${r?.created ?? 1} grupo(s) criado(s) no WhatsApp!`);
       if (r?.errors?.length) toast.error(String(r.errors[0]));
       setOpen(false);
-      setSubject(""); setDescription(""); setNumbers(""); setSenders([]); setCount(1);
+      setSubject(""); setDescription(""); setNumbers(""); setSenders([]); setCount("1");
       qc.invalidateQueries({ queryKey: ["wa-groups"] });
     },
     onError: (e: any) => toast.error(String(e.message ?? e)),
@@ -257,15 +269,15 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>Intervalo mín. (seg)</Label><Input type="number" value={minI} onChange={(e) => setMinI(Number(e.target.value))} /></div>
-            <div><Label>Intervalo máx. (seg)</Label><Input type="number" value={maxI} onChange={(e) => setMaxI(Number(e.target.value))} /></div>
-            <div><Label>Hora início</Label><Input type="number" min={0} max={23} value={hStart} onChange={(e) => setHStart(Number(e.target.value))} /></div>
-            <div><Label>Hora fim</Label><Input type="number" min={1} max={24} value={hEnd} onChange={(e) => setHEnd(Number(e.target.value))} /></div>
-            <div><Label>Limite de mensagens por dia</Label><Input type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></div>
-            <div><Label>Chance de figurinha (%)</Label><Input type="number" min={0} max={100} value={stickerChance} onChange={(e) => setStickerChance(Number(e.target.value))} /></div>
+            <div><Label>Intervalo mín. (seg)</Label><Input type="number" value={minI} onChange={(e) => setMinI(e.target.value)} /></div>
+            <div><Label>Intervalo máx. (seg)</Label><Input type="number" value={maxI} onChange={(e) => setMaxI(e.target.value)} /></div>
+            <div><Label>Hora início</Label><Input type="number" min={0} max={23} value={hStart} onChange={(e) => setHStart(e.target.value)} /></div>
+            <div><Label>Hora fim</Label><Input type="number" min={1} max={24} value={hEnd} onChange={(e) => setHEnd(e.target.value)} /></div>
+            <div><Label>Limite de mensagens por dia</Label><Input type="number" value={limit} onChange={(e) => setLimit(e.target.value)} /></div>
+            <div><Label>Chance de figurinha (%)</Label><Input type="number" min={0} max={100} value={stickerChance} onChange={(e) => setStickerChance(e.target.value)} /></div>
             <div className="col-span-2">
               <Label>Quantos grupos criar agora</Label>
-              <Input type="number" min={1} max={20} value={count} onChange={(e) => setCount(Number(e.target.value))} />
+              <Input type="number" min={1} max={20} value={count} onChange={(e) => setCount(e.target.value)} />
               <p className="mt-1 text-xs text-muted-foreground">
                 Ex.: 10 cria "{subject || "Grupo"} 1" até "{subject || "Grupo"} 10", todos com os mesmos participantes e a mesma automação.
               </p>
@@ -282,7 +294,7 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
         <DialogFooter>
           <Button disabled={!owner || !subject || mut.isPending} onClick={() => mut.mutate()}>
             {mut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {count > 1 ? `Criar ${count} grupos` : "Criar grupo"}
+            {groupCount > 1 ? `Criar ${groupCount} grupos` : "Criar grupo"}
           </Button>
         </DialogFooter>
 
