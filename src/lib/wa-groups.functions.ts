@@ -198,7 +198,20 @@ export const createWaGroup = createServerFn({ method: "POST" })
 
         const senderRows = senderIds.map((id) => ({ group_id: row.id, instance_id: id }));
         if (senderRows.length) await supabase.from("wa_group_senders").insert(senderRows);
+
+        // O WhatsApp costuma ignorar números adicionados direto (privacidade).
+        // Garante que todos os remetentes entrem no grupo pelo link de convite.
+        try {
+          const { ensureSendersJoined } = await import("@/lib/wa-groups.server");
+          const evoNames = (senders ?? [])
+            .map((s: any) => s.evolution_instance)
+            .filter(Boolean) as string[];
+          await ensureSendersJoined(owner.evolution_instance, String(jid), evoNames);
+        } catch {
+          // convite é best-effort; o motor tenta novamente no primeiro envio
+        }
         created.push(row);
+
       } catch (e: any) {
         errors.push(`${subject}: ${String(e?.message ?? e).slice(0, 160)}`);
       }
