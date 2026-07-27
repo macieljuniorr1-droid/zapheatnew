@@ -93,12 +93,12 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
               // do mesmo tick, já que o cron roda a cada minuto.
               const minI = Math.max(5, g.min_interval_seconds ?? 10);
               const maxI = Math.max(minI, g.max_interval_seconds ?? 20);
-              const deadline = Date.now() + (once ? 1 : 50_000);
+              const deadline = Date.now() + (once ? 0 : 50_000);
               let sentInTick = 0;
 
               let lastError: string | null = null;
 
-              while (Date.now() < deadline) {
+              while (Date.now() < deadline || sentInTick === 0) {
                 const todayIso = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
                 const { count } = await supabaseAdmin
                   .from("wa_group_logs")
