@@ -622,3 +622,82 @@ function ParticipantsDialog({ group }: { group: any }) {
     </Dialog>
   );
 }
+
+function InviteDialog({ group }: { group: any }) {
+  const inviteFn = useServerFn(getWaGroupInvite);
+  const sendFn = useServerFn(sendWaGroupInvite);
+  const [open, setOpen] = useState(false);
+  const [numbers, setNumbers] = useState("");
+  const [message, setMessage] = useState("");
+
+  const link = useQuery({
+    queryKey: ["wa-group-invite", group.id],
+    queryFn: () => inviteFn({ data: { groupId: group.id } }),
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const sendMut = useMutation({
+    mutationFn: () =>
+      sendFn({
+        data: {
+          groupId: group.id,
+          numbers: numbers.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean),
+          message: message || null,
+        },
+      }),
+    onSuccess: (r: any) => {
+      toast.success(`Convite enviado para ${r.sent} número(s)`);
+      if (r?.errors?.length) toast.error(String(r.errors[0]));
+      setNumbers("");
+    },
+    onError: (e: any) => toast.error(String(e.message ?? e)),
+  });
+
+  const url = (link.data as any)?.url ?? null;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline"><Send className="h-4 w-4 mr-1" />Enviar convite</Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Convidar pessoas para {group.subject}</DialogTitle></DialogHeader>
+
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Link do grupo</Label>
+            <div className="mt-1 flex items-center gap-2">
+              <Input readOnly value={link.isLoading ? "Gerando..." : (url ?? "Não disponível")} />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!url}
+                onClick={() => { navigator.clipboard.writeText(url); toast.success("Link copiado"); }}
+              >
+                <Link2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs">Números que vão receber o convite (um por linha)</Label>
+            <Textarea rows={5} value={numbers} onChange={(e) => setNumbers(e.target.value)} placeholder={"11999999999\n21988888888"} />
+          </div>
+
+          <div>
+            <Label className="text-xs">Mensagem antes do link (opcional)</Label>
+            <Input value={message} onChange={(e) => setMessage(e.target.value)} placeholder={`Entra no grupo ${group.subject}:`} />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button disabled={!numbers.trim() || sendMut.isPending} onClick={() => sendMut.mutate()}>
+            {sendMut.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+            Enviar convite
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
