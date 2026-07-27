@@ -208,7 +208,7 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
       toast.success(`${r?.created ?? 1} grupo(s) criado(s) no WhatsApp!`);
       if (r?.errors?.length) toast.error(String(r.errors[0]));
       setOpen(false);
-      setSubject(""); setDescription(""); setNumbers(""); setSenders([]); setCount(1);
+      setSubject(""); setDescription(""); setNumbers(""); setSenders([]); setCount("1");
       qc.invalidateQueries({ queryKey: ["wa-groups"] });
     },
     onError: (e: any) => toast.error(String(e.message ?? e)),
@@ -269,15 +269,15 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>Intervalo mín. (seg)</Label><Input type="number" value={minI} onChange={(e) => setMinI(Number(e.target.value))} /></div>
-            <div><Label>Intervalo máx. (seg)</Label><Input type="number" value={maxI} onChange={(e) => setMaxI(Number(e.target.value))} /></div>
-            <div><Label>Hora início</Label><Input type="number" min={0} max={23} value={hStart} onChange={(e) => setHStart(Number(e.target.value))} /></div>
-            <div><Label>Hora fim</Label><Input type="number" min={1} max={24} value={hEnd} onChange={(e) => setHEnd(Number(e.target.value))} /></div>
-            <div><Label>Limite de mensagens por dia</Label><Input type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></div>
-            <div><Label>Chance de figurinha (%)</Label><Input type="number" min={0} max={100} value={stickerChance} onChange={(e) => setStickerChance(Number(e.target.value))} /></div>
+            <div><Label>Intervalo mín. (seg)</Label><Input type="number" value={minI} onChange={(e) => setMinI(e.target.value)} /></div>
+            <div><Label>Intervalo máx. (seg)</Label><Input type="number" value={maxI} onChange={(e) => setMaxI(e.target.value)} /></div>
+            <div><Label>Hora início</Label><Input type="number" min={0} max={23} value={hStart} onChange={(e) => setHStart(e.target.value)} /></div>
+            <div><Label>Hora fim</Label><Input type="number" min={1} max={24} value={hEnd} onChange={(e) => setHEnd(e.target.value)} /></div>
+            <div><Label>Limite de mensagens por dia</Label><Input type="number" value={limit} onChange={(e) => setLimit(e.target.value)} /></div>
+            <div><Label>Chance de figurinha (%)</Label><Input type="number" min={0} max={100} value={stickerChance} onChange={(e) => setStickerChance(e.target.value)} /></div>
             <div className="col-span-2">
               <Label>Quantos grupos criar agora</Label>
-              <Input type="number" min={1} max={20} value={count} onChange={(e) => setCount(Number(e.target.value))} />
+              <Input type="number" min={1} max={20} value={count} onChange={(e) => setCount(e.target.value)} />
               <p className="mt-1 text-xs text-muted-foreground">
                 Ex.: 10 cria "{subject || "Grupo"} 1" até "{subject || "Grupo"} 10", todos com os mesmos participantes e a mesma automação.
               </p>
