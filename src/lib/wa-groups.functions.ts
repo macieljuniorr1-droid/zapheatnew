@@ -20,7 +20,9 @@ const automationSchema = z.object({
   active_hour_start: z.number().int().min(0).max(23).optional(),
   active_hour_end: z.number().int().min(1).max(24).optional(),
   daily_limit: z.number().int().min(1).max(2000).optional(),
+  sticker_chance: z.number().int().min(0).max(100).optional(),
 });
+
 
 export const listWaGroups = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -100,6 +102,9 @@ export const createWaGroup = createServerFn({ method: "POST" })
         active_hour_start: z.number().int().min(0).max(23).default(0),
         active_hour_end: z.number().int().min(1).max(24).default(24),
         daily_limit: z.number().int().min(1).max(2000).default(200),
+        sticker_chance: z.number().int().min(0).max(100).default(15),
+        count: z.number().int().min(1).max(20).default(1),
+        activate: z.boolean().default(false),
       })
       .parse(d),
   )
@@ -134,44 +139,61 @@ export const createWaGroup = createServerFn({ method: "POST" })
     }
     if (phones.size === 0) throw new Error("Adicione ao menos 1 participante (além do criador)");
 
-    const res: any = await evolution.createGroup(owner.evolution_instance, {
-      subject: data.subject,
-      description: data.description ?? "",
-      participants: Array.from(phones),
-    });
-    const jid: string | undefined =
-      res?.id ?? res?.groupJid ?? res?.key?.remoteJid ?? res?.group?.id ?? res?.data?.id;
-    if (!jid || !String(jid).includes("@g.us")) {
-      throw new Error(`WhatsApp não retornou o ID do grupo: ${JSON.stringify(res).slice(0, 300)}`);
+    const created: any[] = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < data.count; i++) {
+      const subject = data.count > 1 ? `${data.subject} ${i + 1}` : data.subject;
+      try {
+        const res: any = await evolution.createGroup(owner.evolution_instance, {
+          subject,
+          description: data.description ?? "",
+          participants: Array.from(phones),
+        });
+        const jid: string | undefined =
+          res?.id ?? res?.groupJid ?? res?.key?.remoteJid ?? res?.group?.id ?? res?.data?.id;
+        if (!jid || !String(jid).includes("@g.us")) {
+          throw new Error(`WhatsApp não retornou o ID do grupo: ${JSON.stringify(res).slice(0, 200)}`);
+        }
+
+        const { data: row, error } = await supabase
+          .from("wa_groups")
+          .insert({
+            user_id: userId,
+            owner_instance_id: owner.id,
+            group_jid: String(jid),
+            subject,
+            description: data.description ?? null,
+            participant_count: phones.size + 1,
+            theme: data.theme ?? null,
+            ai_model: data.ai_model ?? null,
+            min_interval_seconds: data.min_interval_seconds,
+            max_interval_seconds: Math.max(data.max_interval_seconds, data.min_interval_seconds),
+            active_hour_start: data.active_hour_start,
+            active_hour_end: data.active_hour_end,
+            daily_limit: data.daily_limit,
+            sticker_chance: data.sticker_chance,
+            active: data.activate,
+            next_run_at: data.activate ? new Date(Date.now() + (i + 1) * 20_000).toISOString() : null,
+          })
+          .select("*")
+          .single();
+        if (error) throw new Error(error.message);
+
+        const senderRows = senderIds.map((id) => ({ group_id: row.id, instance_id: id }));
+        if (senderRows.length) await supabase.from("wa_group_senders").insert(senderRows);
+        created.push(row);
+      } catch (e: any) {
+        errors.push(`${subject}: ${String(e?.message ?? e).slice(0, 160)}`);
+      }
+      // pequena pausa entre criações em lote para não estressar o WhatsApp
+      if (i < data.count - 1) await new Promise((r) => setTimeout(r, 1500));
     }
 
-    const { data: row, error } = await supabase
-      .from("wa_groups")
-      .insert({
-        user_id: userId,
-        owner_instance_id: owner.id,
-        group_jid: String(jid),
-        subject: data.subject,
-        description: data.description ?? null,
-        participant_count: phones.size + 1,
-        theme: data.theme ?? null,
-        ai_model: data.ai_model ?? null,
-        min_interval_seconds: data.min_interval_seconds,
-        max_interval_seconds: Math.max(data.max_interval_seconds, data.min_interval_seconds),
-        active_hour_start: data.active_hour_start,
-        active_hour_end: data.active_hour_end,
-        daily_limit: data.daily_limit,
-        active: false,
-      })
-      .select("*")
-      .single();
-    if (error) throw new Error(error.message);
-
-    const senderRows = senderIds.map((id) => ({ group_id: row.id, instance_id: id }));
-    if (senderRows.length) await supabase.from("wa_group_senders").insert(senderRows);
-
-    return row;
+    if (!created.length) throw new Error(errors[0] ?? "Não foi possível criar o grupo");
+    return { created: created.length, groups: created, errors };
   });
+
 
 export const importWaGroups = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -349,6 +371,115 @@ export const deleteWaGroup = createServerFn({ method: "POST" })
       }
     }
     const { error } = await supabase.from("wa_groups").delete().eq("id", data.groupId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// ---------------- Monitoramento de participantes ----------------
+
+export const listWaGroupParticipants = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ groupId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: rows, error } = await supabase
+      .from("wa_group_participants")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("group_id", data.groupId)
+      .order("present", { ascending: false })
+      .order("is_admin", { ascending: false })
+      .order("name", { ascending: true });
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const syncWaGroupParticipants = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ groupId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { syncGroupParticipants } = await import("@/lib/wa-groups.server");
+    const { data: g } = await supabase
+      .from("wa_groups")
+      .select("id, user_id, group_jid, whatsapp_instances:owner_instance_id(evolution_instance, status)")
+      .eq("id", data.groupId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!g) throw new Error("Grupo não encontrado");
+    const inst: any = (g as any).whatsapp_instances;
+    if (!inst?.evolution_instance) throw new Error("Número criador indisponível");
+    if (inst.status !== "connected") throw new Error("O número dono do grupo está desconectado");
+    return await syncGroupParticipants(supabase, {
+      id: g.id,
+      user_id: g.user_id,
+      group_jid: g.group_jid,
+      evolution_instance: inst.evolution_instance,
+    });
+  });
+
+export const removeWaGroupParticipant = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ groupId: z.string().uuid(), jid: z.string().min(5) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { evolution } = await import("@/lib/evolution.server");
+    const { jidToPhone } = await import("@/lib/wa-groups.server");
+    const { data: g } = await supabase
+      .from("wa_groups")
+      .select("id, group_jid, whatsapp_instances:owner_instance_id(evolution_instance)")
+      .eq("id", data.groupId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!g) throw new Error("Grupo não encontrado");
+    const inst: any = (g as any).whatsapp_instances;
+    const phone = jidToPhone(data.jid);
+    if (!phone) throw new Error("Participante sem número válido");
+    await evolution.updateGroupParticipants(inst.evolution_instance, g.group_jid, "remove", [phone]);
+    await supabase
+      .from("wa_group_participants")
+      .update({ present: false, left_at: new Date().toISOString() })
+      .eq("group_id", g.id)
+      .eq("jid", data.jid);
+    return { ok: true };
+  });
+
+// ---------------- Biblioteca de figurinhas ----------------
+
+export const listWaStickers = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data, error } = await supabase
+      .from("wa_stickers")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const addWaStickers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ urls: z.array(z.string().url()).min(1).max(50), label: z.string().max(60).optional().nullable() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const rows = data.urls.map((url) => ({ user_id: userId, url, label: data.label ?? null }));
+    const { error } = await supabase.from("wa_stickers").insert(rows);
+    if (error) throw new Error(error.message);
+    return { added: rows.length };
+  });
+
+export const deleteWaSticker = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase.from("wa_stickers").delete().eq("id", data.id).eq("user_id", userId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
