@@ -89,6 +89,27 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                 return { group: g.id, skipped: "nenhum número conectado" };
               }
 
+              // Números que não estão dentro do grupo (WhatsApp costuma ignorar
+              // convites diretos por privacidade) são ignorados neste tick até
+              // conseguirem entrar pelo link de convite.
+              const notInGroup = new Set<string>();
+              let inviteTried = false;
+              const tryJoinAll = async () => {
+                if (inviteTried) return;
+                inviteTried = true;
+                if (!owner?.evolution_instance) return;
+                try {
+                  await ensureSendersJoined(
+                    owner.evolution_instance,
+                    g.group_jid,
+                    senders.map((s: any) => s.evolution_instance),
+                  );
+                  notInGroup.clear();
+                } catch {
+                  // sem convite disponível; segue com quem já está no grupo
+                }
+              };
+
               // Intervalos curtos (10–20s) exigem enviar várias mensagens dentro
               // do mesmo tick, já que o cron roda a cada minuto.
               const minI = Math.max(5, g.min_interval_seconds ?? 10);
@@ -125,9 +146,20 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                 for (const r of recent) {
                   if (r.instance_id) lastSpokeAt.set(r.instance_id, new Date(r.created_at).getTime());
                 }
-                const sender = senders
+                let pool = senders.filter((s: any) => !notInGroup.has(s.id));
+                if (!pool.length) {
+                  await tryJoinAll();
+                  pool = senders.filter((s: any) => !notInGroup.has(s.id));
+                }
+                if (!pool.length) {
+                  lastError =
+                    "Nenhum dos números selecionados está dentro do grupo. Entre no grupo pelo link de convite ou adicione-os manualmente.";
+                  break;
+                }
+                const sender = pool
                   .slice()
                   .sort((a: any, b: any) => (lastSpokeAt.get(a.id) ?? 0) - (lastSpokeAt.get(b.id) ?? 0))[0];
+
 
                 // Às vezes o motor manda uma figurinha em vez de texto.
                 const stickerChance = Math.max(0, Math.min(100, g.sticker_chance ?? 0));
