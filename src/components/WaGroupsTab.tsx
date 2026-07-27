@@ -298,7 +298,8 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
             </label>
           </div>
           <p className="text-xs text-muted-foreground">
-            Deixe 0h → 24h para o grupo rodar 24 horas por dia. Intervalos maiores parecem mais humanos e reduzem risco de bloqueio.
+            Deixe 0h → 24h para o grupo rodar 24 horas por dia. Com intervalo de 10–20s o motor conversa em ritmo
+            acelerado e começa a enviar imediatamente após a criação do grupo.
           </p>
         </div>
         <DialogFooter>
