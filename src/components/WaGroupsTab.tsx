@@ -276,7 +276,14 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
             <div><Label>Intervalo máx. (seg)</Label><Input type="number" value={maxI} onChange={(e) => setMaxI(e.target.value)} /></div>
             <div><Label>Hora início</Label><Input type="number" min={0} max={23} value={hStart} onChange={(e) => setHStart(e.target.value)} /></div>
             <div><Label>Hora fim</Label><Input type="number" min={1} max={24} value={hEnd} onChange={(e) => setHEnd(e.target.value)} /></div>
-            <div><Label>Limite de mensagens por dia</Label><Input type="number" value={limit} onChange={(e) => setLimit(e.target.value)} /></div>
+            <div>
+              <Label>Mensagens por dia</Label>
+              <Input type="number" value={unlimited ? "" : limit} disabled={unlimited} placeholder="ilimitado" onChange={(e) => setLimit(e.target.value)} />
+              <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={unlimited} onChange={(e) => setUnlimited(e.target.checked)} />
+                Ilimitado
+              </label>
+            </div>
             <div><Label>Chance de figurinha (%)</Label><Input type="number" min={0} max={100} value={stickerChance} onChange={(e) => setStickerChance(e.target.value)} /></div>
             <div className="col-span-2">
               <Label>Quantos grupos criar agora</Label>
