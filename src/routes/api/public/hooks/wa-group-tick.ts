@@ -102,8 +102,18 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                   await ensureSendersJoined(
                     owner.evolution_instance,
                     g.group_jid,
-                    senders.map((s: any) => s.evolution_instance),
+                    senders.map((s: any) => ({ evolution_instance: s.evolution_instance, phone: s.phone })),
                   );
+                  try {
+                    await syncGroupParticipants(supabaseAdmin, {
+                      id: g.id,
+                      user_id: g.user_id,
+                      group_jid: g.group_jid,
+                      evolution_instance: owner.evolution_instance,
+                    });
+                  } catch {
+                    // sincronização após convite é best-effort
+                  }
                   notInGroup.clear();
                 } catch {
                   // sem convite disponível; segue com quem já está no grupo
