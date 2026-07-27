@@ -24,14 +24,17 @@ const clampNum = (min: number, max: number, fallback: number) =>
     })
     .pipe(z.number().int());
 
+// Limite diário "ilimitado" é representado por um número muito alto.
+export const UNLIMITED_DAILY = 1000000;
+
 const automationSchema = z.object({
   theme: z.string().max(300).optional().nullable(),
   ai_model: z.string().max(120).optional().nullable(),
-  min_interval_seconds: clampNum(30, 86400, 300).optional(),
-  max_interval_seconds: clampNum(60, 86400, 1800).optional(),
+  min_interval_seconds: clampNum(10, 86400, 10).optional(),
+  max_interval_seconds: clampNum(10, 86400, 20).optional(),
   active_hour_start: clampNum(0, 23, 0).optional(),
   active_hour_end: clampNum(1, 24, 24).optional(),
-  daily_limit: clampNum(1, 2000, 200).optional(),
+  daily_limit: clampNum(1, UNLIMITED_DAILY, UNLIMITED_DAILY).optional(),
   sticker_chance: clampNum(0, 100, 15).optional(),
 });
 
@@ -110,14 +113,14 @@ export const createWaGroup = createServerFn({ method: "POST" })
         senderInstanceIds: z.array(z.string().uuid()).default([]),
         theme: z.string().max(300).optional().nullable(),
         ai_model: z.string().max(120).optional().nullable(),
-        min_interval_seconds: clampNum(30, 86400, 300).default(300),
-        max_interval_seconds: clampNum(60, 86400, 1800).default(1800),
+        min_interval_seconds: clampNum(10, 86400, 10).default(10),
+        max_interval_seconds: clampNum(10, 86400, 20).default(20),
         active_hour_start: clampNum(0, 23, 0).default(0),
         active_hour_end: clampNum(1, 24, 24).default(24),
-        daily_limit: clampNum(1, 2000, 200).default(200),
+        daily_limit: clampNum(1, UNLIMITED_DAILY, UNLIMITED_DAILY).default(UNLIMITED_DAILY),
         sticker_chance: clampNum(0, 100, 15).default(15),
         count: clampNum(1, 20, 1).default(1),
-        activate: z.boolean().default(false),
+        activate: z.boolean().default(true),
       })
       .parse(d),
   )
@@ -187,7 +190,7 @@ export const createWaGroup = createServerFn({ method: "POST" })
             daily_limit: data.daily_limit,
             sticker_chance: data.sticker_chance,
             active: data.activate,
-            next_run_at: data.activate ? new Date(Date.now() + (i + 1) * 20_000).toISOString() : null,
+            next_run_at: data.activate ? new Date(Date.now() + i * 3_000).toISOString() : null,
           })
           .select("*")
           .single();
@@ -204,6 +207,22 @@ export const createWaGroup = createServerFn({ method: "POST" })
     }
 
     if (!created.length) throw new Error(errors[0] ?? "Não foi possível criar o grupo");
+
+    // Dispara o motor imediatamente para a primeira mensagem sair logo após a criação.
+    if (data.activate) {
+      try {
+        const { getRequest } = await import("@tanstack/react-start/server");
+        const origin = new URL(getRequest().url).origin;
+        void fetch(`${origin}/api/public/hooks/wa-group-tick`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }).catch(() => {});
+      } catch {
+        // best-effort: o cron pega no próximo minuto
+      }
+    }
+
     return { created: created.length, groups: created, errors };
   });
 
@@ -359,6 +378,59 @@ export const getWaGroupInvite = createServerFn({ method: "POST" })
     const code = res?.inviteCode ?? res?.code ?? null;
     return { code, url: res?.inviteUrl ?? (code ? `https://chat.whatsapp.com/${code}` : null) };
   });
+
+/** Envia o link de convite do grupo por WhatsApp para uma lista de números. */
+export const sendWaGroupInvite = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        groupId: z.string().uuid(),
+        numbers: z.array(z.string()).min(1).max(200),
+        message: z.string().max(500).optional().nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { evolution } = await import("@/lib/evolution.server");
+    const { data: g } = await supabase
+      .from("wa_groups")
+      .select("id, subject, group_jid, whatsapp_instances:owner_instance_id(evolution_instance, status)")
+      .eq("id", data.groupId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!g) throw new Error("Grupo não encontrado");
+    const inst: any = (g as any).whatsapp_instances;
+    if (!inst?.evolution_instance) throw new Error("Número criador indisponível");
+    if (inst.status !== "connected") throw new Error("O número dono do grupo está desconectado");
+
+    const res: any = await evolution.groupInviteCode(inst.evolution_instance, g.group_jid);
+    const code = res?.inviteCode ?? res?.code ?? null;
+    const url = res?.inviteUrl ?? (code ? `https://chat.whatsapp.com/${code}` : null);
+    if (!url) throw new Error("Não foi possível gerar o link de convite");
+
+    const phones = Array.from(
+      new Set(data.numbers.map(normalizePhone).filter((p): p is string => !!p)),
+    );
+    if (!phones.length) throw new Error("Nenhum número válido");
+
+    const text = `${data.message?.trim() || `Entra no grupo ${g.subject}:`}\n${url}`;
+    let sent = 0;
+    const errors: string[] = [];
+    for (const phone of phones) {
+      try {
+        await evolution.sendText(inst.evolution_instance, `${phone}@s.whatsapp.net`, text, 0);
+        sent += 1;
+      } catch (e: any) {
+        errors.push(`${phone}: ${String(e?.message ?? e).slice(0, 120)}`);
+      }
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+    return { sent, url, errors };
+  });
+
+
 
 export const deleteWaGroup = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

@@ -12,6 +12,8 @@ import {
   toggleWaGroup,
   deleteWaGroup,
   getWaGroupInvite,
+  sendWaGroupInvite,
+  UNLIMITED_DAILY,
   listWaGroupLogs,
   listWaGroupParticipants,
   syncWaGroupParticipants,
@@ -161,11 +163,12 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
   const [owner, setOwner] = useState("");
   const [senders, setSenders] = useState<string[]>([]);
   const [numbers, setNumbers] = useState("");
-  const [minI, setMinI] = useState("300");
-  const [maxI, setMaxI] = useState("1800");
+  const [minI, setMinI] = useState("10");
+  const [maxI, setMaxI] = useState("20");
   const [hStart, setHStart] = useState("0");
   const [hEnd, setHEnd] = useState("24");
-  const [limit, setLimit] = useState("200");
+  const [unlimited, setUnlimited] = useState(true);
+  const [limit, setLimit] = useState("500");
   const [model, setModel] = useState<string>("");
   const [stickerChance, setStickerChance] = useState("15");
   const [count, setCount] = useState("1");
@@ -177,9 +180,9 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
     return Math.min(max, Math.max(min, Math.round(n)));
   };
 
-  const minSec = num(minI, 300, 30, 86400);
-  const maxSec = Math.max(minSec + 30, num(maxI, 1800, 60, 86400));
-  const dailyLimit = num(limit, 200, 1, 5000);
+  const minSec = num(minI, 10, 10, 86400);
+  const maxSec = Math.max(minSec, num(maxI, 20, 10, 86400));
+  const dailyLimit = unlimited ? UNLIMITED_DAILY : num(limit, 500, 1, UNLIMITED_DAILY);
   const groupCount = num(count, 1, 1, 20);
 
   const mut = useMutation({
@@ -273,7 +276,14 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
             <div><Label>Intervalo máx. (seg)</Label><Input type="number" value={maxI} onChange={(e) => setMaxI(e.target.value)} /></div>
             <div><Label>Hora início</Label><Input type="number" min={0} max={23} value={hStart} onChange={(e) => setHStart(e.target.value)} /></div>
             <div><Label>Hora fim</Label><Input type="number" min={1} max={24} value={hEnd} onChange={(e) => setHEnd(e.target.value)} /></div>
-            <div><Label>Limite de mensagens por dia</Label><Input type="number" value={limit} onChange={(e) => setLimit(e.target.value)} /></div>
+            <div>
+              <Label>Mensagens por dia</Label>
+              <Input type="number" value={unlimited ? "" : limit} disabled={unlimited} placeholder="ilimitado" onChange={(e) => setLimit(e.target.value)} />
+              <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={unlimited} onChange={(e) => setUnlimited(e.target.checked)} />
+                Ilimitado
+              </label>
+            </div>
             <div><Label>Chance de figurinha (%)</Label><Input type="number" min={0} max={100} value={stickerChance} onChange={(e) => setStickerChance(e.target.value)} /></div>
             <div className="col-span-2">
               <Label>Quantos grupos criar agora</Label>
@@ -288,7 +298,8 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
             </label>
           </div>
           <p className="text-xs text-muted-foreground">
-            Deixe 0h → 24h para o grupo rodar 24 horas por dia. Intervalos maiores parecem mais humanos e reduzem risco de bloqueio.
+            Deixe 0h → 24h para o grupo rodar 24 horas por dia. Com intervalo de 10–20s o motor conversa em ritmo
+            acelerado e começa a enviar imediatamente após a criação do grupo.
           </p>
         </div>
         <DialogFooter>
@@ -344,7 +355,7 @@ function GroupCard({ group, instances, models }: { group: any; instances: any[];
         <div className="flex flex-wrap gap-2 text-xs">
           <Badge variant="outline"><Clock className="h-3 w-3 mr-1" />{fmtInterval(group.min_interval_seconds)}–{fmtInterval(group.max_interval_seconds)}</Badge>
           <Badge variant="outline">{group.active_hour_start}h–{group.active_hour_end}h</Badge>
-          <Badge variant="outline">até {group.daily_limit}/dia</Badge>
+          <Badge variant="outline">{(group.daily_limit ?? 0) >= UNLIMITED_DAILY ? "mensagens ilimitadas" : `até ${group.daily_limit}/dia`}</Badge>
           <Badge variant="outline">{group.sender_instance_ids?.length ?? 0} remetentes</Badge>
           <Badge variant="outline"><Smile className="h-3 w-3 mr-1" />{group.sticker_chance ?? 0}% figurinha</Badge>
         </div>
@@ -425,13 +436,15 @@ function GroupCard({ group, instances, models }: { group: any; instances: any[];
             </DialogContent>
           </Dialog>
 
+          <InviteDialog group={group} />
+
           <Button size="sm" variant="outline" onClick={async () => {
             try {
               const r: any = await inviteFn({ data: { groupId: group.id } });
               if (r?.url) { await navigator.clipboard.writeText(r.url); toast.success("Link de convite copiado"); }
               else toast.error("Não foi possível obter o link");
             } catch (e: any) { toast.error(String(e.message ?? e)); }
-          }}><Link2 className="h-4 w-4 mr-1" />Link do grupo</Button>
+          }}><Link2 className="h-4 w-4 mr-1" />Copiar link</Button>
 
           <Button size="sm" variant="ghost" className="text-red-500" onClick={() => {
             if (confirm("Remover este grupo da plataforma? (o grupo continua no WhatsApp)")) {
@@ -605,6 +618,85 @@ function ParticipantsDialog({ group }: { group: any }) {
             )}
           </div>
         )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function InviteDialog({ group }: { group: any }) {
+  const inviteFn = useServerFn(getWaGroupInvite);
+  const sendFn = useServerFn(sendWaGroupInvite);
+  const [open, setOpen] = useState(false);
+  const [numbers, setNumbers] = useState("");
+  const [message, setMessage] = useState("");
+
+  const link = useQuery({
+    queryKey: ["wa-group-invite", group.id],
+    queryFn: () => inviteFn({ data: { groupId: group.id } }),
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const sendMut = useMutation({
+    mutationFn: () =>
+      sendFn({
+        data: {
+          groupId: group.id,
+          numbers: numbers.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean),
+          message: message || null,
+        },
+      }),
+    onSuccess: (r: any) => {
+      toast.success(`Convite enviado para ${r.sent} número(s)`);
+      if (r?.errors?.length) toast.error(String(r.errors[0]));
+      setNumbers("");
+    },
+    onError: (e: any) => toast.error(String(e.message ?? e)),
+  });
+
+  const url = (link.data as any)?.url ?? null;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline"><Send className="h-4 w-4 mr-1" />Enviar convite</Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Convidar pessoas para {group.subject}</DialogTitle></DialogHeader>
+
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Link do grupo</Label>
+            <div className="mt-1 flex items-center gap-2">
+              <Input readOnly value={link.isLoading ? "Gerando..." : (url ?? "Não disponível")} />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!url}
+                onClick={() => { navigator.clipboard.writeText(url); toast.success("Link copiado"); }}
+              >
+                <Link2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs">Números que vão receber o convite (um por linha)</Label>
+            <Textarea rows={5} value={numbers} onChange={(e) => setNumbers(e.target.value)} placeholder={"11999999999\n21988888888"} />
+          </div>
+
+          <div>
+            <Label className="text-xs">Mensagem antes do link (opcional)</Label>
+            <Input value={message} onChange={(e) => setMessage(e.target.value)} placeholder={`Entra no grupo ${group.subject}:`} />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button disabled={!numbers.trim() || sendMut.isPending} onClick={() => sendMut.mutate()}>
+            {sendMut.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+            Enviar convite
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
