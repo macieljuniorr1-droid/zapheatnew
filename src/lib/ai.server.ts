@@ -223,9 +223,14 @@ export async function generateGroupMessage(
   history: { from: string; content: string }[],
   opts?: { seed?: string; senderName?: string | null; subject?: string | null; theme?: string | null; model?: string | null },
 ): Promise<string> {
+  if (isLocal(opts?.model)) {
+    const { localGroupMessage } = await import("@/lib/ai-local.server");
+    return localGroupMessage(history, opts?.seed ?? undefined);
+  }
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY ausente");
-  const requested = opts?.model && VALID_MODEL_IDS.has(opts.model) ? opts.model : DEFAULT_AI_MODEL;
+  const requested = opts?.model && VALID_MODEL_IDS.has(opts.model) ? opts.model : "google/gemini-3-flash-preview";
+
 
   const seed = opts?.seed ?? String(Math.random());
   const persona = pickByHash(PERSONAS, seed);
