@@ -172,6 +172,41 @@ Devolva SOMENTE o texto da mensagem, sem aspas, sem prefixo, sem nome.`;
 // ---------------- Mensagens para grupos reais de WhatsApp ----------------
 // Gera uma mensagem curta e natural para manter um grupo vivo 24h, com
 // personas diferentes por número remetente e continuidade com o histórico.
+
+// Frases de reserva: usadas quando o Gateway de IA está indisponível
+// (créditos esgotados, limite de uso). O motor continua conversando.
+const FALLBACK_LINES = [
+  "e aí pessoal, tudo certo por aí?",
+  "acabei de chegar aqui kkk",
+  "alguém viu que tempo doido hoje",
+  "to morrendo de fome, já almoçaram?",
+  "esse trânsito hoje tava impossível viu",
+  "boa tarde galera",
+  "cara que sono, mal dormi essa noite",
+  "vi uma notícia doida agora de manhã",
+  "e o fim de semana, foi bom?",
+  "to precisando de um café urgente kkk",
+  "alguém aí acordado?",
+  "nossa como o preço das coisas subiu né",
+  "hoje o dia rendeu aqui, graças a deus",
+  "kkkkk boa essa",
+  "verdade, penso a mesma coisa",
+  "to voltando do serviço agora",
+  "vou dar uma saída rapidinho e já volto",
+  "que calor absurdo hoje",
+  "gente, indicação de série boa aí?",
+  "amanhã prometo acordar cedo kkk",
+];
+
+export function fallbackGroupMessage(seed?: string) {
+  return pickByHash(FALLBACK_LINES, seed ?? String(Math.random()));
+}
+
+export function isAiQuotaError(e: unknown) {
+  const m = String((e as any)?.message ?? e);
+  return /AI 402|AI 429|payment_required|Not enough credits|rate limit/i.test(m);
+}
+
 export async function generateGroupMessage(
   history: { from: string; content: string }[],
   opts?: { seed?: string; senderName?: string | null; subject?: string | null; theme?: string | null; model?: string | null },
