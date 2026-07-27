@@ -10,6 +10,7 @@ import {
   setWaGroupSenders,
   updateWaGroup,
   toggleWaGroup,
+  startWaGroupNow,
   deleteWaGroup,
   getWaGroupInvite,
   sendWaGroupInvite,
@@ -34,7 +35,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Users2, Plus, Loader2, Trash2, Link2, RefreshCw, Bot, Clock, Send, AlertTriangle, UserPlus, Radio,
-  Smile, Eye, ShieldCheck, LogOut,
+  Smile, Eye, ShieldCheck, LogOut, Zap,
 } from "lucide-react";
 
 
@@ -322,6 +323,8 @@ function GroupCard({ group, instances, models }: { group: any; instances: any[];
   const inviteFn = useServerFn(getWaGroupInvite);
   const addFn = useServerFn(addWaGroupParticipants);
   const sendersFn = useServerFn(setWaGroupSenders);
+  const startFn = useServerFn(startWaGroupNow);
+  const [starting, setStarting] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [newNumbers, setNewNumbers] = useState("");
 
@@ -435,6 +438,16 @@ function GroupCard({ group, instances, models }: { group: any; instances: any[];
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          <Button size="sm" disabled={starting} onClick={async () => {
+            setStarting(true);
+            try {
+              const r: any = await startFn({ data: { groupId: group.id } });
+              toast.success(r?.sent ? "Mensagem enviada no grupo agora" : "Motor acionado");
+              invalidate();
+            } catch (e: any) { toast.error(String(e.message ?? e)); }
+            finally { setStarting(false); }
+          }}><Zap className="h-4 w-4 mr-1" />{starting ? "Enviando..." : "Disparar agora"}</Button>
 
           <InviteDialog group={group} />
 

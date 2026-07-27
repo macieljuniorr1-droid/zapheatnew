@@ -16,22 +16,36 @@ function randomBetween(min: number, max: number) {
 export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { evolution } = await import("@/lib/evolution.server");
         const { generateGroupMessage } = await import("@/lib/ai.server");
         const { syncGroupParticipants, pickSticker } = await import("@/lib/wa-groups.server");
 
+        // Modo "disparar agora": envia UMA mensagem imediatamente em um grupo
+        // específico, ignorando horário e agendamento (usado logo após criar o grupo).
+        let body: any = {};
+        try {
+          body = (await request.json()) ?? {};
+        } catch {
+          body = {};
+        }
+        const onlyGroupId: string | null = typeof body.groupId === "string" ? body.groupId : null;
+        const once = Boolean(body.once);
+
         const nowIso = new Date().toISOString();
-        const { data: groups, error } = await supabaseAdmin
+        let query = supabaseAdmin
           .from("wa_groups")
           .select(
             "id, user_id, subject, theme, ai_model, group_jid, min_interval_seconds, max_interval_seconds, active_hour_start, active_hour_end, daily_limit, sticker_chance, participants_synced_at, owner_instance_id, whatsapp_instances:owner_instance_id(evolution_instance, status), wa_group_senders(instance_id, whatsapp_instances(id, name, phone, status, evolution_instance))",
           )
-          .eq("active", true)
-          .or(`next_run_at.is.null,next_run_at.lte.${nowIso}`)
-          .limit(100);
+          .eq("active", true);
+        query = onlyGroupId
+          ? query.eq("id", onlyGroupId)
+          : query.or(`next_run_at.is.null,next_run_at.lte.${nowIso}`);
+        const { data: groups, error } = await query.limit(100);
         if (error) return Response.json({ error: error.message }, { status: 500 });
+
 
 
         const reschedule = async (g: any, seconds: number) => {
@@ -61,7 +75,7 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
               }
 
               const h = nowHourBRT();
-              if (h < g.active_hour_start || h >= g.active_hour_end) {
+              if (!once && (h < g.active_hour_start || h >= g.active_hour_end)) {
                 await reschedule(g, 600);
                 return { group: g.id, skipped: "fora do horário" };
               }
@@ -79,11 +93,12 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
               // do mesmo tick, já que o cron roda a cada minuto.
               const minI = Math.max(5, g.min_interval_seconds ?? 10);
               const maxI = Math.max(minI, g.max_interval_seconds ?? 20);
-              const deadline = Date.now() + 50_000;
+              const deadline = Date.now() + (once ? 0 : 50_000);
               let sentInTick = 0;
+
               let lastError: string | null = null;
 
-              while (Date.now() < deadline) {
+              while (Date.now() < deadline || sentInTick === 0) {
                 const todayIso = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
                 const { count } = await supabaseAdmin
                   .from("wa_group_logs")
