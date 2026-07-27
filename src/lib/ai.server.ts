@@ -58,7 +58,8 @@ function pickByHash<T>(arr: T[], seed: string): T {
 // Lovable AI Gateway (sem chave do usuário). Se o usuário selecionar um modelo
 // não catalogado, cai no default (Gemini 3 Flash).
 export const AI_MODELS = [
-  { id: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (padrão)", vendor: "Google", note: "Rápido, natural em PT-BR" },
+  { id: "local/motor-zapheat", label: "Motor ZapHeat (grátis, sem créditos)", vendor: "ZapHeat", note: "Roda local, não consome créditos" },
+  { id: "google/gemini-3-flash-preview", label: "Gemini 3 Flash", vendor: "Google", note: "Rápido, natural em PT-BR" },
   { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash", vendor: "Google", note: "Mais recente, boa fluidez" },
   { id: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)", vendor: "Google", note: "Reasoning forte" },
   { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", vendor: "Google", note: "Multimodal robusto" },
@@ -70,16 +71,27 @@ export const AI_MODELS = [
   { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", vendor: "OpenAI", note: "GPT-5.6 rápido" },
 ] as const;
 
-export const DEFAULT_AI_MODEL = "google/gemini-3-flash-preview";
+// Padrão: motor local (não consome créditos do workspace).
+export const DEFAULT_AI_MODEL = "local/motor-zapheat";
+export const LOCAL_MODEL_ID = "local/motor-zapheat";
 const VALID_MODEL_IDS = new Set<string>(AI_MODELS.map((m) => m.id));
+function isLocal(model?: string | null) {
+  return !model || model === LOCAL_MODEL_ID || !VALID_MODEL_IDS.has(model);
+}
+
 
 export async function generateReply(
   history: { from: string; content: string }[],
   opts?: { pairSeed?: string; fromName?: string | null; toName?: string | null; model?: string | null },
 ): Promise<string> {
+  if (isLocal(opts?.model)) {
+    const { localReply } = await import("@/lib/ai-local.server");
+    return localReply(history, opts?.pairSeed ?? undefined);
+  }
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY ausente");
-  const requested = opts?.model && VALID_MODEL_IDS.has(opts.model) ? opts.model : DEFAULT_AI_MODEL;
+  const requested = opts?.model && VALID_MODEL_IDS.has(opts.model) ? opts.model : "google/gemini-3-flash-preview";
+
 
   const seed = opts?.pairSeed ?? String(Math.random());
   const persona = pickByHash(PERSONAS, seed);
@@ -202,6 +214,13 @@ export function fallbackGroupMessage(seed?: string) {
   return pickByHash(FALLBACK_LINES, seed ?? String(Math.random()));
 }
 
+/** Mensagem de grupo pelo motor local (grátis, sem créditos). */
+export async function localGroupFallback(history: { from: string; content: string }[], seed?: string) {
+  const { localGroupMessage } = await import("@/lib/ai-local.server");
+  return localGroupMessage(history, seed);
+}
+
+
 export function isAiQuotaError(e: unknown) {
   const m = String((e as any)?.message ?? e);
   return /AI 402|AI 429|payment_required|Not enough credits|rate limit/i.test(m);
@@ -211,9 +230,14 @@ export async function generateGroupMessage(
   history: { from: string; content: string }[],
   opts?: { seed?: string; senderName?: string | null; subject?: string | null; theme?: string | null; model?: string | null },
 ): Promise<string> {
+  if (isLocal(opts?.model)) {
+    const { localGroupMessage } = await import("@/lib/ai-local.server");
+    return localGroupMessage(history, opts?.seed ?? undefined);
+  }
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY ausente");
-  const requested = opts?.model && VALID_MODEL_IDS.has(opts.model) ? opts.model : DEFAULT_AI_MODEL;
+  const requested = opts?.model && VALID_MODEL_IDS.has(opts.model) ? opts.model : "google/gemini-3-flash-preview";
+
 
   const seed = opts?.seed ?? String(Math.random());
   const persona = pickByHash(PERSONAS, seed);

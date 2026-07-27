@@ -150,10 +150,19 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                       },
                     );
                   } catch (e) {
-                    // Sem crédito de IA / limite: não trava o motor, usa frase de reserva.
-                    if (isAiQuotaError(e)) return fallbackGroupMessage(`${g.id}:${Date.now()}`);
+                    // Sem crédito de IA / limite: não trava o motor, cai no motor local (grátis).
+                    const { localGroupFallback } = await import("@/lib/ai.server");
+                    if (isAiQuotaError(e))
+                      return await localGroupFallback(
+                        recent.map((r: any) => ({
+                          from: r.instance_id === sender.id ? "__me__" : String(r.instance_id ?? "outro"),
+                          content: String(r.content ?? ""),
+                        })),
+                        `${g.id}:${sender.id}`,
+                      );
                     throw e;
                   }
+
                 };
 
                 const text = stickerUrl ? "" : await genText();
