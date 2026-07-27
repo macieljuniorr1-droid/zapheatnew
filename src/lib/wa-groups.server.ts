@@ -91,3 +91,32 @@ export async function pickSticker(db: AnyClient, userId: string): Promise<string
   if (!list.length) return null;
   return list[Math.floor(Math.random() * list.length)];
 }
+
+/**
+ * Garante que os números remetentes da conta estejam DENTRO do grupo.
+ * O WhatsApp frequentemente ignora números na criação (privacidade), o que faz
+ * o envio falhar com "grupo não encontrado" / TypeError do Baileys. Aqui o dono
+ * gera o link de convite e cada remetente entra por ele.
+ */
+export async function ensureSendersJoined(
+  ownerInstance: string,
+  groupJid: string,
+  senderInstances: string[],
+): Promise<{ code: string | null; joined: number }> {
+  const { evolution } = await import("@/lib/evolution.server");
+  const res: any = await evolution.groupInviteCode(ownerInstance, groupJid);
+  const code: string | null = res?.inviteCode ?? res?.code ?? res?.data?.inviteCode ?? null;
+  if (!code) return { code: null, joined: 0 };
+  let joined = 0;
+  for (const inst of senderInstances) {
+    if (!inst || inst === ownerInstance) continue;
+    try {
+      const r = await evolution.acceptGroupInvite(inst, code);
+      if (r) joined += 1;
+    } catch {
+      // convite pode falhar por número já estar no grupo — segue o baile
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return { code, joined };
+}
