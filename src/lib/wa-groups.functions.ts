@@ -379,6 +379,59 @@ export const getWaGroupInvite = createServerFn({ method: "POST" })
     return { code, url: res?.inviteUrl ?? (code ? `https://chat.whatsapp.com/${code}` : null) };
   });
 
+/** Envia o link de convite do grupo por WhatsApp para uma lista de números. */
+export const sendWaGroupInvite = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        groupId: z.string().uuid(),
+        numbers: z.array(z.string()).min(1).max(200),
+        message: z.string().max(500).optional().nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { evolution } = await import("@/lib/evolution.server");
+    const { data: g } = await supabase
+      .from("wa_groups")
+      .select("id, subject, group_jid, whatsapp_instances:owner_instance_id(evolution_instance, status)")
+      .eq("id", data.groupId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!g) throw new Error("Grupo não encontrado");
+    const inst: any = (g as any).whatsapp_instances;
+    if (!inst?.evolution_instance) throw new Error("Número criador indisponível");
+    if (inst.status !== "connected") throw new Error("O número dono do grupo está desconectado");
+
+    const res: any = await evolution.groupInviteCode(inst.evolution_instance, g.group_jid);
+    const code = res?.inviteCode ?? res?.code ?? null;
+    const url = res?.inviteUrl ?? (code ? `https://chat.whatsapp.com/${code}` : null);
+    if (!url) throw new Error("Não foi possível gerar o link de convite");
+
+    const phones = Array.from(
+      new Set(data.numbers.map(normalizePhone).filter((p): p is string => !!p)),
+    );
+    if (!phones.length) throw new Error("Nenhum número válido");
+
+    const text = `${data.message?.trim() || `Entra no grupo ${g.subject}:`}\n${url}`;
+    let sent = 0;
+    const errors: string[] = [];
+    for (const phone of phones) {
+      try {
+        await evolution.sendText(inst.evolution_instance, `${phone}@s.whatsapp.net`, text, 0);
+        sent += 1;
+      } catch (e: any) {
+        errors.push(`${phone}: ${String(e?.message ?? e).slice(0, 120)}`);
+      }
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+    return { sent, url, errors };
+  });
+
+
+
 export const deleteWaGroup = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
