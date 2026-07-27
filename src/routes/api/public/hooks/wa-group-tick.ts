@@ -75,7 +75,7 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
               }
 
               const h = nowHourBRT();
-              if (h < g.active_hour_start || h >= g.active_hour_end) {
+              if (!once && (h < g.active_hour_start || h >= g.active_hour_end)) {
                 await reschedule(g, 600);
                 return { group: g.id, skipped: "fora do horário" };
               }
@@ -93,8 +93,9 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
               // do mesmo tick, já que o cron roda a cada minuto.
               const minI = Math.max(5, g.min_interval_seconds ?? 10);
               const maxI = Math.max(minI, g.max_interval_seconds ?? 20);
-              const deadline = Date.now() + 50_000;
+              const deadline = Date.now() + (once ? 1 : 50_000);
               let sentInTick = 0;
+
               let lastError: string | null = null;
 
               while (Date.now() < deadline) {
