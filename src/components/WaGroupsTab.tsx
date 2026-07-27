@@ -294,7 +294,7 @@ function NewGroupDialog({ instances, models }: { instances: any[]; models: any[]
         <DialogFooter>
           <Button disabled={!owner || !subject || mut.isPending} onClick={() => mut.mutate()}>
             {mut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {count > 1 ? `Criar ${count} grupos` : "Criar grupo"}
+            {groupCount > 1 ? `Criar ${groupCount} grupos` : "Criar grupo"}
           </Button>
         </DialogFooter>
 
