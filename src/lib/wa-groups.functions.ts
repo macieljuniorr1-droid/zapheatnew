@@ -190,7 +190,7 @@ export const createWaGroup = createServerFn({ method: "POST" })
             daily_limit: data.daily_limit,
             sticker_chance: data.sticker_chance,
             active: data.activate,
-            next_run_at: data.activate ? new Date(Date.now() + (i + 1) * 20_000).toISOString() : null,
+            next_run_at: data.activate ? new Date(Date.now() + i * 3_000).toISOString() : null,
           })
           .select("*")
           .single();
