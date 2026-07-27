@@ -12,16 +12,29 @@ export function normalizePhone(raw: string): string | null {
   return digits;
 }
 
+// Campos numéricos vindos de inputs podem chegar vazios/NaN — em vez de rejeitar,
+// convertemos e ajustamos automaticamente para dentro dos limites seguros.
+const clampNum = (min: number, max: number, fallback: number) =>
+  z
+    .any()
+    .transform((v) => {
+      const n = Number(typeof v === "string" ? v.replace(",", ".") : v);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, Math.round(n)));
+    })
+    .pipe(z.number().int());
+
 const automationSchema = z.object({
   theme: z.string().max(300).optional().nullable(),
   ai_model: z.string().max(120).optional().nullable(),
-  min_interval_seconds: z.number().int().min(30).max(86400).optional(),
-  max_interval_seconds: z.number().int().min(60).max(86400).optional(),
-  active_hour_start: z.number().int().min(0).max(23).optional(),
-  active_hour_end: z.number().int().min(1).max(24).optional(),
-  daily_limit: z.number().int().min(1).max(2000).optional(),
-  sticker_chance: z.number().int().min(0).max(100).optional(),
+  min_interval_seconds: clampNum(30, 86400, 300).optional(),
+  max_interval_seconds: clampNum(60, 86400, 1800).optional(),
+  active_hour_start: clampNum(0, 23, 0).optional(),
+  active_hour_end: clampNum(1, 24, 24).optional(),
+  daily_limit: clampNum(1, 2000, 200).optional(),
+  sticker_chance: clampNum(0, 100, 15).optional(),
 });
+
 
 
 export const listWaGroups = createServerFn({ method: "GET" })
@@ -97,13 +110,13 @@ export const createWaGroup = createServerFn({ method: "POST" })
         senderInstanceIds: z.array(z.string().uuid()).default([]),
         theme: z.string().max(300).optional().nullable(),
         ai_model: z.string().max(120).optional().nullable(),
-        min_interval_seconds: z.number().int().min(30).max(86400).default(300),
-        max_interval_seconds: z.number().int().min(60).max(86400).default(1800),
-        active_hour_start: z.number().int().min(0).max(23).default(0),
-        active_hour_end: z.number().int().min(1).max(24).default(24),
-        daily_limit: z.number().int().min(1).max(2000).default(200),
-        sticker_chance: z.number().int().min(0).max(100).default(15),
-        count: z.number().int().min(1).max(20).default(1),
+        min_interval_seconds: clampNum(30, 86400, 300).default(300),
+        max_interval_seconds: clampNum(60, 86400, 1800).default(1800),
+        active_hour_start: clampNum(0, 23, 0).default(0),
+        active_hour_end: clampNum(1, 24, 24).default(24),
+        daily_limit: clampNum(1, 2000, 200).default(200),
+        sticker_chance: clampNum(0, 100, 15).default(15),
+        count: clampNum(1, 20, 1).default(1),
         activate: z.boolean().default(false),
       })
       .parse(d),
