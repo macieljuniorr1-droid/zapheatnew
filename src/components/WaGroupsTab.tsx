@@ -35,7 +35,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Users2, Plus, Loader2, Trash2, Link2, RefreshCw, Bot, Clock, Send, AlertTriangle, UserPlus, Radio,
-  Smile, Eye, ShieldCheck, LogOut,
+  Smile, Eye, ShieldCheck, LogOut, Zap,
 } from "lucide-react";
 
 
