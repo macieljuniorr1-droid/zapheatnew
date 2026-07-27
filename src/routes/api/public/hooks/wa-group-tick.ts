@@ -214,7 +214,11 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
               return { group: g.id, sent: sentInTick, error: lastError };
             } catch (e: any) {
               await reschedule(g, 300);
-              return { group: g.id, error: String(e?.message ?? e).slice(0, 300) };
+              const raw = String(e?.message ?? e);
+              const friendly = /402|Not enough credits|payment_required/i.test(raw)
+                ? "Créditos de IA esgotados no workspace. Recarregue os créditos para voltar a gerar mensagens (o motor está usando frases de reserva)."
+                : raw.slice(0, 300);
+              return { group: g.id, error: friendly };
             }
           }),
         );
