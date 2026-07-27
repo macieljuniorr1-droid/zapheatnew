@@ -12,6 +12,8 @@ import {
   toggleWaGroup,
   deleteWaGroup,
   getWaGroupInvite,
+  sendWaGroupInvite,
+  UNLIMITED_DAILY,
   listWaGroupLogs,
   listWaGroupParticipants,
   syncWaGroupParticipants,
