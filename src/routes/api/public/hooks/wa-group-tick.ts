@@ -19,7 +19,7 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
       POST: async ({ request }) => {
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { evolution } = await import("@/lib/evolution.server");
-        const { generateGroupMessage } = await import("@/lib/ai.server");
+        const { generateGroupMessage, fallbackGroupMessage, isAiQuotaError } = await import("@/lib/ai.server");
         const { syncGroupParticipants, pickSticker } = await import("@/lib/wa-groups.server");
 
         // Modo "disparar agora": envia UMA mensagem imediatamente em um grupo
@@ -134,9 +134,9 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                 const stickerUrl =
                   Math.random() * 100 < stickerChance ? await pickSticker(supabaseAdmin, g.user_id) : null;
 
-                const text = stickerUrl
-                  ? ""
-                  : await generateGroupMessage(
+                const genText = async () => {
+                  try {
+                    return await generateGroupMessage(
                       recent.map((r: any) => ({
                         from: r.instance_id === sender.id ? "__me__" : String(r.instance_id ?? "outro"),
                         content: String(r.content ?? ""),
@@ -149,6 +149,14 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
                         model: g.ai_model,
                       },
                     );
+                  } catch (e) {
+                    // Sem crédito de IA / limite: não trava o motor, usa frase de reserva.
+                    if (isAiQuotaError(e)) return fallbackGroupMessage(`${g.id}:${Date.now()}`);
+                    throw e;
+                  }
+                };
+
+                const text = stickerUrl ? "" : await genText();
 
                 await evolution.sendPresence(
                   sender.evolution_instance,
@@ -206,7 +214,11 @@ export const Route = createFileRoute("/api/public/hooks/wa-group-tick")({
               return { group: g.id, sent: sentInTick, error: lastError };
             } catch (e: any) {
               await reschedule(g, 300);
-              return { group: g.id, error: String(e?.message ?? e).slice(0, 300) };
+              const raw = String(e?.message ?? e);
+              const friendly = /402|Not enough credits|payment_required/i.test(raw)
+                ? "Créditos de IA esgotados no workspace. Recarregue os créditos para voltar a gerar mensagens (o motor está usando frases de reserva)."
+                : raw.slice(0, 300);
+              return { group: g.id, error: friendly };
             }
           }),
         );
