@@ -214,6 +214,13 @@ export function fallbackGroupMessage(seed?: string) {
   return pickByHash(FALLBACK_LINES, seed ?? String(Math.random()));
 }
 
+/** Mensagem de grupo pelo motor local (grátis, sem créditos). */
+export async function localGroupFallback(history: { from: string; content: string }[], seed?: string) {
+  const { localGroupMessage } = await import("@/lib/ai-local.server");
+  return localGroupMessage(history, seed);
+}
+
+
 export function isAiQuotaError(e: unknown) {
   const m = String((e as any)?.message ?? e);
   return /AI 402|AI 429|payment_required|Not enough credits|rate limit/i.test(m);
