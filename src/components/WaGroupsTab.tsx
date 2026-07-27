@@ -355,7 +355,7 @@ function GroupCard({ group, instances, models }: { group: any; instances: any[];
         <div className="flex flex-wrap gap-2 text-xs">
           <Badge variant="outline"><Clock className="h-3 w-3 mr-1" />{fmtInterval(group.min_interval_seconds)}–{fmtInterval(group.max_interval_seconds)}</Badge>
           <Badge variant="outline">{group.active_hour_start}h–{group.active_hour_end}h</Badge>
-          <Badge variant="outline">até {group.daily_limit}/dia</Badge>
+          <Badge variant="outline">{(group.daily_limit ?? 0) >= UNLIMITED_DAILY ? "mensagens ilimitadas" : `até ${group.daily_limit}/dia`}</Badge>
           <Badge variant="outline">{group.sender_instance_ids?.length ?? 0} remetentes</Badge>
           <Badge variant="outline"><Smile className="h-3 w-3 mr-1" />{group.sticker_chance ?? 0}% figurinha</Badge>
         </div>
