@@ -203,10 +203,10 @@ export const createWaGroup = createServerFn({ method: "POST" })
         // Garante que todos os remetentes entrem no grupo pelo link de convite.
         try {
           const { ensureSendersJoined } = await import("@/lib/wa-groups.server");
-          const evoNames = (senders ?? [])
-            .map((s: any) => s.evolution_instance)
-            .filter(Boolean) as string[];
-          await ensureSendersJoined(owner.evolution_instance, String(jid), evoNames);
+          const toJoin = (senders ?? [])
+            .map((s: any) => ({ evolution_instance: s.evolution_instance, phone: s.phone }))
+            .filter((s: any) => s.evolution_instance);
+          await ensureSendersJoined(owner.evolution_instance, String(jid), toJoin);
         } catch {
           // convite é best-effort; o motor tenta novamente no primeiro envio
         }
