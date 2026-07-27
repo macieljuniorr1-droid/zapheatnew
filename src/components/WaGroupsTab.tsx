@@ -391,6 +391,8 @@ function GroupCard({ group, instances, models }: { group: any; instances: any[];
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <ParticipantsDialog group={group} />
+
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
               <Button size="sm" variant="outline"><UserPlus className="h-4 w-4 mr-1" />Adicionar pessoas</Button>
